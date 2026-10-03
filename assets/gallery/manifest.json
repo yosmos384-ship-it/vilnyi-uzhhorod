@@ -1,0 +1,306 @@
+[
+ {
+  "src": "assets/gallery/aerial-southeast.jpg",
+  "type": "exterior",
+  "caption": {
+   "en": "Aerial view from the south-east: four buildings around a shared courtyard",
+   "uk": "Вид з висоти з південного сходу: чотири будинки навколо спільного двору",
+   "ru": "Вид с высоты с юго-востока: четыре дома вокруг общего двора",
+   "he": "מבט מהאוויר מדרום-מזרח: ארבעה בניינים סביב חצר משותפת",
+   "ro": "Vedere aeriană dinspre sud-est: patru clădiri în jurul unei curți comune",
+   "fr": "Vue aérienne depuis le sud-est : quatre bâtiments autour d’une cour commune",
+   "it": "Vista aerea da sud-est: quattro edifici attorno a una corte comune",
+   "de": "Luftbild von Südosten: vier Gebäude um einen gemeinsamen Innenhof"
+  }
+ },
+ {
+  "src": "assets/gallery/day-corner-view.jpg",
+  "type": "exterior",
+  "caption": {
+   "en": "View from the corner of Hrushevskoho and Zankovetskoi streets, by day",
+   "uk": "Вид з рогу вулиць Грушевського та Заньковецької вдень",
+   "ru": "Вид с угла улиц Грушевского и Заньковецкой днём",
+   "he": "מבט מפינת הרחובות גרושבסקי וזנקובצקה, ביום",
+   "ro": "Vedere din colțul străzilor Hrușevski și Zankovețka, ziua",
+   "fr": "Vue depuis l’angle des rues Hrouchevskoho et Zankovetskoï, de jour",
+   "it": "Vista dall’angolo tra le vie Hruševs’koho e Zankovec’koï, di giorno",
+   "de": "Blick von der Ecke Hruschewskyj-/Sankowezka-Straße bei Tag"
+  }
+ },
+ {
+  "src": "assets/gallery/night-corner-view.jpg",
+  "type": "exterior",
+  "caption": {
+   "en": "Evening view from the street corner: the commercial podium and the towers",
+   "uk": "Вечірній вид з рогу вулиць: комерційний стилобат і вежі",
+   "ru": "Вечерний вид с угла улиц: коммерческий стилобат и башни",
+   "he": "מבט ערב מפינת הרחובות: קומות המסחר והמגדלים",
+   "ro": "Vedere de seară din colțul străzilor: podiumul comercial și turnurile",
+   "fr": "Vue du soir depuis l’angle des rues : le socle commercial et les tours",
+   "it": "Vista serale dall’angolo delle strade: il podio commerciale e le torri",
+   "de": "Abendansicht von der Straßenecke: Gewerbesockel und Türme"
+  }
+ },
+ {
+  "src": "assets/web/group-12-1.jpg",
+  "type": "amenity",
+  "source": "vilnyi.group",
+  "caption": {
+   "en": "The VILNYI SPA pavilion at the foot of the tower: glazed facade and a sun terrace",
+   "uk": "Павільйон VILNYI SPA біля підніжжя вежі: скляний фасад і тераса з шезлонгами",
+   "ru": "Павильон VILNYI SPA у подножия башни: стеклянный фасад и терраса с шезлонгами",
+   "he": "ביתן VILNYI SPA למרגלות המגדל: חזית זכוכית ומרפסת שיזוף",
+   "ro": "Pavilionul VILNYI SPA la baza turnului: fațadă vitrată și terasă cu șezlonguri",
+   "fr": "Le pavillon VILNYI SPA au pied de la tour : façade vitrée et terrasse avec transats",
+   "it": "Il padiglione VILNYI SPA ai piedi della torre: facciata vetrata e terrazza con lettini",
+   "de": "Der Pavillon VILNYI SPA am Fuß des Turms: Glasfassade und Terrasse mit Sonnenliegen"
+  }
+ },
+ {
+  "src": "assets/gallery/street-southeast-panorama.jpg",
+  "type": "exterior",
+  "caption": {
+   "en": "Panorama from Zankovetskoi Street: all four buildings",
+   "uk": "Панорама з вулиці Заньковецької: усі чотири будинки",
+   "ru": "Панорама с улицы Заньковецкой: все четыре дома",
+   "he": "פנורמה מרחוב זנקובצקה: כל ארבעת הבניינים",
+   "ro": "Panoramă dinspre strada Zankovețka: toate cele patru clădiri",
+   "fr": "Panorama depuis la rue Zankovetskoï : les quatre bâtiments",
+   "it": "Panorama da via Zankovec’koï: tutti e quattro gli edifici",
+   "de": "Panorama von der Sankowezka-Straße: alle vier Gebäude"
+  }
+ },
+ {
+  "src": "assets/web/lun-06.jpg",
+  "type": "amenity",
+  "source": "lun.ua",
+  "caption": {
+   "en": "The courtyard: a children’s playground between the buildings",
+   "uk": "Двір: дитячий майданчик між будинками",
+   "ru": "Двор: детская площадка между домами",
+   "he": "החצר: מגרש משחקים לילדים בין הבניינים",
+   "ro": "Curtea: loc de joacă pentru copii între clădiri",
+   "fr": "La cour : aire de jeux pour enfants entre les bâtiments",
+   "it": "La corte: area giochi per bambini tra gli edifici",
+   "de": "Der Innenhof: Kinderspielplatz zwischen den Gebäuden"
+  }
+ },
+ {
+  "src": "assets/gallery/commercial-podium-corner.jpg",
+  "type": "exterior",
+  "caption": {
+   "en": "Building 2: the two-storey commercial podium at the street corner",
+   "uk": "Будинок 2: двоповерховий комерційний стилобат на розі вулиць",
+   "ru": "Дом 2: двухэтажный коммерческий стилобат на углу улиц",
+   "he": "בניין 2: שתי קומות המסחר בפינת הרחובות",
+   "ro": "Clădirea 2: podiumul comercial cu două niveluri, la colțul străzilor",
+   "fr": "Bâtiment 2 : le socle commercial de deux niveaux à l’angle des rues",
+   "it": "Edificio 2: il podio commerciale a due piani all’angolo delle strade",
+   "de": "Gebäude 2: der zweigeschossige Gewerbesockel an der Straßenecke"
+  }
+ },
+ {
+  "src": "assets/web/lun-05.jpg",
+  "type": "exterior",
+  "source": "lun.ua",
+  "caption": {
+   "en": "Building 2 from the street: the commercial podium with timber-look pilasters and planted terraces above",
+   "uk": "Будинок 2 з вулиці: комерційний стилобат із пілястрами під дерево та озеленені тераси над ним",
+   "ru": "Дом 2 с улицы: коммерческий стилобат с пилястрами под дерево и озеленённые террасы над ним",
+   "he": "בניין 2 מהרחוב: קומות המסחר עם עמודים בגוון עץ ומעליהן מרפסות מגוננות",
+   "ro": "Clădirea 2 dinspre stradă: podiumul comercial cu pilaștri cu aspect de lemn și terasele înverzite de deasupra",
+   "fr": "Bâtiment 2 côté rue : le socle commercial aux pilastres aspect bois et les terrasses plantées au-dessus",
+   "it": "Edificio 2 dalla strada: il podio commerciale con lesene effetto legno e le terrazze verdi sovrastanti",
+   "de": "Gebäude 2 von der Straße: Gewerbesockel mit Pilastern in Holzoptik, darüber begrünte Terrassen"
+  }
+ },
+ {
+  "src": "assets/gallery/aerial-south.jpg",
+  "type": "exterior",
+  "caption": {
+   "en": "Aerial view from the south: the courtyard and the green roof of the podium",
+   "uk": "Вид з висоти з півдня: двір і зелена покрівля стилобата",
+   "ru": "Вид с высоты с юга: двор и зелёная кровля стилобата",
+   "he": "מבט מהאוויר מדרום: החצר והגג הירוק של קומות המסחר",
+   "ro": "Vedere aeriană dinspre sud: curtea și acoperișul verde al podiumului",
+   "fr": "Vue aérienne depuis le sud : la cour et le toit végétalisé du socle",
+   "it": "Vista aerea da sud: la corte e il tetto verde del podio",
+   "de": "Luftbild von Süden: Innenhof und begrüntes Dach des Sockels"
+  }
+ },
+ {
+  "src": "assets/web/lun-07.jpg",
+  "type": "amenity",
+  "source": "lun.ua",
+  "caption": {
+   "en": "A courtyard path past the playground and the greenery",
+   "uk": "Доріжка у дворі повз дитячий майданчик і зелень",
+   "ru": "Дорожка во дворе мимо детской площадки и зелени",
+   "he": "שביל בחצר לצד מגרש המשחקים והצמחייה",
+   "ro": "Alee în curte, pe lângă locul de joacă și spațiile verzi",
+   "fr": "Une allée de la cour, le long de l’aire de jeux et des plantations",
+   "it": "Un vialetto della corte accanto all’area giochi e al verde",
+   "de": "Weg im Innenhof entlang des Spielplatzes und der Bepflanzung"
+  }
+ },
+ {
+  "src": "assets/gallery/street-east-buildings-2-1.jpg",
+  "type": "exterior",
+  "caption": {
+   "en": "View from Hrushevskoho Street: buildings 2 and 1",
+   "uk": "Вид з вулиці Грушевського: будинки 2 і 1",
+   "ru": "Вид с улицы Грушевского: дома 2 и 1",
+   "he": "מבט מרחוב גרושבסקי: בניינים 2 ו-1",
+   "ro": "Vedere dinspre strada Hrușevski: clădirile 2 și 1",
+   "fr": "Vue depuis la rue Hrouchevskoho : bâtiments 2 et 1",
+   "it": "Vista da via Hruševs’koho: edifici 2 e 1",
+   "de": "Blick von der Hruschewskyj-Straße: Gebäude 2 und 1"
+  }
+ },
+ {
+  "src": "assets/web/lun-12.jpg",
+  "type": "exterior",
+  "source": "lun.ua",
+  "caption": {
+   "en": "Upper floors: roof terraces and the glazed rounded corner",
+   "uk": "Верхні поверхи: тераси та засклений заокруглений кут",
+   "ru": "Верхние этажи: террасы и остеклённый скруглённый угол",
+   "he": "הקומות העליונות: מרפסות גג ופינה מעוגלת מזוגגת",
+   "ro": "Etajele superioare: terase și colțul rotunjit vitrat",
+   "fr": "Les niveaux supérieurs : terrasses et angle arrondi vitré",
+   "it": "I piani alti: terrazze e angolo arrotondato vetrato",
+   "de": "Die oberen Geschosse: Terrassen und die verglaste, abgerundete Ecke"
+  }
+ },
+ {
+  "src": "assets/gallery/commercial-podium-entrance.jpg",
+  "type": "exterior",
+  "caption": {
+   "en": "Building 2 from Hrushevskoho Street: commercial frontage and the entrance portal",
+   "uk": "Будинок 2 з боку вулиці Грушевського: комерційні приміщення та вхідний портал",
+   "ru": "Дом 2 со стороны улицы Грушевского: коммерческие помещения и входной портал",
+   "he": "בניין 2 מצד רחוב גרושבסקי: חזית המסחר ושער הכניסה",
+   "ro": "Clădirea 2 dinspre strada Hrușevski: spațiile comerciale și portalul de intrare",
+   "fr": "Bâtiment 2 côté rue Hrouchevskoho : commerces et portail d’entrée",
+   "it": "Edificio 2 da via Hruševs’koho: fronte commerciale e portale d’ingresso",
+   "de": "Gebäude 2 von der Hruschewskyj-Straße: Gewerbefront und Eingangsportal"
+  }
+ },
+ {
+  "src": "assets/web/lun-04.jpg",
+  "type": "exterior",
+  "source": "lun.ua",
+  "caption": {
+   "en": "Building 2: residential floors above the glazed commercial podium",
+   "uk": "Будинок 2: житлові поверхи над заскленим комерційним стилобатом",
+   "ru": "Дом 2: жилые этажи над остеклённым коммерческим стилобатом",
+   "he": "בניין 2: קומות המגורים מעל קומות המסחר המזוגגות",
+   "ro": "Clădirea 2: etajele de locuințe deasupra podiumului comercial vitrat",
+   "fr": "Bâtiment 2 : les niveaux d’habitation au-dessus du socle commercial vitré",
+   "it": "Edificio 2: i piani residenziali sopra il podio commerciale vetrato",
+   "de": "Gebäude 2: Wohngeschosse über dem verglasten Gewerbesockel"
+  }
+ },
+ {
+  "src": "assets/gallery/street-south-buildings-4-2.jpg",
+  "type": "exterior",
+  "caption": {
+   "en": "View from the south: buildings 4 and 2 in front, the two taller towers behind",
+   "uk": "Вид з півдня: будинки 4 і 2 на передньому плані, дві вищі вежі позаду",
+   "ru": "Вид с юга: дома 4 и 2 на переднем плане, две более высокие башни позади",
+   "he": "מבט מדרום: בניינים 4 ו-2 מלפנים, שני המגדלים הגבוהים מאחור",
+   "ro": "Vedere dinspre sud: clădirile 4 și 2 în față, cele două turnuri mai înalte în spate",
+   "fr": "Vue depuis le sud : bâtiments 4 et 2 au premier plan, les deux tours plus hautes derrière",
+   "it": "Vista da sud: edifici 4 e 2 in primo piano, le due torri più alte dietro",
+   "de": "Blick von Süden: Gebäude 4 und 2 vorn, die beiden höheren Türme dahinter"
+  }
+ },
+ {
+  "src": "assets/gallery/tower-and-spa.jpg",
+  "type": "exterior",
+  "caption": {
+   "en": "A residential tower and the VILNYI SPA pavilion",
+   "uk": "Житлова вежа та павільйон VILNYI SPA",
+   "ru": "Жилая башня и павильон VILNYI SPA",
+   "he": "מגדל מגורים וביתן VILNYI SPA",
+   "ro": "Un turn rezidențial și pavilionul VILNYI SPA",
+   "fr": "Une tour résidentielle et le pavillon VILNYI SPA",
+   "it": "Una torre residenziale e il padiglione VILNYI SPA",
+   "de": "Ein Wohnturm und der Pavillon VILNYI SPA"
+  }
+ },
+ {
+  "src": "assets/web/lun-15.jpg",
+  "type": "exterior",
+  "source": "lun.ua",
+  "caption": {
+   "en": "Evening at a building entrance: lit canopies and a hedge-lined path",
+   "uk": "Вечір біля входу до будинку: підсвічені козирки й доріжка вздовж живоплоту",
+   "ru": "Вечер у входа в дом: подсвеченные козырьки и дорожка вдоль живой изгороди",
+   "he": "ערב ליד הכניסה לבניין: גגונים מוארים ושביל לאורך גדר חיה",
+   "ro": "Seara, la intrarea în clădire: copertine luminate și alee mărginită de gard viu",
+   "fr": "Le soir, à l’entrée d’un bâtiment : auvents éclairés et allée bordée de haies",
+   "it": "Sera all’ingresso di un edificio: pensiline illuminate e vialetto tra le siepi",
+   "de": "Abend am Eingang eines Gebäudes: beleuchtete Vordächer und ein von Hecken gesäumter Weg"
+  }
+ },
+ {
+  "src": "assets/web/lun-13.jpg",
+  "type": "exterior",
+  "source": "lun.ua",
+  "caption": {
+   "en": "Looking up the facade of a tower: balconies and stone-tone cladding",
+   "uk": "Погляд угору на фасад вежі: балкони та облицювання кольору каменю",
+   "ru": "Взгляд вверх на фасад башни: балконы и облицовка цвета камня",
+   "he": "מבט כלפי מעלה אל חזית המגדל: מרפסות וחיפוי בגוון אבן",
+   "ro": "Privire în sus spre fațada unui turn: balcoane și placaj în nuanța pietrei",
+   "fr": "Contre-plongée sur la façade d’une tour : balcons et parement ton pierre",
+   "it": "Vista dal basso della facciata di una torre: balconi e rivestimento color pietra",
+   "de": "Blick hinauf an der Fassade eines Turms: Balkone und steinfarbene Verkleidung"
+  }
+ },
+ {
+  "src": "assets/web/group-03.jpg",
+  "type": "exterior",
+  "source": "vilnyi.group",
+  "caption": {
+   "en": "Upper floors with terraces and the VILNYI rooftop sign",
+   "uk": "Верхні поверхи з терасами та вивіска VILNYI на даху",
+   "ru": "Верхние этажи с террасами и вывеска VILNYI на крыше",
+   "he": "הקומות העליונות עם המרפסות ושלט VILNYI על הגג",
+   "ro": "Etajele superioare cu terase și însemnul VILNYI de pe acoperiș",
+   "fr": "Les niveaux supérieurs avec terrasses et l’enseigne VILNYI en toiture",
+   "it": "I piani alti con le terrazze e l’insegna VILNYI sul tetto",
+   "de": "Obere Geschosse mit Terrassen und dem VILNYI-Schriftzug auf dem Dach"
+  }
+ },
+ {
+  "src": "assets/gallery/courtyard-walkway-detail.jpg",
+  "type": "exterior",
+  "caption": {
+   "en": "At ground level: a landscaped walkway along the facade",
+   "uk": "На рівні землі: озеленена доріжка вздовж фасаду",
+   "ru": "На уровне земли: озеленённая дорожка вдоль фасада",
+   "he": "בגובה הקרקע: שביל מגונן לאורך החזית",
+   "ro": "La nivelul solului: alee amenajată de-a lungul fațadei",
+   "fr": "Au niveau du sol : une allée paysagée le long de la façade",
+   "it": "A livello del suolo: vialetto sistemato a verde lungo la facciata",
+   "de": "Auf Straßenniveau: begrünter Weg entlang der Fassade"
+  }
+ },
+ {
+  "src": "assets/web/group-07.jpg",
+  "type": "exterior",
+  "source": "vilnyi.group",
+  "caption": {
+   "en": "Looking up: glazing and balconies of a tower",
+   "uk": "Погляд угору: скління та балкони вежі",
+   "ru": "Взгляд вверх: остекление и балконы башни",
+   "he": "מבט כלפי מעלה: הזיגוג והמרפסות של המגדל",
+   "ro": "Privire în sus: vitrajele și balcoanele unui turn",
+   "fr": "Contre-plongée : vitrages et balcons d’une tour",
+   "it": "Vista dal basso: vetrate e balconi di una torre",
+   "de": "Blick nach oben: Verglasung und Balkone eines Turms"
+  }
+ }
+]

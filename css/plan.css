@@ -1,0 +1,178 @@
+/* Floor-plan view (T06, CONTRACT §5). Loaded next to site.css; every rule is prefixed (.plan / .keyplan / .unitplan) so it
+   wins over the base rules of site.css whatever the order of the two files.
+   SVG user space = building-local metres. Things designed in CSS px (apartment tags, labels) sit in groups that plan.js
+   scales to the current zoom, so they keep their size on screen. Nothing here depends on the page direction. */
+
+.plan {
+  --paper: #f3efe6;
+  --ink: #2a2620;
+  --ink-2: #6b6456;
+  --gold-ink: #a87a22;
+  --st-reserved: #8a8171;
+  --st-sold: #5d564b;
+}
+.plan .plan-stage { overflow: hidden; touch-action: pan-y; }
+.plan .plan-stage.is-zoomed { touch-action: none; cursor: grab; overflow: hidden; }
+.plan .plan-svg { display: block; width: 100%; max-width: none; height: auto; direction: ltr; }
+.plan.is-real { background: var(--paper); }
+.plan.is-real::before { display: none; }
+
+/* ---------- layers ---------- */
+.plan .pl-paper rect { fill: var(--paper); }
+.plan .pl-imgwrap { mix-blend-mode: multiply; pointer-events: none; }
+.plan .pl-img { opacity: 0; transition: opacity .35s; pointer-events: none; }
+.plan .pl-img.is-loaded { opacity: 1; }
+.plan.is-real .pl-scheme { display: none; }
+.plan.is-scheme .pl-paper, .plan.is-scheme .pl-imgwrap { display: none; }
+
+/* ---------- scheme layer ---------- */
+.plan .pl-slab { stroke-width: .14; }
+.plan .pl-core-balc { fill: none; stroke: rgba(201, 169, 106, .35); stroke-width: .07; stroke-dasharray: .35 .25; }
+.plan .pl-stair-box { fill: #0a0908; stroke: rgba(201, 169, 106, .5); stroke-width: .09; }
+.plan .pl-lift { fill: #16130f; stroke: rgba(201, 169, 106, .55); stroke-width: .09; }
+.plan .pl-lift-x { fill: none; stroke: rgba(201, 169, 106, .3); stroke-width: .06; }
+.plan .pl-lift-door { stroke: var(--gold-hi); stroke-width: .2; stroke-linecap: round; }
+.plan .pl-tread { fill: none; }
+.plan .pl-hatch-line { stroke: rgba(243, 237, 225, .3); stroke-width: .11; }
+.plan .pl-hatch-res { stroke: rgba(243, 237, 225, .22); stroke-width: .09; }
+
+/* ---------- non-residential blocks ---------- */
+.plan .pl-block-body { stroke-linejoin: round; }
+.plan.is-real .pl-block-body { fill: rgba(255, 255, 255, 0); stroke: rgba(42, 38, 32, .4); stroke-width: .09; stroke-dasharray: .55 .35; }
+.plan.is-scheme .pl-block-body { fill: #14120e; stroke: rgba(201, 169, 106, .32); stroke-width: .09; }
+.plan.is-scheme .pl-block-supermarket .pl-block-body,
+.plan.is-scheme .pl-block-playland .pl-block-body,
+.plan.is-scheme .pl-block-fitness .pl-block-body,
+.plan.is-scheme .pl-block-cafe .pl-block-body,
+.plan.is-scheme .pl-block-commercial .pl-block-body { fill: #1a1610; }
+.plan.is-scheme .pl-block-pool .pl-block-body { fill: #15252b; stroke: rgba(127, 163, 168, .6); }
+.plan.is-scheme .pl-block-lobby .pl-block-body { fill: #1f1a12; }
+
+/* ---------- apartments (hot-zones) ---------- */
+.plan .pl-unit { cursor: pointer; outline: none; opacity: 1; --c: var(--r2); }
+.plan .pl-unit.r1 { --c: var(--r1); } .plan .pl-unit.r2 { --c: var(--r2); } .plan .pl-unit.r3 { --c: var(--r3); } .plan .pl-unit.r4 { --c: var(--r4); }
+.plan .pl-body, .plan .pl-out { stroke-linejoin: round; transition: fill-opacity .2s, stroke-width .2s; filter: none; }
+
+/* real drawing: a tint that multiplies onto the sheet */
+.plan.is-real .pl-body, .plan.is-real .pl-out { fill: var(--c); fill-opacity: .22; stroke: color-mix(in srgb, var(--c) 62%, #2a2620); stroke-width: .1; stroke-dasharray: none; mix-blend-mode: multiply; }
+.plan.is-real .pl-out { fill-opacity: .16; stroke-width: .07; }
+.plan.is-real .pl-unit:hover .pl-body, .plan.is-real .pl-unit:hover .pl-out { fill: var(--c); fill-opacity: .58; stroke: var(--ink); stroke-width: .16; }
+.plan.is-real .pl-unit:focus-visible .pl-body, .plan.is-real .pl-unit:focus-visible .pl-out { fill: var(--c); fill-opacity: .58; stroke: var(--ink); stroke-width: .3; }
+.plan.is-real .pl-unit.is-sel .pl-body, .plan.is-real .pl-unit.is-sel .pl-out { fill: var(--c); fill-opacity: .55; stroke: var(--gold-ink); stroke-width: .12; filter: none; }
+.plan.is-real .pl-unit.is-res .pl-body, .plan.is-real .pl-unit.is-res .pl-out { fill: var(--st-reserved); fill-opacity: .45; stroke: var(--st-sold); }
+.plan.is-real .pl-unit.is-sold .pl-body, .plan.is-real .pl-unit.is-sold .pl-out { fill: var(--st-sold); fill-opacity: .55; stroke: var(--st-sold); }
+.plan.is-real .pl-hatch-line { stroke: rgba(42, 38, 32, .5); }
+.plan.is-real .pl-hatch-res { stroke: rgba(42, 38, 32, .36); }
+.plan.is-real .pl-unit.is-dim .pl-body, .plan.is-real .pl-unit.is-dim .pl-out { fill: var(--paper); fill-opacity: .62; stroke: rgba(42, 38, 32, .2); mix-blend-mode: normal; }
+.plan.is-real .pl-unit.is-dim:hover .pl-body { fill-opacity: .35; }
+
+/* scheme: the dark schematic of the base site */
+.plan.is-scheme .pl-body { fill: color-mix(in srgb, var(--c) 15%, #0e0d0a); stroke: var(--c); stroke-width: .12; }
+.plan.is-scheme .pl-out { fill: color-mix(in srgb, var(--c) 7%, #0c0b09); stroke: color-mix(in srgb, var(--c) 60%, transparent); stroke-width: .08; stroke-dasharray: .35 .25; }
+.plan.is-scheme .pl-unit:hover .pl-body, .plan.is-scheme .pl-unit:focus-visible .pl-body { fill: color-mix(in srgb, var(--c) 36%, #0e0d0a); stroke-width: .2; }
+.plan.is-scheme .pl-unit:focus-visible .pl-body { stroke: var(--ivory); stroke-width: .3; }
+.plan.is-scheme .pl-unit.is-sel .pl-body { fill: color-mix(in srgb, var(--c) 46%, #0e0d0a); stroke: var(--c); filter: none; }
+.plan.is-scheme .pl-unit.is-res .pl-body, .plan.is-scheme .pl-unit.is-sold .pl-body { fill: #151310; stroke: var(--res); }
+.plan.is-scheme .pl-unit.is-dim .pl-body, .plan.is-scheme .pl-unit.is-dim .pl-out { fill: #0d0c0a; stroke: rgba(243, 237, 225, .14); }
+
+.plan .pl-body-hatch { pointer-events: none; }
+.plan .pl-selring { fill: none; stroke: var(--gold-hi); stroke-width: .35; stroke-linejoin: round; pointer-events: none; }
+.plan.is-real .pl-selring { stroke: var(--gold-ink); }
+
+/* apartment tag: number + rooms, area — designed in px, scaled by plan.js */
+.plan .pl-tag { pointer-events: none; }
+.plan .pl-tag-bg { fill: rgba(24, 20, 14, .9); stroke: color-mix(in srgb, var(--c) 80%, #fff); stroke-width: 1.3px; }
+.plan .pl-num { font: 700 14px/1 var(--f-body); fill: #fff; letter-spacing: 0; pointer-events: none; }
+.plan .pl-rooms { font: 600 9.5px/1 var(--f-body); letter-spacing: 0; fill: color-mix(in srgb, var(--c) 45%, #fff); pointer-events: none; }
+.plan .pl-area { font: 600 9.5px/1 var(--f-body); fill: #ece5d6; letter-spacing: 0; pointer-events: none; }
+.plan .pl-unit.is-res .pl-tag-bg, .plan .pl-unit.is-sold .pl-tag-bg { fill: rgba(72, 66, 57, .92); stroke: #a39a88; }
+.plan .pl-unit.is-res .pl-num, .plan .pl-unit.is-sold .pl-num { fill: #d6cfc0; }
+.plan .pl-unit.is-sold .pl-num { text-decoration: line-through; }
+.plan .pl-unit.is-sel .pl-tag-bg { fill: #17130c; stroke: var(--gold-hi); stroke-width: 2px; }
+.plan .pl-unit.is-dim .pl-tag { opacity: .38; }
+.plan .pl-unit:hover .pl-tag-bg, .plan .pl-unit:focus-visible .pl-tag-bg { fill: #0c0a07; }
+
+/* labels of blocks, lifts, stairs, entrance */
+.plan .pl-labels, .plan .pl-lbl { pointer-events: none; }
+.plan .pl-lbl.is-small { display: none; }
+.plan .pl-lbl-t { font: 700 9.5px/1 var(--f-body); letter-spacing: .05em; text-transform: uppercase; }
+.plan .pl-lbl.big .pl-lbl-t { font-size: 11px; }
+.plan .pl-lbl-s { font: 600 9px/1 var(--f-body); }
+.plan.is-real .pl-lbl-bg { fill: rgba(243, 239, 230, .92); stroke: rgba(42, 38, 32, .3); stroke-width: .8px; }
+.plan.is-real .pl-lbl-t { fill: var(--ink); }
+.plan.is-real .pl-lbl-s { fill: var(--ink-2); }
+.plan.is-scheme .pl-lbl-bg { fill: rgba(12, 11, 9, .86); stroke: rgba(201, 169, 106, .4); stroke-width: .8px; }
+.plan.is-scheme .pl-lbl-t { fill: var(--gold-hi); }
+.plan.is-scheme .pl-lbl-s { fill: var(--muted); }
+.plan .pl-entry { opacity: 1; }
+.plan .pl-entry path { fill: var(--gold); }
+.plan.is-real .pl-entry path { fill: var(--gold-ink); }
+
+/* notes */
+.plan .pl-notes { pointer-events: none; }
+.plan .pl-title { font-family: var(--f-display); font-weight: 500; letter-spacing: 0; }
+.plan .pl-sub { font-family: var(--f-body); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.plan .pl-north-t, .plan .pl-scale-t { font-family: var(--f-body); font-weight: 600; }
+.plan .pl-north-ring { stroke-width: .07; }
+.plan.is-real .pl-title { fill: var(--ink); }
+.plan.is-real .pl-sub, .plan.is-real .pl-scale-t { fill: var(--ink-2); }
+.plan.is-real .pl-north-ring { stroke: rgba(42, 38, 32, .5); }
+.plan.is-real .pl-north-needle { fill: var(--ink); }
+.plan.is-real .pl-north-tail { fill: rgba(42, 38, 32, .25); }
+.plan.is-real .pl-north-t { fill: var(--ink); }
+.plan.is-real .pl-scale-line { stroke: var(--ink-2); }
+
+/* tools + message */
+/* the drawing is never mirrored (the title is at its physical left), so the tools stay at the physical right in RTL pages too */
+.plan .plan-tools { inset-inline: auto; left: auto; right: 10px; direction: ltr; }
+.plan .plan-tools .icon-btn { color: var(--ivory); }
+.plan .plan-tools .pl-mode-btn[aria-pressed="true"] { background: var(--gold); color: #17130c; border-color: var(--gold); }
+.plan .plan-tools .icon-btn:disabled { opacity: .35; cursor: default; }
+.plan > .plan-msg { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 3; margin: 0; padding: 5px 10px; width: max-content; max-width: min(46%, 420px);
+  font-size: 11.5px; line-height: 1.3; text-align: center; color: var(--muted); background: rgba(12, 11, 9, .82); border: 1px solid var(--line); pointer-events: none; }
+.plan > .plan-msg[hidden] { display: none; }
+@media (max-width: 759.98px) {
+  .plan .plan-tools { top: 8px; right: 8px; flex-direction: row; gap: 5px; }
+  .plan .plan-tools .icon-btn { width: 36px; height: 36px; }
+}
+@media (prefers-reduced-motion: reduce) { .plan .pl-img, .plan .pl-body, .plan .pl-out { transition: none; } }
+
+/* ---------- key plan (unit sheet): towers on the plot + the floor ---------- */
+.keyplan { display: block; width: 100%; height: auto; direction: ltr; }
+.keyplan polygon, .keyplan rect, .keyplan path, .keyplan circle { vector-effect: non-scaling-stroke; }
+.keyplan .kp-plot { fill: rgba(201, 169, 106, .05); stroke: rgba(201, 169, 106, .45); stroke-width: 1px; stroke-dasharray: 4 3; }
+.keyplan .kp-pod { fill: rgba(243, 237, 225, .07); stroke: none; }
+.keyplan .kp-b { fill: #2b261e; stroke: rgba(243, 237, 225, .3); stroke-width: 1px; }
+.keyplan .kp-b.on { fill: var(--gold); stroke: var(--gold-hi); }
+.keyplan .kp-bt { font: 700 9px/1 var(--f-body); fill: var(--muted); }
+.keyplan .kp-bt.on { fill: #17130c; }
+.keyplan .kp-sep { fill: none; stroke: var(--hair); stroke-width: 1px; }
+.keyplan .kp-slab { fill: #15120e; stroke: rgba(201, 169, 106, .4); stroke-width: 1px; }
+.keyplan .kp-corr { fill: #221d16; stroke: none; }
+.keyplan .kp-core { fill: #0b0a08; stroke: rgba(201, 169, 106, .35); stroke-width: .8px; }
+.keyplan .kp-u { fill: #1c1813; stroke: rgba(243, 237, 225, .2); stroke-width: .8px; }
+.keyplan .kp-u.on { fill: var(--gold); stroke: var(--gold-hi); stroke-width: 1.2px; }
+.keyplan .kp-u.on.out { fill: rgba(201, 169, 106, .45); }
+.keyplan .kp-n { fill: none; stroke: rgba(201, 169, 106, .5); stroke-width: 1px; }
+.keyplan .kp-nn { fill: var(--gold); stroke: none; }
+.keyplan .kp-nt { font: 600 7px/1 var(--f-body); fill: var(--gold); }
+
+/* ---------- plan of one apartment (unit sheet) ---------- */
+.unitplan { stroke: none; fill: none; display: block; width: 100%; height: auto; max-height: min(64vh, 560px); margin-inline: auto; background: #f3efe6; direction: ltr; border-radius: 2px; }
+.unitplan rect, .unitplan polygon, .unitplan path, .unitplan circle { vector-effect: non-scaling-stroke; }
+.unitplan .up-paper { fill: #fff; }
+.unitplan .up-room { fill: #fff; stroke: #2a2620; stroke-width: 1.2px; }
+.unitplan .up-plain { fill: #fff; stroke: none; }
+.unitplan .up-bath { fill: #e9f0f2; }
+.unitplan .up-kitchen { fill: #f6f0e2; }
+.unitplan .up-hall, .unitplan .up-dressing, .unitplan .up-storage { fill: #f4f2ee; }
+.unitplan .up-loggia, .unitplan .up-balcony, .unitplan .up-terrace { fill: #eaf1e8; stroke-dasharray: 4 3; }
+.unitplan .up-rt { font: 600 11px/1 var(--f-body, system-ui, sans-serif); fill: #2a2620; }
+.unitplan .up-ra { font: 500 10px/1 var(--f-body, system-ui, sans-serif); fill: #6b6456; }
+.unitplan .up-veil { fill: #f3efe6; fill-opacity: .78; stroke: none; }
+.unitplan .up-line { fill: none; stroke: #b08327; stroke-width: 2.6px; stroke-linejoin: round; }
+.unitplan .up-out { fill: none; stroke: #b08327; stroke-width: 1.4px; stroke-dasharray: 5 3; stroke-linejoin: round; }
+.unitplan .up-nring { fill: #f3efe6; fill-opacity: .8; stroke: #6b6456; stroke-width: 1px; }
+.unitplan .up-nn { fill: #2a2620; stroke: none; }
+.unitplan .up-scale { fill: none; stroke: #2a2620; vector-effect: none; }
+.unitplan .up-scale-t { font: 600 10px/1 var(--f-body, system-ui, sans-serif); fill: #2a2620; }

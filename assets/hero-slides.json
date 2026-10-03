@@ -1,0 +1,79 @@
+{
+ "slides": [
+  {
+   "src": "assets/gallery/day-corner-view.jpg",
+   "pos": "50% 55%",
+   "posMobile": "72% 55%",
+   "caption": {
+    "en": "View from the corner of Hrushevskoho and Zankovetskoi streets, by day",
+    "uk": "Вид з рогу вулиць Грушевського та Заньковецької вдень",
+    "ru": "Вид с угла улиц Грушевского и Заньковецкой днём",
+    "he": "מבט מפינת הרחובות גרושבסקי וזנקובצקה, ביום",
+    "ro": "Vedere din colțul străzilor Hrușevski și Zankovețka, ziua",
+    "fr": "Vue depuis l’angle des rues Hrouchevskoho et Zankovetskoï, de jour",
+    "it": "Vista dall’angolo tra le vie Hruševs’koho e Zankovec’koï, di giorno",
+    "de": "Blick von der Ecke Hruschewskyj-/Sankowezka-Straße bei Tag"
+   }
+  },
+  {
+   "src": "assets/gallery/aerial-southeast.jpg",
+   "pos": "50% 55%",
+   "posMobile": "55% 50%",
+   "caption": {
+    "en": "Aerial view from the south-east: four buildings around a shared courtyard",
+    "uk": "Вид з висоти з південного сходу: чотири будинки навколо спільного двору",
+    "ru": "Вид с высоты с юго-востока: четыре дома вокруг общего двора",
+    "he": "מבט מהאוויר מדרום-מזרח: ארבעה בניינים סביב חצר משותפת",
+    "ro": "Vedere aeriană dinspre sud-est: patru clădiri în jurul unei curți comune",
+    "fr": "Vue aérienne depuis le sud-est : quatre bâtiments autour d’une cour commune",
+    "it": "Vista aerea da sud-est: quattro edifici attorno a una corte comune",
+    "de": "Luftbild von Südosten: vier Gebäude um einen gemeinsamen Innenhof"
+   }
+  },
+  {
+   "src": "assets/gallery/street-southeast-panorama.jpg",
+   "pos": "50% 62%",
+   "posMobile": "52% 60%",
+   "caption": {
+    "en": "Panorama from Zankovetskoi Street: all four buildings",
+    "uk": "Панорама з вулиці Заньковецької: усі чотири будинки",
+    "ru": "Панорама с улицы Заньковецкой: все четыре дома",
+    "he": "פנורמה מרחוב זנקובצקה: כל ארבעת הבניינים",
+    "ro": "Panoramă dinspre strada Zankovețka: toate cele patru clădiri",
+    "fr": "Panorama depuis la rue Zankovetskoï : les quatre bâtiments",
+    "it": "Panorama da via Zankovec’koï: tutti e quattro gli edifici",
+    "de": "Panorama von der Sankowezka-Straße: alle vier Gebäude"
+   }
+  },
+  {
+   "src": "assets/gallery/commercial-podium-corner.jpg",
+   "pos": "45% 55%",
+   "posMobile": "42% 55%",
+   "caption": {
+    "en": "Building 2: the two-storey commercial podium at the street corner",
+    "uk": "Будинок 2: двоповерховий комерційний стилобат на розі вулиць",
+    "ru": "Дом 2: двухэтажный коммерческий стилобат на углу улиц",
+    "he": "בניין 2: שתי קומות המסחר בפינת הרחובות",
+    "ro": "Clădirea 2: podiumul comercial cu două niveluri, la colțul străzilor",
+    "fr": "Bâtiment 2 : le socle commercial de deux niveaux à l’angle des rues",
+    "it": "Edificio 2: il podio commerciale a due piani all’angolo delle strade",
+    "de": "Gebäude 2: der zweigeschossige Gewerbesockel an der Straßenecke"
+   }
+  },
+  {
+   "src": "assets/gallery/street-east-buildings-2-1.jpg",
+   "pos": "55% 60%",
+   "posMobile": "82% 55%",
+   "caption": {
+    "en": "View from Hrushevskoho Street: buildings 2 and 1",
+    "uk": "Вид з вулиці Грушевського: будинки 2 і 1",
+    "ru": "Вид с улицы Грушевского: дома 2 и 1",
+    "he": "מבט מרחוב גרושבסקי: בניינים 2 ו-1",
+    "ro": "Vedere dinspre strada Hrușevski: clădirile 2 și 1",
+    "fr": "Vue depuis la rue Hrouchevskoho : bâtiments 2 et 1",
+    "it": "Vista da via Hruševs’koho: edifici 2 e 1",
+    "de": "Blick von der Hruschewskyj-Straße: Gebäude 2 und 1"
+   }
+  }
+ ]
+}

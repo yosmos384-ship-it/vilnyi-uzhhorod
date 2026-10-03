@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="uk" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0B0A08">
+<title>ЖК VILNYI — квартири бізнес-класу в Ужгороді</title>
+<meta name="description" content="1-, 2- та 3-кімнатні квартири в ЖК VILNYI на вул. Грушевського, 4А в Ужгороді: чотири будинки, закритий двір без авто, підземний паркінг, супермаркет, фітнес-клуб із басейном. Орієнтовні ціни — від 47 450 ₴/м², розтермінування до 17 місяців.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ЖК VILNYI">
+<meta property="og:title" content="ЖК VILNYI — квартири бізнес-класу в Ужгороді">
+<meta property="og:description" content="Чотири будинки навколо закритого зеленого двору на вул. Грушевського, 4А в Ужгороді: супермаркет, фітнес-клуб із басейном, підземний паркінг.">
+<meta property="og:image" content="assets/hero-real-night-1280.jpg">
+<meta property="og:locale" content="uk_UA">
+<link rel="icon" type="image/png" href="assets/brand/group-apple-touch-icon.png">
+<link rel="apple-touch-icon" href="assets/brand/group-apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Frank+Ruhl+Libre:wght@300;400;500&family=Heebo:wght@300;400;500;600&family=Manrope:wght@300;400;500;600&display=swap">
+<link rel="stylesheet" href="css/site.css">
+<link rel="stylesheet" href="css/plan.css">
+<link rel="stylesheet" href="css/panorama.css">
+<link rel="stylesheet" href="css/progress.css">
+<link rel="preload" as="image" href="assets/hero-real-night.jpg" imagesrcset="assets/hero-real-night-1280.jpg 1280w, assets/hero-real-night.jpg 2400w" imagesizes="(max-width: 820px) 420px, 100vw" fetchpriority="high">
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js","three/addons/":"./vendor/addons/"}}</script>
+<link rel="modulepreload" href="vendor/three.module.min.js" fetchpriority="low">
+<link rel="modulepreload" href="js/data.js">
+<script type="module" src="js/app.js"></script>
+<script type="module" src="js/panorama.js"></script>
+<script type="module" src="js/hero-slides.js"></script>
+<script type="module" src="js/progress.js"></script>
+</head>
+<body>
+<a class="skip" href="#main" data-i18n="skip">Перейти до основного вмісту</a>
+
+<header class="site-head" id="head">
+  <div class="wrap head-row">
+    <a class="brand" href="#top" aria-label="ЖК VILNYI">
+      <!-- the developer's own logo (assets/brand/vilnyi-logo-new.svg, 413 × 166); the header shows its emblem, the wordmark is live text -->
+      <img class="brand-bird brand-mark" src="assets/brand/vilnyi-logo-new.svg" alt="" width="413" height="166">
+      <span class="brand-rule" aria-hidden="true"></span>
+      <span class="brand-word" dir="ltr"><span class="bw1">VILNYI</span><span class="bw2" data-i18n="brand.city">УЖГОРОД</span></span>
+    </a>
+    <nav class="nav" id="nav" aria-label="Main">
+      <a href="#finder" data-i18n="nav.finder">Квартири</a>
+      <a href="#around" class="nav-360">360°</a>
+      <a href="#project" data-i18n="nav.project">Про комплекс</a>
+      <a href="#progress" data-i18n="nav.progress" class="nav-progress" hidden>Хід будівництва</a>
+      <a href="#gallery" data-i18n="nav.gallery" class="nav-gal" hidden>Галерея</a>
+      <a href="#terms" data-i18n="nav.terms">Умови</a>
+      <a href="#location" data-i18n="nav.location">Розташування</a>
+      <a href="#facts" data-i18n="nav.facts">Характеристики</a>
+      <a href="#finder" class="nav-cta-m" data-i18n="nav.cta">Обрати квартиру</a>
+    </nav>
+    <div class="head-end">
+      <div class="lang" id="lang">
+        <button type="button" class="lang-btn" id="langBtn" aria-haspopup="listbox" aria-expanded="false" aria-controls="langMenu"></button>
+        <ul class="lang-menu" id="langMenu" role="listbox" hidden></ul>
+      </div>
+      <a class="btn primary sm head-cta" href="#finder" data-i18n="nav.cta">Обрати квартиру</a>
+      <button type="button" class="icon-btn menu-btn" id="menuBtn" aria-expanded="false" aria-controls="nav" data-i18n-attr="aria-label:nav.menu">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path class="mb1" d="M4 9h16"/><path class="mb2" d="M4 15h16"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <!-- HERO -->
+  <section class="hero" id="top" aria-labelledby="hero-h">
+    <!-- Hero slideshow (js/hero-slides.js): slide 1 = the night render from the architectural concept, then the renders
+         from assets/hero-slides.json, then the live 3D (js/hero3d.js renders into #heroHost only while that slide is on). -->
+    <div class="hero-media hs" id="heroStage" role="region" aria-roledescription="carousel">
+      <div class="hs-track" id="hsTrack">
+        <figure class="hs-slide hs-real is-on" data-kind="real">
+          <div class="hs-cover">
+            <img class="hs-img" src="assets/hero-real-night.jpg" srcset="assets/hero-real-night-1280.jpg 1280w, assets/hero-real-night.jpg 2400w" sizes="(max-width: 820px) 420px, 100vw" width="2400" height="1350" alt="" fetchpriority="high" decoding="async">
+            <canvas class="hs-lights" aria-hidden="true"></canvas>
+          </div>
+        </figure>
+        <div class="hs-slide hs-3d" data-kind="3d" id="heroHost">
+          <div class="hs-3d-poster" aria-hidden="true"></div>
+          <p class="hs-3d-load" aria-hidden="true"><span class="hs-spin"></span><span class="hs-3d-lt"></span></p>
+          <div class="hero3d-slot"></div>
+        </div>
+      </div>
+      <div class="hero-shade" aria-hidden="true"></div>
+      <div class="mode" role="group" id="modeCtl" data-i18n-attr="aria-label:hero.mode" hidden>
+        <button type="button" data-mode="day"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg><span data-i18n="hero.day"></span></button>
+        <button type="button" data-mode="dusk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17h16M7 17a5 5 0 0 1 10 0M12 7v2.5M5.5 10.5l1.6 1.2M18.5 10.5l-1.6 1.2M8 20.5h8"/></svg><span data-i18n="hero.dusk"></span></button>
+        <button type="button" data-mode="night"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5z"/></svg><span data-i18n="hero.night"></span></button>
+      </div>
+      <button type="button" class="hs-arrow hs-prev" id="hsPrev"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <button type="button" class="hs-arrow hs-next" id="hsNext"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+      <div class="hs-ui">
+        <div class="hs-caprow">
+          <p class="hs-cap" id="hsCap" aria-live="off"></p>
+          <button type="button" class="hs-pp" id="hsPlay" aria-pressed="false"><svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12M15 6v12"/></svg><svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg></button>
+        </div>
+        <div class="hs-bar">
+          <div class="hs-dots" id="hsDots" role="group"></div>
+          <button type="button" class="hs-home" id="hsHome"><span class="hs-home-ic" aria-hidden="true">↺</span><span class="hs-home-t"></span></button>
+        </div>
+      </div>
+    </div>
+    <div class="wrap hero-inner">
+      <div class="hero-copy">
+        <p class="eyebrow" data-i18n="hero.eyebrow"></p>
+        <h1 id="hero-h" class="display"><span data-i18n="hero.title1"></span> <em data-i18n="hero.title2"></em></h1>
+        <p class="hero-lead" data-i18n="hero.lead"></p>
+        <div class="hero-ctas">
+          <a class="btn primary" href="#finder" data-i18n="hero.cta"></a>
+          <button type="button" class="btn ghost" id="heroTour"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg><span data-i18n="hero.cta2"></span></button>
+        </div>
+      </div>
+      <div class="hero-side">
+        <p class="hero-hint" id="heroHint" hidden><span class="pulse" aria-hidden="true"></span><span data-i18n="hero.hint"></span></p>
+        <p class="hero-tag" id="heroTag"><span data-i18n="hero.static"></span></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FINDER -->
+  <section class="finder section" id="finder" aria-labelledby="finder-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow" data-i18n="finder.eyebrow"></p>
+        <h2 id="finder-h" class="h2" data-i18n="finder.title"></h2>
+        <p class="lead" data-i18n="finder.lead"></p>
+      </div>
+      <div class="fd">
+        <aside class="fd-side">
+          <div class="seg bld-tabs" role="tablist" id="bldTabs"></div>
+          <div class="fd-viz">
+            <div class="f3d" id="finderHost">
+              <div class="elev" id="elev"></div>
+              <div class="hero3d-slot"></div>
+              <span class="f3d-tag"><i></i><span data-i18n="finder.3d"></span></span>
+            </div>
+            <div class="floors" id="floorStack" role="listbox" data-i18n-attr="aria-label:finder.floors"></div>
+          </div>
+          <p class="fine floor-note" data-i18n="finder.floorNote"></p>
+        </aside>
+        <div class="fd-main">
+          <div class="fd-bar">
+            <div class="seg view-tabs" role="tablist" id="viewTabs">
+              <button type="button" role="tab" data-view="plan" data-i18n="finder.view.plan"></button>
+              <button type="button" role="tab" data-view="list" data-i18n="finder.view.list"></button>
+            </div>
+            <button type="button" class="btn ghost sm filt-btn" id="filtBtn" aria-expanded="false" aria-controls="filters"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4"/></svg><span data-i18n="finder.filters"></span><b class="filt-n" id="filtN" hidden></b></button>
+            <p class="fd-count" id="fdCount" aria-live="polite"></p>
+          </div>
+          <form class="filters" id="filters"></form>
+          <div class="fd-plan" id="planWrap">
+            <div id="plan"></div>
+            <p class="plan-note" id="planNote"></p>
+          </div>
+          <div class="fd-list" id="listWrap" hidden></div>
+          <div class="legend" id="legend"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 360° AROUND THE PROJECT (js/panorama.js + css/panorama.css; strings in js/i18n-panorama.js) -->
+  <section class="around section" id="around" aria-labelledby="around-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow" data-pp="eyebrow"></p>
+        <h2 id="around-h" class="h2" data-pp="title"></h2>
+        <p class="lead" data-pp="lead"></p>
+      </div>
+      <div class="pano-app" id="panoApp"></div>
+    </div>
+  </section>
+
+  <!-- LIFESTYLE / AMENITIES -->
+  <section class="life section" id="project" aria-labelledby="life-h">
+    <div class="wrap">
+      <div class="life-head">
+        <p class="caps-statement" aria-hidden="true"><span data-i18n="life.caps1"></span><span data-i18n="life.caps2"></span></p>
+        <div class="life-copy">
+          <p class="eyebrow" data-i18n="life.eyebrow"></p>
+          <h2 id="life-h" class="h2"><span data-i18n="life.title1"></span><br><em data-i18n="life.title2"></em></h2>
+          <p class="lead" data-i18n="life.lead"></p>
+        </div>
+      </div>
+      <ul class="amen" id="amenities"></ul>
+    </div>
+  </section>
+
+  <!-- CONSTRUCTION PROGRESS (js/progress.js + css/progress.css; strings in js/i18n-progress.js; un-hidden by progress.js) -->
+  <section class="progress section" id="progress" aria-labelledby="progress-h" hidden>
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow" data-pg="eyebrow"></p>
+        <h2 id="progress-h" class="h2" data-pg="title"></h2>
+        <p class="lead" data-pg="lead"></p>
+      </div>
+      <div class="pg-app" id="progressApp"></div>
+    </div>
+  </section>
+
+  <!-- GALLERY (shown only when assets/gallery/manifest.json lists images) -->
+  <section class="gal section" id="gallery" aria-labelledby="gal-h" hidden>
+    <div class="wrap">
+      <div class="sec-head row">
+        <div>
+          <p class="eyebrow" data-i18n="gal.eyebrow"></p>
+          <h2 id="gal-h" class="h2" data-i18n="gal.title"></h2>
+        </div>
+        <div class="seg gal-tabs" id="galTabs" role="tablist"></div>
+      </div>
+      <div class="gal-grid" id="galGrid"></div>
+      <p class="fine gal-note" data-i18n="gal.note"></p>
+    </div>
+  </section>
+
+  <!-- TERMS -->
+  <section class="terms section" id="terms" aria-labelledby="terms-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow" data-i18n="terms.eyebrow"></p>
+        <h2 id="terms-h" class="h2" data-i18n="terms.title"></h2>
+        <p class="lead" data-i18n="terms.lead"></p>
+      </div>
+      <div class="terms-grid" id="termsGrid"></div>
+      <div class="plans-row" id="plansRow"></div>
+    </div>
+  </section>
+
+  <!-- LOCATION -->
+  <section class="loc section" id="location" aria-labelledby="loc-h">
+    <div class="wrap loc-grid">
+      <div class="loc-copy">
+        <p class="eyebrow" data-i18n="loc.eyebrow"></p>
+        <h2 id="loc-h" class="h2" data-i18n="loc.title"></h2>
+        <p class="lead" data-i18n="loc.lead"></p>
+        <ul class="loc-pts" id="locPts"></ul>
+        <div class="addr" id="addr"></div>
+      </div>
+      <figure class="map" id="map"></figure>
+    </div>
+  </section>
+
+  <!-- FACTS -->
+  <section class="facts section" id="facts" aria-labelledby="facts-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow" data-i18n="facts.eyebrow"></p>
+        <h2 id="facts-h" class="h2" data-i18n="facts.title"></h2>
+      </div>
+      <!-- #partnerCard and #factsGrid: static content filled by applyDom(); js/app.js may re-render both from PROJECT (same classes) -->
+      <div class="partner-card" id="partnerCard">
+        <img class="pc-logo" src="assets/brand/vilnyi-logo-new.svg" alt="VILNYI Group" width="413" height="166" loading="lazy">
+        <div>
+          <p class="eyebrow" data-i18n="facts.partner"></p>
+          <p class="pc-name" dir="ltr">VILNYI Group</p>
+          <p class="pc-role" data-i18n="terms.partner.role"></p>
+          <a class="pc-link" href="https://vilnyi.group" target="_blank" rel="noopener" dir="ltr">vilnyi.group</a>
+        </div>
+      </div>
+      <dl class="facts-grid" id="factsGrid">
+        <div class="fact"><dt data-i18n="facts.developer"></dt><dd dir="auto">VILNYI Group</dd></div>
+        <div class="fact"><dt data-i18n="facts.class"></dt><dd dir="auto" data-i18n="facts.classV"></dd></div>
+        <div class="fact"><dt data-i18n="facts.buildings"></dt><dd dir="auto" data-i18n="facts.buildingsV"></dd></div>
+        <div class="fact"><dt data-i18n="facts.apartments"></dt><dd dir="auto">462</dd></div>
+        <div class="fact"><dt data-i18n="facts.parking"></dt><dd dir="auto">155</dd></div>
+        <div class="fact"><dt data-i18n="facts.plot"></dt><dd dir="auto" data-i18n="facts.plotV"></dd></div>
+        <div class="fact"><dt data-i18n="facts.tech"></dt><dd dir="auto" data-i18n="facts.techV"></dd></div>
+        <div class="fact"><dt data-i18n="facts.walls"></dt><dd dir="auto" data-i18n="facts.wallsV"></dd></div>
+        <div class="fact"><dt data-i18n="facts.insulation"></dt><dd dir="auto" data-i18n="facts.insulationV"></dd></div>
+        <div class="fact"><dt data-i18n="facts.heating"></dt><dd dir="auto" data-i18n="facts.heatingV"></dd></div>
+        <div class="fact"><dt data-i18n="facts.ceiling"></dt><dd dir="auto" data-i18n="facts.ceilingV"></dd></div>
+        <div class="fact"><dt data-i18n="facts.power"></dt><dd dir="auto" data-i18n="facts.powerV"></dd></div>
+        <div class="fact"><dt data-i18n="facts.shelter"></dt><dd dir="auto" data-i18n="facts.shelterV"></dd></div>
+      </dl>
+      <p class="disclaimer" id="disclaimer"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 10.5v6M12 7.5v.6"/></svg><span data-i18n="facts.disclaimer"></span></p>
+    </div>
+  </section>
+</main>
+
+<section class="facts-strip" aria-label="Проєкт у цифрах" data-i18n-attr="aria-label:facts.title"><div class="hero-stats wrap" id="heroStats"></div></section>
+<footer class="site-foot" id="contact">
+  <div class="wrap foot-grid">
+    <div class="foot-brand">
+      <img src="assets/brand/vilnyi-logo-new.svg" alt="ЖК VILNYI — VILNYI Group" width="413" height="166" loading="lazy">
+      <p class="foot-tag" data-i18n="foot.tag"></p>
+      <p class="foot-partner"><span dir="ltr">VILNYI Group</span> — <span data-i18n="terms.partner.role"></span></p>
+      <div class="foot-social">
+        <a href="https://www.instagram.com/vilnyi.uzhhorod/" target="_blank" rel="noopener" aria-label="Instagram" title="Instagram"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><circle cx="12" cy="12" r="4"/><path d="M17 6.9v.2"/></svg></a>
+        <a href="https://www.facebook.com/profile.php?id=61552331798401" target="_blank" rel="noopener" aria-label="Facebook" title="Facebook"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M13 21v-8.5h2.6M10.4 12.5H13V9.6c0-1.5.9-2.4 2.6-2.4"/></svg></a>
+        <a class="fs-site" href="https://vilnyi.group" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3z"/></svg><span dir="ltr">vilnyi.group</span></a>
+      </div>
+    </div>
+    <div class="foot-contact">
+      <h2 class="h5" data-i18n="foot.contact"></h2>
+      <p class="muted" data-i18n="foot.contactNote"></p>
+      <!-- #contactList: static rows filled by applyDom(); js/app.js re-renders the list from PROJECT.contact (same .ct rows) -->
+      <div id="contactList">
+        <div class="ct"><span class="ct-k" data-i18n="foot.phone"></span><a class="ct-v" href="tel:+380500100723" dir="ltr">+38 050 010 07 23</a></div>
+        <div class="ct"><span class="ct-k" data-i18n="foot.viber"></span><a class="ct-v" href="viber://chat?number=%2B380675279818" dir="ltr">+38 067 527 98 18</a></div>
+        <div class="ct"><span class="ct-k" data-i18n="foot.email"></span><a class="ct-v" href="mailto:gvilnyi@gmail.com" dir="ltr">gvilnyi@gmail.com</a></div>
+        <div class="ct"><span class="ct-k" data-i18n="foot.office"></span><span class="ct-v" data-i18n="foot.officeV"></span></div>
+        <div class="ct"><span class="ct-k" data-i18n="foot.hours"></span><span class="ct-v" data-i18n="foot.hoursV"></span></div>
+      </div>
+    </div>
+    <nav class="foot-nav" aria-label="Footer">
+      <a href="#finder" data-i18n="nav.finder"></a>
+      <a href="#around" class="nav-360">360°</a>
+      <a href="#project" data-i18n="nav.project"></a>
+      <a href="#progress" data-i18n="nav.progress" class="nav-progress" hidden></a>
+      <a href="#gallery" data-i18n="nav.gallery" class="nav-gal" hidden></a>
+      <a href="#terms" data-i18n="nav.terms"></a>
+      <a href="#location" data-i18n="nav.location"></a>
+      <a href="#facts" data-i18n="nav.facts"></a>
+    </nav>
+  </div>
+  <div class="wrap foot-base"><span id="copyright"></span><span data-i18n="foot.illustrative"></span></div>
+</footer>
+
+<dialog class="sheet" id="unitDlg" aria-labelledby="ud-title"></dialog>
+
+<dialog class="lightbox" id="lightbox" aria-label="Галерея">
+  <figure class="lb-fig">
+    <div class="lb-stage" id="lbStage"><img id="lbImg" alt=""></div>
+    <figcaption class="lb-cap"><span id="lbCap"></span><span class="lb-n" id="lbN" dir="ltr"></span></figcaption>
+  </figure>
+  <button type="button" class="icon-btn lb-x" data-lb="close" data-i18n-attr="aria-label:gal.close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  <button type="button" class="icon-btn lb-prev" data-lb="prev" data-i18n-attr="aria-label:gal.prev"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+  <button type="button" class="icon-btn lb-next" data-lb="next" data-i18n-attr="aria-label:gal.next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+</dialog>
+
+<div class="walk" id="walk" hidden>
+  <div class="walk-stage" id="walkStage"></div>
+  <div class="walk-veil" id="walkVeil">
+    <div class="walk-load">
+      <img src="assets/brand/vilnyi-logo-new.svg" alt="" class="walk-bird" width="413" height="166">
+      <p class="walk-t" id="walkT"></p>
+      <p class="walk-s" id="walkS"></p>
+      <div class="walk-bar" aria-hidden="true"><i></i></div>
+      <button type="button" class="btn gold-outline" id="walkRetry" hidden></button>
+    </div>
+  </div>
+  <button type="button" class="icon-btn walk-x" id="walkX" data-i18n-attr="aria-label:walk.exit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+</div>
+<p class="sr-only" id="announce" aria-live="polite"></p>
+</body>
+</html>
