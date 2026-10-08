@@ -119,7 +119,6 @@ export default {
   'unit.design': 'בחרו סגנון עיצוב',
   'unit.designNote': 'הסגנונות הם הדמיות של גימור אפשרי, ואינם חלק ממפרט הדירה.',
   'unit.walk': 'סיור בדירה בתלת־ממד',
-  'unit.tour': 'מבט 360°',
   'unit.balcony': 'הנוף מהמרפסת',
   'unit.lobby': 'סיור בבניין',
   'unit.gallery': 'הדמיות',

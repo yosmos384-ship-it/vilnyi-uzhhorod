@@ -118,7 +118,6 @@ export default {
   'unit.design': 'Scegliete lo stile degli interni',
   'unit.designNote': 'Gli stili sono visualizzazioni di possibili finiture e non fanno parte della dotazione dell’appartamento.',
   'unit.walk': 'Visitare l’appartamento in 3D',
-  'unit.tour': 'Vista 360°',
   'unit.balcony': 'Vista dal balcone',
   'unit.lobby': 'Visita dell’edificio',
   'unit.gallery': 'Visualizzazioni',

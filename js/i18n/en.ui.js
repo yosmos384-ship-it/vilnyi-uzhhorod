@@ -117,7 +117,6 @@ export default {
   'unit.design': 'Choose an interior style',
   'unit.designNote': 'The styles are visualisations of possible finishes, not what the apartment is delivered with.',
   'unit.walk': 'Walk through in 3D',
-  'unit.tour': '360° view',
   'unit.balcony': 'Balcony view',
   'unit.lobby': 'Tour the building',
   'unit.gallery': 'Visualisations',

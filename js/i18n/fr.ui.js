@@ -118,7 +118,6 @@ export default {
   'unit.design': 'Choisissez un style d’intérieur',
   'unit.designNote': 'Les styles sont des visualisations d’aménagements possibles ; ils ne sont pas inclus dans l’appartement.',
   'unit.walk': 'Visiter l’appartement en 3D',
-  'unit.tour': 'Vue 360°',
   'unit.balcony': 'Vue du balcon',
   'unit.lobby': 'Visite de l’immeuble',
   'unit.gallery': 'Visualisations',

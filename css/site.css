@@ -673,7 +673,8 @@ dialog.is-closing { animation: sheetOut .2s ease-in forwards; }
 :lang(he) .sh-facts dt { letter-spacing: .02em; font-size: 12px; }
 .sh-facts dd { margin: 0; font-size: 15px; color: var(--ivory); }
 .sh-acts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-@media (min-width: 560px) { .sh-acts { grid-template-columns: repeat(4, 1fr); } }
+.sh-acts > .act:last-child:nth-child(odd of .act) { grid-column: 1 / -1; }   /* an odd last view button takes the full row on phones */
+@media (min-width: 560px) { .sh-acts { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); } .sh-acts > .act:last-child:nth-child(odd of .act) { grid-column: auto; } }
 .act { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; min-height: 86px; padding: 12px 6px; border: 1px solid var(--line); background: var(--bg-2); color: var(--ivory); font-size: 12.5px; line-height: 1.25; text-align: center; transition: border-color .25s, background .25s; }
 .act svg { width: 26px; height: 26px; color: var(--gold); stroke-width: 1.2; }
 .act:hover { border-color: var(--gold); background: rgba(201, 169, 106, .07); }

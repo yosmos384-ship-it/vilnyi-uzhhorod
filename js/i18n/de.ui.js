@@ -117,7 +117,6 @@ export default {
   'unit.design': 'Wählen Sie einen Einrichtungsstil',
   'unit.designNote': 'Die Stile sind Visualisierungen eines möglichen Ausbaus und nicht Teil der Ausstattung.',
   'unit.walk': 'Wohnung in 3D begehen',
-  'unit.tour': '360°-Ansicht',
   'unit.balcony': 'Blick vom Balkon',
   'unit.lobby': 'Rundgang durchs Gebäude',
   'unit.gallery': 'Visualisierungen',

@@ -664,7 +664,6 @@ function calcHTML(u) {
 
 const ACT_ICON = {
   walk: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
-  tour: '<ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M12 3v18M16.5 7.5l2 1.5-2 1.5"/>',
   balcony: '<path d="M3 20h18M5 20v-7h14v7M9 13v7M15 13v7M12 13v7M4 9l8-5 8 5"/>',
   lobby: '<path d="M4 21V5l8-3 8 3v16M4 21h16M9 21v-5h6v5M8 8h2M14 8h2M8 12h2M14 12h2"/>',
 };
@@ -675,9 +674,10 @@ function renderUnit() {
   const T = TYPES[u.type]; const st = statusOf(u), b = u.building, walkOk = canWalk(u);
   const act = (a, key) => `<button type="button" class="act" data-act="${a}"><svg viewBox="0 0 24 24" aria-hidden="true">${ACT_ICON[a]}</svg><span>${esc(t(key))}</span></button>`;
   // The primary 3D action — "walk through the apartment" — is a full-width button for every flat that can be walked
-  // (u.walk, data-driven); the other entries (360° tour when panoramas exist, 360° view, balcony, building) follow.
+  // (u.walk, data-driven); the other entries (photoreal 360° tour when panoramas exist, balcony view, building) follow.
+  // (The live-model "360° view" button was removed on the owner's decision, v0.5.2.)
   const walkBtn = walkOk ? `<button type="button" class="btn gold-outline wide act-walk" data-act="walk"><svg viewBox="0 0 24 24" aria-hidden="true">${ACT_ICON.walk}</svg><span>${esc(t('unit.walk'))}</span></button>` : '';
-  const acts = [photoBtnHTML(u), walkOk ? act('tour', 'unit.tour') : '',
+  const acts = [photoBtnHTML(u),
     walkOk && T.outdoorKind ? act('balcony', 'unit.balcony') : '', F.walk ? act('lobby', 'unit.lobby') : ''].join('');
   const planSvg = svgFrom('unitPlanSVG', u), keySvg = svgFrom('keyPlanSVG', u), delivery = deliveryText(b);
   const fact = (k, v, ltr) => (v ? `<div><dt>${esc(t(k))}</dt><dd${ltr ? ' dir="ltr"' : ''}>${esc(v)}</dd></div>` : '');
@@ -763,7 +763,6 @@ function bindUnit() {
     if (a === 'close') closeUnit();
     else if (a === 'walk') openWalk(u.id, 'apartment', 'walk');
     else if (a === 'photo') openPhoto({ unitId: u.id, styleId: S.styleId, timeMode: S.timeMode, room: 'living' });
-    else if (a === 'tour') openWalk(u.id, 'apartment', '360');
     else if (a === 'balcony') openWalk(u.id, 'balcony', '360');
     else if (a === 'lobby') openWalk(u.id, 'lobby', 'walk');
     else if (a === 'reserve') reserve(u);
@@ -1372,7 +1371,7 @@ async function boot() {
     if (!F.walk) return;
     // V11: nothing of the walkthrough (≈ 2.5 MB of modules + one design's textures) loads before the visitor shows the
     // intent: a unit sheet (renderUnit → prewarmWalkFor) or a pointer resting on / focus on a walkthrough button.
-    const intent = e => { const b = e.target.closest?.('#heroTour,[data-act="walk"],[data-act="lobby"],[data-act="tour"],.walk-btn'); if (b) { prewarmWalkFor(null, 150); off(); } };
+    const intent = e => { const b = e.target.closest?.('#heroTour,[data-act="walk"],[data-act="lobby"],[data-act="balcony"],.walk-btn'); if (b) { prewarmWalkFor(null, 150); off(); } };
     const off = () => { document.removeEventListener('pointerover', intent); document.removeEventListener('focusin', intent); };
     document.addEventListener('pointerover', intent, { passive: true }); document.addEventListener('focusin', intent);
   };

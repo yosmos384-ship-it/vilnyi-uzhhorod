@@ -118,7 +118,6 @@ export default {
   'unit.design': 'Alegeți stilul de interior',
   'unit.designNote': 'Stilurile sunt vizualizări ale unor finisaje posibile, nu dotarea cu care se predă apartamentul.',
   'unit.walk': 'Vizitați apartamentul în 3D',
-  'unit.tour': 'Vedere 360°',
   'unit.balcony': 'Vedere de pe balcon',
   'unit.lobby': 'Tur prin clădire',
   'unit.gallery': 'Vizualizări',
