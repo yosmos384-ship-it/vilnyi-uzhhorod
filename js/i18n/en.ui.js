@@ -287,6 +287,8 @@ export default {
   'walk.upper': 'Upper level',
   'walk.chooseFloor': 'Choose a floor',
   'walk.alarm': 'Alarm',
+  'walk.liftMusic': 'Lift music',
+  'walk.liftCalled': 'Lift called — it is on its way',
   'walk.goto': 'Go to',
   'walk.rooms': 'Rooms',
   'walk.map': 'Map',

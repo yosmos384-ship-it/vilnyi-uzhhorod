@@ -7,7 +7,8 @@
 // Run convention (= data.js hallEdgesOf = commons.js wallRun): { axis:'x'|'z', c, a0, a1, side }. axis 'x' is a wall
 // along x at z = c; `side` points from the wall line INTO the hall. P(run, a, d) is the point at coordinate `a` along
 // the wall, `d` metres from the line toward the hall.
-import { plateOf, hallEdgesOf, coresOf, unitsOn, blocksOn, unitToLocal, unitYaw, floorH, isGround, floorLabel, interiorOf } from '../data.js';
+import { plateOf, hallEdgesOf, coresOf, unitsOn, blocksOn, unitToLocal, unitYaw, floorH, isGround, floorLabel, interiorOf, floorY, topFloor } from '../data.js';
+import { RoomSet, kindOfName, maxRect } from './commons-rooms.js';
 
 const TAU = Math.PI * 2;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -21,7 +22,7 @@ const langOf = () => { try { return (typeof document !== 'undefined' && document
 const text = o => (o && (o[langOf()] || o.uk || o.en)) || '';
 
 // ============================================================ plan (pure data, no three.js)
-function planFloor(K, bId, floor) {
+export function planFloor(K, bId, floor) {
   const plate = plateOf(bId, floor);
   if (!plate) throw new Error(`commons-floor: no plate for ${bId} floor ${floor}`);
   const { DOOR_W, DOOR_H, LIFT_W, LIFT_H, POCKET } = K;
@@ -129,7 +130,7 @@ function planFloor(K, bId, floor) {
     if (!best) return null;
     const op = { c: best.a, w: 0.95, h: 2.1, kind: 'service' };
     best.run.openings.push(op);
-    const rec = { run: best.run, a: best.a, op, kind, label };
+    const rec = { run: best.run, a: best.a, op, kind, label, rect };
     service.push(rec); return rec;
   };
   const stairs = (core.stairs || []).map((st, si) => ({ st, si })).filter(s => !stairDone.has(s.si)).sort((p, q) => (p.st.est ? 1 : 0) - (q.st.est ? 1 : 0));
@@ -281,18 +282,48 @@ export function buildTowerFloor(KIT, bId, floor) {
     signQuad(0, 0.34, 0.34, nx, 1.74, nz, yaw);
   }
 
-  // ---- service doors (closed): stairs + technical rooms
-  const svcLeaf = (run, a, h) => {
-    rb('walnutDoor', run, a - 0.47, a + 0.47, 0.005, h - 0.01, -0.07, -0.02);
-    rb('brass', run, a + 0.3, a + 0.42, 1.0, 1.03, -0.02, 0.03);
-    rc(run, a - 0.48, a + 0.48, 0, h, -0.09, -0.01);
+  // ---- service doors: stairs + technical rooms. V10: every one opens onto the room of the drawing, built lazily
+  // (commons-rooms.js): the stair well with flights up and down (landing doors lead to the floors above / below), the
+  // pram room, the security room, the fire post … as named on the plate.
+  const RS = new RoomSet(K, root, { bId, floor, H });
+  const top = topFloor(bId), fy = f => floorY(bId, f);
+  let roomSeq = 0;
+  const svcLeaf = (run, a, h, rect, kind, label) => {
+    const id = `${bId}-${floor}-${kind === 'stair' ? 'stair' : 'room' + (++roomSeq)}`, into = [-inward(run)[0], -inward(run)[1]];
+    if (rect && !RS.roomById(id)) {
+      // the stair well: this stair joined with an adjacent one of the core (floor 1: Н1 + С1), minus what the plate gives to the hall
+      let u = { x0: rect.x0, x1: rect.x1, z0: rect.z0, z1: rect.z1 };
+      if (kind === 'stair') for (let grown = true; grown;) { grown = false; for (const q of core.stairs || []) { const adj = !(q.x0 > u.x1 + 0.25 || q.x1 < u.x0 - 0.25 || q.z0 > u.z1 + 0.25 || q.z1 < u.z0 - 0.25);
+        if (adj && (q.x0 < u.x0 - 1e-3 || q.x1 > u.x1 + 1e-3 || q.z0 < u.z0 - 1e-3 || q.z1 > u.z1 + 1e-3)) { u = { x0: Math.min(u.x0, q.x0), x1: Math.max(u.x1, q.x1), z0: Math.min(u.z0, q.z0), z1: Math.max(u.z1, q.z1) }; grown = true; } } }
+      const rp = r => [[r.x0, r.z0], [r.x1, r.z0], [r.x1, r.z1], [r.x0, r.z1]];
+      if (kind === 'stair' && u !== rect) {   // a joined well must still have its landing at the door (the door near one end of the long side)
+        const [dx, dz] = P(run, a), ax = u.x1 - u.x0 >= u.z1 - u.z0, L = ax ? u.x1 - u.x0 : u.z1 - u.z0, al = ax ? dx : dz, lo = ax ? u.x0 : u.z0, hi = ax ? u.x1 : u.z1;
+        const onEnd = ax ? Math.abs(inward(run)[0]) > 0.5 : Math.abs(inward(run)[1]) > 0.5;
+        if (!onEnd && Math.min(Math.abs(al - lo), Math.abs(al - hi)) + 0.8 > 0.38 * L) u = { x0: rect.x0, x1: rect.x1, z0: rect.z0, z1: rect.z1 };
+      }
+      if (hall.some(h => h.x0 < u.x1 - 0.02 && h.x1 > u.x0 + 0.02 && h.z0 < u.z1 - 0.02 && h.z1 > u.z0 + 0.02)) u = maxRect(rp(u), hall.map(rp), 0.05) || u;
+      rect = u;
+      const name = kind === 'stair' ? 'Сходова клітка' : text(label) || 'Технічне приміщення';
+      // rooms stay under 2.7 m: on floor 1 the podium / ramp structure passes at +2.80 over some of them (B1: «r/c beam bottom at +2,800»)
+      const spec = { id, no: null, name, kind: kind === 'stair' ? 'stair' : kindOfName(name), poly: rp(rect), h: kind === 'stair' ? H : Math.min(H, 2.7), enclose: true };
+      if (kind === 'stair') {
+        const up = floor < top ? fy(floor + 1) - fy(floor) : 0, down = floor > 1 ? fy(floor) - fy(floor - 1) : fy(1) - fy(-1);
+        spec.stair = { rect: { x0: rect.x0, x1: rect.x1, z0: rect.z0, z1: rect.z1 }, up, down,
+          upper: up ? { label: 'ПОВЕРХ ' + (floor + 1), go: () => RS.goTo(bId, floor + 1, { from: floor }) } : null,
+          lower: floor > 1 ? { label: 'ПОВЕРХ ' + (floor - 1), go: () => RS.goTo(bId, floor - 1, { from: floor }) } : { label: 'ПАРКІНГ −1', go: () => RS.goTo(bId, -1, { from: floor, tower: bId }) } };
+      }
+      RS.addRoom(spec);
+    }
+    const wc = -(WALL_T - FACE) / 2, [ax0, az0] = P(run, a - 0.47, wc), [bx0, bz0] = P(run, a + 0.47, wc);
+    RS.addDoor({ id: id + '-door', a: [ax0, az0], b: [bx0, bz0], n: into, sideN: into, sides: [null, rect ? id : null], h: h - 0.005, wallT: WALL_T + FACE, kind: 'walnut', label: kind === 'stair' ? 'Сходи' : text(label) });
   };
-  const stairWord = (run, a) => { if (K.wordSign) soft(() => { const [wx, wz] = P(run, a, -0.017); K.wordSign(ctx, 'stairs', wx, 1.62, wz, yawOfRun(run), 0.085); }, 'stairs sign'); };
+  // V10: the leaf opens now, so the «Сходи» plate hangs on the wall over the door (beside the pictogram), not on the leaf
+  const stairWord = (run, a, h = 2.1) => { if (K.wordSign) soft(() => { const [wx, wz] = P(run, a + 0.2, FACE + SKIN + 0.012); K.wordSign(ctx, 'stairs', wx, h + 0.2, wz, yawOfRun(run), 0.085); }, 'stairs sign'); };
   let roomIdx = 0;
   for (const s of pl.service) {
-    svcLeaf(s.run, s.a, s.op.h);
+    svcLeaf(s.run, s.a, s.op.h, s.rect, s.kind, s.label);
     const [sx, sz] = P(s.run, s.a, FACE + SKIN + 0.012), yaw = yawOfRun(s.run);
-    if (s.kind === 'stair') { K.signPlane(ctx, 0, sx, s.op.h + 0.2, sz, yaw, 0.2, 0.2); stairWord(s.run, s.a); }
+    if (s.kind === 'stair') { const [px, pz] = P(s.run, s.a - 0.22, FACE + SKIN + 0.012); K.signPlane(ctx, 0, px, s.op.h + 0.2, pz, yaw, 0.2, 0.2); stairWord(s.run, s.a, s.op.h); }
     else { roomIdx++; if (labels[roomIdx - 1]) { rb('bronzeDark', s.run, s.a - 0.4, s.a + 0.4, s.op.h + 0.085, s.op.h + 0.225, FACE + SKIN, FACE + SKIN + 0.008); signQuad(roomIdx, 0.76, 0.1, sx, s.op.h + 0.155, sz, yaw); } }
   }
 
@@ -343,7 +374,7 @@ export function buildTowerFloor(KIT, bId, floor) {
     const q = runs.find(q => q.axis === 'z' && q.side === need && Math.abs(q.c - e) < 0.02 && (Math.abs(q.a0 - r.c) < 0.02 || Math.abs(q.a1 - r.c) < 0.02));
     if (q) B.box('bronze', e, e + q.side * (FACE + SKIN + 0.004), 0, H - 0.005, r.c, r.c + r.side * (FACE + SKIN + 0.004));
   }
-  if (pl.balcony) buildBalcony(K, ctx, pl, { rb, rc, svcLeaf, floorRect, stairWord });
+  if (pl.balcony) buildBalcony(K, ctx, pl, { rb, rc, svcLeaf: (run, a, h) => svcLeaf(run, a, h, pl.balcony.stair && pl.balcony.stair.st, 'stair', null), floorRect, stairWord });
 
   // ---- lights
   const dl = [];
@@ -380,7 +411,8 @@ export function buildTowerFloor(KIT, bId, floor) {
 
   const res = K.finish(ctx, spawn);
   const dispose = res.dispose ? res.dispose.bind(res) : null;
-  res.dispose = () => { if (dispose) dispose(); signs.mat.dispose(); signs.tex.dispose(); };
+  res.rooms = RS;                   // V10: doors that open + lazily built rooms (walk.js: rooms.attach / rooms.tick)
+  res.dispose = () => { RS.dispose(); if (dispose) dispose(); signs.mat.dispose(); signs.tex.dispose(); };
   res.plan = pl;                    // extra (tests, minimap): runs with openings, balcony, entrance, warnings
   if (pl.warn.length && typeof console !== 'undefined') console.debug(`commons-floor ${bId}/${floor}:`, pl.warn.join(' · '));
   return res;
@@ -555,9 +587,8 @@ function buildBalcony(K, ctx, pl, { rb, rc, svcLeaf, floorRect, stairWord }) {
   if (b.stair) {
     svcLeaf(br, b.stair.a, b.stair.op.h);
     const [sx, sz] = P(br, b.stair.a, FACE + SKIN + 0.012);
-    K.signPlane(ctx, 0, sx, b.stair.op.h + 0.2, sz, yawOfRun(br), 0.2, 0.2); if (stairWord) stairWord(br, b.stair.a);
-    // the door reveal is closed behind the leaf (the stair itself is not modelled)
-    rb('plasterW', br, b.stair.a - 0.5, b.stair.a + 0.5, 0, b.stair.op.h, -WALL_T - 0.04, -WALL_T);
+    { const [px, pz] = P(br, b.stair.a - 0.22, FACE + SKIN + 0.012); K.signPlane(ctx, 0, px, b.stair.op.h + 0.2, pz, yawOfRun(br), 0.2, 0.2); } if (stairWord) stairWord(br, b.stair.a, b.stair.op.h);
+    // (V10: behind the leaf is the stair well itself — commons-rooms.js — no closing panel)
   }
   // cheeks at both ends (full height: nothing behind the facade line can be seen from the balcony), rail in front
   const D = b.depth;

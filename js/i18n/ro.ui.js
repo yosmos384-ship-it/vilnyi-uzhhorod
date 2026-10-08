@@ -288,6 +288,8 @@ export default {
   'walk.upper': 'Nivelul superior',
   'walk.chooseFloor': 'Alegeți etajul',
   'walk.alarm': 'Apel dispecerat',
+  'walk.liftMusic': 'Muzică în lift',
+  'walk.liftCalled': 'Liftul a fost chemat — vine',
   'walk.goto': 'Mergi la',
   'walk.rooms': 'Camere',
   'walk.map': 'Hartă',

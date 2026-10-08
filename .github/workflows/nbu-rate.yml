@@ -1,0 +1,67 @@
+# Daily official UAH/USD rate of the National Bank of Ukraine → rate.json at the site root (ЖК VILNYI sales site).
+# The page (js/rate.js) reads rate.json at start; when it is missing or stale it asks the NBU API itself, and when that
+# fails too it keeps the fallback constant UAH_PER_USD of js/data.js. This workflow commits rate.json only when the
+# rate or its date changed, so most runs make no commit.
+name: NBU rate
+
+on:
+  schedule:
+    # GitHub cron is UTC. Kyiv = UTC+3 in summer, UTC+2 in winter. The NBU sets the rate for a day on the previous
+    # working day's afternoon; the file stores the rate valid TODAY (Kyiv date).
+    - cron: '5 22 * * *'    # 01:05 / 00:05 Kyiv — the new day's rate right after midnight
+    - cron: '35 3 * * *'    # 06:35 / 05:35 Kyiv — morning check
+    - cron: '35 13 * * *'   # 16:35 / 15:35 Kyiv — afternoon check (retry)
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nbu-rate
+  cancel-in-progress: false
+
+jobs:
+  rate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch the official NBU rate for today (Kyiv date)
+        id: fetch
+        run: |
+          set -euo pipefail
+          DAY=$(TZ=Europe/Kyiv date +%Y%m%d)
+          URL="https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?valcode=USD&date=${DAY}&json"
+          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
+          ok=0
+          for i in 1 2 3 4 5; do
+            if curl -fsS -m 30 -A "$UA" -H 'Accept: application/json' "$URL" -o nbu.json && jq -e '.[0].rate > 0' nbu.json >/dev/null; then ok=1; break; fi
+            echo "attempt $i failed"; sleep $((i * 20))
+          done
+          if [ "$ok" != 1 ]; then echo "::warning::NBU API did not answer; rate.json left unchanged"; echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          cat nbu.json
+          RATE=$(jq -r '.[0].rate' nbu.json)
+          D=$(jq -r '.[0].exchangedate' nbu.json)          # dd.mm.yyyy
+          ISO="${D:6:4}-${D:3:2}-${D:0:2}"
+          # sanity range: refuse an absurd value rather than publish it
+          jq -e --argjson r "$RATE" -n '$r > 20 and $r < 200' >/dev/null || { echo "::error::implausible rate $RATE"; exit 1; }
+          jq -n --argjson rate "$RATE" --arg date "$ISO" \
+            '{rate: $rate, date: $date, source: "НБУ", url: "https://bank.gov.ua/ua/markets/exchangerates"}' > rate.new.json
+          rm -f nbu.json
+          if [ -f rate.json ] && jq -e --slurpfile n rate.new.json '.rate == $n[0].rate and .date == $n[0].date' rate.json >/dev/null; then
+            echo "unchanged: $RATE on $ISO"; rm rate.new.json; echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            mv rate.new.json rate.json; echo "new: $RATE on $ISO"; echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit rate.json
+        if: steps.fetch.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rate.json
+          git commit -m "rate.json: NBU $(jq -r '.rate' rate.json) UAH/USD for $(jq -r '.date' rate.json)"
+          for i in 1 2 3; do git pull --rebase --quiet && git push && exit 0; sleep 10; done
+          exit 1

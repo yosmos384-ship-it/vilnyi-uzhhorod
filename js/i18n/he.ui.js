@@ -289,6 +289,8 @@ export default {
   'walk.upper': 'המפלס העליון',
   'walk.chooseFloor': 'בחרו קומה',
   'walk.alarm': 'קריאה למוקד',
+  'walk.liftMusic': 'מוזיקה במעלית',
+  'walk.liftCalled': 'המעלית הוזמנה — היא בדרך',
   'walk.goto': 'מעבר אל',
   'walk.rooms': 'חדרים',
   'walk.map': 'מפה',

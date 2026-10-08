@@ -815,8 +815,12 @@ function lightRig() {
   RIG.car = new THREE.PointLight(0xffdcb0, 0, 4.2, 2); RIG.group.add(RIG.car);
   return RIG;
 }
-function claimRig(root, spots, hemi = 0.12) {
+// V11: `col` = { sky, ground } (THREE.Color, linear) lets a level fold its own even fill into the rig's one hemisphere light
+// (one more HemisphereLight in the scene would change the light count → every shader program recompiles on the way in).
+function claimRig(root, spots, hemi = 0.12, col = null) {
   const R = lightRig(); root.add(R.group);
+  // (a hemisphere light's direction is its WORLD position: the folded fill keeps it straight up, as the car park's own fill did)
+  if (col) { R.hemi.color.copy(col.sky); R.hemi.groundColor.copy(col.ground); R.hemi.position.set(0, 1e6, 0); } else { R.hemi.color.setHex(0xfff1dc); R.hemi.groundColor.setHex(0x3b342c); R.hemi.position.set(0, 1, 0); }
   R.pts.forEach((l, i) => { const s = spots[i]; if (s) { l.position.set(s[0], s[1], s[2]); l.intensity = s[3] ?? 7; l.color.setHex(s[4] ?? 0xffd4a0); l.distance = s[5] ?? 11; } else l.intensity = 0; });
   R.hemi.intensity = hemi; R.car.intensity = 0; R.carOwner = null;
 }
@@ -1373,6 +1377,26 @@ const CAR_LUX = 4.5;   // the one shared car light (candela), moved to whichever
 // Shaft built around a landing (lift frame): inner face of the side walls at ±SHAFT_X, back wall ends SHAFT_Z behind the door line.
 const SHAFT_X = CAR.x + 0.08, SHAFT_Z = 0.26 - CAR.zb;
 
+// Lift motion and door timing (V10-lift). Values of a residential high-rise lift: 2.0 m/s rated speed, 0.9 m/s²
+// acceleration / deceleration (a floor of 3.15 m ≈ 3.7 s, floor 1 → 16 of B1 ≈ 26 s); doors 1.1 s open / 1.0 s close,
+// held 4.5 s at a stop, 3 s after the last key press while the car waits with open doors. Tests may scale these.
+export const LIFT_SPEC = { vmax: 2.0, acc: 0.9, startDelay: 450, level: 350, dwell: 4500, pressDwell: 3000 };
+// Collective control, the decision at a stop: `calls` (Set of floors) seen from floor `at` with travel direction `dir`
+// (+1 up, −1 down, 0 idle). Keep going the same way while a call lies ahead, then reverse; idle → the nearest call
+// (a tie goes up). → { floor, dir } | null (no calls). A call for `at` itself is answered at once (doors reopen).
+export function liftNextStop(floors, calls, dir, at) {
+  const ix = f => floors.indexOf(f), i0 = ix(at);
+  const list = [...(calls || [])].filter(f => ix(f) >= 0);
+  if (!list.length) return null;
+  if (list.includes(at)) return { floor: at, dir };
+  const up = list.filter(f => ix(f) > i0).sort((a, b) => ix(a) - ix(b)), dn = list.filter(f => ix(f) < i0).sort((a, b) => ix(b) - ix(a));
+  if (dir > 0) return up.length ? { floor: up[0], dir: 1 } : { floor: dn[0], dir: -1 };
+  if (dir < 0) return dn.length ? { floor: dn[0], dir: -1 } : { floor: up[0], dir: 1 };
+  if (!dn.length || (up.length && ix(up[0]) - i0 <= i0 - ix(dn[0]))) return { floor: up[0], dir: 1 };
+  return { floor: dn[0], dir: -1 };
+}
+const sleepMs = ms => new Promise(r => setTimeout(r, ms));
+
 export class Lift {
   // One landing of one lift of a tower. bId: building; core: always 0 (one core per tower; the argument is kept for the
   // old signature and ignored); doorIndex: index into coresOf(bId)[0].liftDoors; floor: landing floor of this instance,
@@ -1663,37 +1687,97 @@ export class Lift {
     return null;
   }
   // Ride to `floor` (clamped to this lift's stops, liftFloors(bId)). onTick(y) receives the car floor's absolute
-  // building-local y every frame; the ride ends exactly at floorY(bId, floor).
-  // If the destination floor's commons (a twin Lift) already exists, its doors are left for the caller to open
-  // (walk.js does that after swapping commons); otherwise this car's doors open on arrival.
-  async travelTo(floor, onTick) {
+  // building-local y every frame; the ride ends exactly at the floorY of the floor it stops at, which it returns.
+  // Motion: LIFT_SPEC speed / acceleration, exact stop. opts.calls (a live Set of floors) = collective control: until the
+  // car brakes, it retargets to the nearest call ahead that it can still stop at; if its own target is cancelled it
+  // stops at the next call ahead, else at the next floor it can still stop at. opts.onRetarget(floor), opts.noOpen
+  // (the caller opens the doors), opts.nextDir (direction arrow shown on arrival).
+  // If the destination floor's commons (a twin Lift) already exists, its doors are left for the caller to open.
+  async travelTo(floor, onTick, opts = {}) {
     floor = liftStop(this.bId, floor);
-    if (this.moving) return;
-    if (floor === this.floor) { await this.open(); return; }
-    this.moving = true; this.target = floor; this._lightButton(floor, true);
+    if (this.moving) return this.floor;
+    if (floor === this.floor) { if (!opts.noOpen) await this.open(); return floor; }
+    this.moving = true; this.target = floor; if (!opts.calls) this._lightButton(floor, true);
     this.car.visible = true;
     await this.close();
     this.car.visible = true;
-    const stops = this.floors, ys = stops.map(f => floorY(this.bId, f));
-    const y0 = floorY(this.bId, this.floor), y1 = floorY(this.bId, floor), n = Math.abs(stops.indexOf(floor) - stops.indexOf(this.floor));
-    const dur = Math.min(6000, Math.max(1800, 1200 * n)), dir = Math.sign(y1 - y0);
-    const acc = Math.min(0.3, 1100 / dur);   // trapezoidal velocity: accelerate / cruise / decelerate
-    const prof = k => { const vmax = 1 / (1 - acc); if (k < acc) return 0.5 * vmax * k * k / acc; if (k > 1 - acc) { const r = 1 - k; return 1 - 0.5 * vmax * r * r / acc; } return vmax * (k - acc / 2); };
-    this._drawInd(this.floor, dir);
-    await new Promise(r => setTimeout(r, 250));
-    await tween(dur, k => {
-      const y = y0 + (y1 - y0) * prof(k);
-      this.car.position.y = y; this._carLight(true);
-      let near = this.floor, bd = 1e9; for (let i = 0; i < stops.length; i++) { const d = Math.abs(ys[i] - y); if (d < bd) { bd = d; near = stops[i]; } }
-      if (near !== this._indF) this._drawInd(near, dir);
-      if (onTick) try { onTick(y); } catch (e) { console.warn(e); }
+    this._drawInd(this.floor, Math.sign(floorY(this.bId, floor) - floorY(this.bId, this.floor)));
+    await sleepMs(LIFT_SPEC.startDelay);
+    const tick = y => { if (onTick) try { onTick(y); } catch (e) { console.warn(e); } };
+    const reached = await this._run(floor, {
+      calls: opts.calls,
+      onRetarget: f => { this.target = f; if (opts.onRetarget) try { opts.onRetarget(f); } catch (e) { console.warn(e); } },
+      onStep: y => { this.car.position.y = y; this._carLight(true); tick(y); },
     });
-    this.car.position.y = y1; if (onTick) try { onTick(y1); } catch (e) { console.warn(e); }
-    this.floor = floor; this.moving = false; this.target = null;
-    this._drawInd(floor, 0); this._lightButton(floor, false);
+    this.floor = reached; this.moving = false; this.target = null; this.motion = null;
+    this._drawInd(reached, opts.nextDir || 0); if (!opts.calls) this._lightButton(reached, false);
     chime();
-    await new Promise(r => setTimeout(r, 350));
-    if (!this._twin(floor)) await this.open();
+    await sleepMs(LIFT_SPEC.level);
+    if (!opts.noOpen && !this._twin(reached)) await this.open();
+    return reached;
+  }
+  // The car runs along the shaft from opts.from (default this.floor) to `target`; this.motion = { target, dir, braking, y, v }
+  // while it runs. Integrated in 10 ms steps per frame, so a slow frame rate changes nothing but the smoothness.
+  _run(target, opts = {}) {
+    const S = LIFT_SPEC, stops = this.floors, ys = stops.map(f => floorY(this.bId, f)), yOf = f => ys[stops.indexOf(f)];
+    let y = yOf(opts.from ?? this.floor), v = 0;
+    const dir = Math.sign(yOf(target) - y) || 1;
+    const m = this.motion = { target, dir, braking: false, y, v };
+    return new Promise(res => {
+      let last = performance.now();
+      const step = () => {
+        const now = performance.now(), dt = Math.min(0.5, (now - last) / 1000); last = now;
+        // its own target already within the stopping distance (+5 cm): the car is braking for it, nothing changes that
+        if (!m.braking && (yOf(m.target) - y) * dir < v * v / (2 * S.acc) + 0.05) m.braking = true;
+        if (!m.braking && opts.calls) {
+          const sd = v * v / (2 * S.acc) + 0.05;
+          let best = null, bd = Infinity;
+          for (const f of opts.calls) { if (!stops.includes(f)) continue; const d = (yOf(f) - y) * dir; if (d >= sd && d < bd) { bd = d; best = f; } }
+          if (best == null && !opts.calls.has(m.target)) for (let i = 0; i < stops.length; i++) { const d = (ys[i] - y) * dir; if (d >= sd && d < bd) { bd = d; best = stops[i]; } }
+          if (best != null && best !== m.target) { m.target = best; if (opts.onRetarget) opts.onRetarget(best); }
+        }
+        const yT = yOf(m.target), n = Math.max(1, Math.ceil(dt / 0.01)), h = dt / n;
+        let done = false;
+        for (let i = 0; i < n && !done; i++) {
+          const d = (yT - y) * dir;
+          if (d <= 0.002) { y = yT; v = 0; done = true; break; }
+          if (m.braking || d <= v * v / (2 * S.acc) + v * h) { m.braking = true; v = Math.max(0.05, v - (v * v / (2 * d)) * h); }
+          else v = Math.min(S.vmax, v + S.acc * h);
+          y += dir * Math.min(v * h, d);
+        }
+        if (!done && Math.abs(yT - y) <= 0.002) { y = yT; v = 0; done = true; }
+        m.y = y; m.v = v;
+        let near = stops[0], nd = Infinity; for (let i = 0; i < stops.length; i++) { const d = Math.abs(ys[i] - y); if (d < nd) { nd = d; near = stops[i]; } }
+        if (near !== this._indF || this._indD !== dir) this._drawInd(near, done ? this._indD : dir);
+        if (opts.onStep) opts.onStep(y);
+        if (done) res(m.target); else requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+  }
+  // A landing call answered by a car that stands at `from` (the car itself is not seen: only the landing / car
+  // indicator counts the floors with the direction arrow); then the chime and the doors open. → Promise.
+  async arriveFrom(from, opts = {}) {
+    from = liftStop(this.bId, from);
+    if (this.moving) return;
+    if (from !== this.floor) {
+      this.moving = true;
+      const dir = Math.sign(floorY(this.bId, this.floor) - floorY(this.bId, from));
+      this._drawInd(from, dir);
+      await sleepMs(LIFT_SPEC.startDelay);
+      try { await this._run(this.floor, { from, onStep: opts.onStep }); } finally { this.moving = false; this.motion = null; }
+      this._drawInd(this.floor, opts.nextDir || 0);
+      chime();
+      await sleepMs(LIFT_SPEC.level);
+    }
+    await this.open();
+  }
+  // Show where the car is (a car standing at another floor: its floor on this landing's indicator) and a direction arrow.
+  showFloor(f, dir = 0) { if (this.floors.includes(f)) this._drawInd(f, dir); }
+  // Light exactly the floor keys in `calls` (a live Set kept by the caller; held keys of press() respect it).
+  setCalls(calls) {
+    this._calls = calls || null;
+    for (const f of this.floors) { const b = this.buttons && this.buttons.get(f); if (b && !!b.lit !== !!(calls && calls.has(f))) this._lightButton(f, !!(calls && calls.has(f))); }
   }
   // Key feedback: the halo ring glows (red for the alarm) and the stainless face picks up a warm tint.
   _lightButton(k, on) {
@@ -1708,7 +1792,7 @@ export class Lift {
     this._lightButton(k, true);
     const z0 = b.z0;
     tween(170, t => { b.g.position.z = z0 + 0.0035 * Math.sin(Math.PI * t); b.g.updateMatrixWorld(true); });
-    if (holdMs) { clearTimeout(b._t); b._t = setTimeout(() => { if (this.target !== k) this._lightButton(k, false); }, holdMs); }
+    if (holdMs) { clearTimeout(b._t); b._t = setTimeout(() => { if (this.target !== k && !(this._calls && this._calls.has(k))) this._lightButton(k, false); }, holdMs); }
   }
   dispose() {
     LIFT_REGISTRY.delete(this);

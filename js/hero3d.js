@@ -55,7 +55,7 @@ function nearPoly(poly, x, z, pad) {
 }
 
 export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState = () => {}, reducedMotion = false } = {}) {
-  let THREE, env, complex, renderer, scene, camera, raf = 0, last = 0, failed = false, ready = false;
+  let THREE, env, complex, renderer, scene, camera, raf = 0, last = 0, failed = false, ready = false, dyn = null;
   let exteriorMod = null;
   const okB = b => Object.prototype.hasOwnProperty.call(BUILDINGS, b);
   const sel0 = okB(DEFAULT_SEL?.b) ? { b: DEFAULT_SEL.b, f: clampFloor(DEFAULT_SEL.b, DEFAULT_SEL.f) } : { b: B_IDS[0], f: 1 };
@@ -97,17 +97,25 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
   // is active, and the whole engine is only built once it is needed: that slide is reached, or the finder comes near.
   let heroActive = false, needResolve = null;
   const needed = new Promise(r => { needResolve = r; });
+  // V11: on phones the 3D slide shows its path-traced still; the model (≈ 1.2 MB of code, seconds of CPU) is only built
+  // when the visitor touches that slide or the finder's 3D picker comes near — reaching the slide by autoplay is not enough.
+  const coarse0 = (() => { try { return matchMedia('(pointer: coarse)').matches; } catch (e) { return false; } })();
+  const slideReached = () => {
+    if (!coarse0) return needResolve();
+    viewsP.then(() => setTimeout(() => { if (heroActive && !hasStills()) needResolve(); }, 2000));   // no still to show → build
+  };
+  heroHost?.addEventListener('pointerdown', () => { if (heroActive) needResolve(); }, { passive: true });
   const onHeroEvt = e => {
     heroActive = !!e.detail?.active;
-    if (heroActive) needResolve();
+    if (heroActive) slideReached();
     if (ready) { if (!heroActive) state.visible.set(heroHost, 0); else ioSync(); pickHost(); }
   };
   document.addEventListener('vrc:hero3d', onHeroEvt);
   // created after the slideshow already reached the 3D slide (slow start): the event was missed — read the slide itself
-  if (heroHost && heroHost.classList.contains('hs-slide') && heroHost.classList.contains('is-on')) { heroActive = true; needResolve(); }
+  if (heroHost && heroHost.classList.contains('hs-slide') && heroHost.classList.contains('is-on')) { heroActive = true; slideReached(); }
   const onStillsEvt = () => { warmT = Math.max(warmT, 0.3); kick(); };       // a still appeared / failed: re-check who is on screen
   document.addEventListener('vrc:hero3d-stills', onStillsEvt);
-  const nearIo = finderHost ? new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { needResolve(); nearIo.disconnect(); } }, { rootMargin: '900px 0px' }) : null;
+  const nearIo = finderHost ? new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { needResolve(); nearIo.disconnect(); } }, { rootMargin: coarse0 ? '200px 0px' : '900px 0px' }) : null;   // V11: phones start the build when the picker is near, not one screen away
   nearIo?.observe(finderHost);
   function ioSync() {
     if (!heroHost) return;
@@ -128,7 +136,9 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
     return false;
   }
 
-  async function init() {
+  let initP = null;   // V11: the build awaits between its steps — one build at a time
+  function init() { return (initP ||= initImpl()); }
+  async function initImpl() {
     if (failed) return false;
     if (ready) return true;
     if (PROJECT?.features && !PROJECT.features.hero3d) return fail('switched off (PROJECT.features.hero3d)');
@@ -137,13 +147,17 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
       // T32: probe first — three.js logs console.error when it cannot create a context
       if (!window.WebGLRenderingContext || !(() => { try { const c = document.createElement('canvas'), gl = c.getContext('webgl2') || c.getContext('webgl'); if (!gl) return false; gl.getExtension('WEBGL_lose_context')?.loseContext(); return true; } catch (e) { return false; } })()) throw new Error('no webgl');
       THREE = await import('three');
-      const [envMod, extMod] = await Promise.all([import('./three/environment.js'), import('./three/exterior.js'), viewsP]);
+      const [envMod, extMod, dynMod] = await Promise.all([import('./three/environment.js'), import('./three/exterior.js'), import('./three/dynres.js').catch(() => null), viewsP]);
+      // V11: the build is split into separate tasks (renderer · environment · complex · shader compile) with a frame
+      // between them, so the page keeps answering taps / scrolling while the model is built (one 1–5 s freeze before)
+      const breathe = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
       if (typeof extMod.createComplex !== 'function' || typeof envMod.createEnvironment !== 'function') throw new Error('exterior / environment API missing');
       exteriorMod = extMod;
       renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', alpha: false });
       if (!renderer.getContext()) throw new Error('webgl context');
       const coarse = matchMedia('(pointer: coarse)').matches;
-      renderer.setPixelRatio(Math.min(devicePixelRatio || 1, coarse ? 1.5 : 1.75));
+      if (dynMod?.createDynRes) dyn = dynMod.createDynRes(renderer, { max: Math.min(devicePixelRatio || 1, coarse ? 1.5 : 1.75), min: coarse ? 0.75 : 1 });
+      else renderer.setPixelRatio(Math.min(devicePixelRatio || 1, coarse ? 1.5 : 1.75));
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
       renderer.toneMappingExposure = EXPOSURE[state.mode] || 1.0;
@@ -153,8 +167,10 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
       renderer.domElement.setAttribute('aria-hidden', 'true');
       scene = new THREE.Scene();
       camera = new THREE.PerspectiveCamera(34, 16 / 9, 1, 12000);
+      await breathe(); if (failed) return false;
       env = envMod.createEnvironment(scene, renderer, { mode: state.mode });
       if (env?.group && !env.group.parent) scene.add(env.group);
+      await breathe(); if (failed) return false;
       complex = extMod.createComplex({});
       if (!complex?.group?.isObject3D) throw new Error('createComplex returned no group');
       scene.add(complex.group);
@@ -180,6 +196,14 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
       renderer.domElement.addEventListener('webglcontextrestored', () => kick());
       homeTgt = new THREE.Vector3(); orbit.daz = 0;
       placeHeroCamera(0, true);
+      // V11: compile every shader program before the first frame — in the background where the browser can
+      // (KHR_parallel_shader_compile: the page stays live while they link), else in one task of its own
+      await breathe(); if (failed) return false;
+      try {
+        const par = !!renderer.getContext().getExtension('KHR_parallel_shader_compile');
+        if (par && renderer.compileAsync) await renderer.compileAsync(scene, camera); else renderer.compile(scene, camera);
+      } catch (e) { /* the first render compiles */ }
+      if (failed) return false;
       bindPointer(renderer.domElement);
       ready = true;
       if (/[?&]debug3d\b/.test(location.search)) window.__vrcHeroDbg = { THREE, scene, camera, complex, renderer, pick: (x, y, t) => pick(x, y, t), FINDER_AZ, fitCache, finderCam, orbit, state,
@@ -330,6 +354,7 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
     }
     try { env?.update?.(dt, camera); } catch (e) { /* keep rendering */ }
     try { renderer.render(scene, camera); renderErr = 0; } catch (e) { if (++renderErr >= 3) { fail(e); return; } }
+    dyn?.frame(now);
     raf = requestAnimationFrame(frame);
   }
   let renderErr = 0, lastStills = null;

@@ -14,6 +14,7 @@ import {
 } from '../data.js';
 import { I18N } from '../i18n.js';
 import { driveMixin } from './drive.js';
+import { createDynRes, ratioCap } from './dynres.js';   // V11: adaptive resolution
 import { gameMixin } from './drive-game.js';   // V9: people + police + notice + «Без крові» around the drive (the game layer)   // V6: entering cars, vehicle physics, driving HUD (mixed into Walkthrough at the end of this file)
 
 // RADIUS 0.24 (was 0.28): apartment.js keeps 0.27 m free around every piece it places and proves its flats walkable
@@ -23,6 +24,9 @@ const EYE = 1.62, EYE_360 = 1.55, SPEED = 1.4, RUN = 2.4, RADIUS = 0.24, STEP_UP
 const NAV_CELL = 0.08, NAV_R = [RADIUS + 0.05, RADIUS + 0.01, RADIUS - 0.03];   // route planning inside a flat (see _navOf)
 const RAY_HEIGHTS = [0.3, 1.0, 1.6];
 const CAR_DEPTH = 1.05;        // lift car centre behind the landing door (m)
+// V10-lift: soft music in the lift car (optional module; missing → silence)
+let LIFT_AUDIO = null;
+import('./lift-audio.js').then(m => { LIFT_AUDIO = m; }).catch(e => console.warn('[walk] lift-audio.js unavailable', e));
 const MAX_DPR = 1.75;
 
 // English fallbacks for every HUD string (used when i18n has no such key).
@@ -337,7 +341,7 @@ function monitorParts() {
 }
 const mark = n => { try { performance.mark('walk:' + n); } catch { /* old browsers */ } };
 const GHOSTS = { PointLight: 5, HemisphereLight: 2, DirectionalLight: 1, SpotLight: 1 };   // commons rig + sky + car headlights
-const LIGHT_TOTALS = { ...GHOSTS, PointLight: GHOSTS.PointLight + LIGHT_SLOTS };   // + the apartment light pool
+const LIGHT_TOTALS = { ...GHOSTS, PointLight: GHOSTS.PointLight + LIGHT_SLOTS + 1 };   // + the apartment light pool + V11: the police light slot (this._polLight, lent to police.js)
 function makeGhosts() {
   const out = [];
   for (const [type, n] of Object.entries(GHOSTS)) for (let i = 0; i < n; i++) {
@@ -587,6 +591,11 @@ const CSS = `
 .vw-floorsbtn{display:none;position:absolute;inset-inline-end:calc(136px + var(--sr));bottom:calc(88px + var(--sb));height:34px;padding:0 12px;border-radius:999px;align-items:center;gap:6px;font-size:11px;letter-spacing:.06em;color:var(--g2);transition:opacity .45s}
 .vw.incar .vw-floorsbtn,.vw.riding .vw-floorsbtn{display:inline-flex}
 .vw-floorsbtn.on{background:rgba(201,164,92,.22);border-color:var(--g)}
+.vw-liftmusic{display:none;position:absolute;inset-inline-end:calc(92px + var(--sr));bottom:calc(88px + var(--sb));width:34px;height:34px;padding:0;border-radius:50%;align-items:center;justify-content:center;color:var(--g2);touch-action:manipulation}
+.vw.incar .vw-liftmusic,.vw.riding .vw-liftmusic{display:inline-flex}
+.vw-liftmusic .x{display:none}.vw-liftmusic.off{opacity:.7}.vw-liftmusic.off .x{display:inline}
+.vw.phone .vw-liftmusic{inset-inline-end:auto;inset-inline-start:calc(116px + var(--sl));bottom:calc(46px + var(--sb));width:36px;height:36px}
+.vw.driving .vw-liftmusic,.vw.m360 .vw-liftmusic{display:none!important}
 .vw.phone .vw-floorsbtn{inset-inline-end:auto;inset-inline-start:calc(8px + var(--sl));bottom:calc(46px + var(--sb));height:36px}
 .vw.phone.incar .vw-lift.show{bottom:calc(88px + var(--sb))}
 /* unit card: label + price + reserve chip for the apartment you're in */
@@ -771,7 +780,8 @@ export class Walkthrough {
     const spare = SPARE; SPARE = null; cancelPrewarm();
     this.renderer = spare ? spare.renderer : makeRenderer();
     this._spareEnv = spare ? spare.roomEnv : null;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_DPR));
+    // V11: adaptive resolution (dynres.js) — phones start at 1.5 and climb to the 1.75 cap only while frames stay fast
+    this._dyn = createDynRes(this.renderer, { max: Math.min(window.devicePixelRatio || 1, MAX_DPR), min: 0.8, start: ratioCap(MAX_DPR, 1.5) });
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -828,6 +838,9 @@ export class Walkthrough {
     this._ghosts = makeGhosts(); for (const g of this._ghosts) this.scene.add(g);
     this._lightPool = [];
     for (let i = 0; i < LIGHT_SLOTS; i++) { const l = new THREE.PointLight(0xffe2b8, 0, 7.5, 1.6); l.name = 'walk-apt-light'; this.scene.add(l); this._lightPool.push(l); }
+    // V11: one point light kept for the game's police light bar (police.js moves it to the flashing car nearest the visitor);
+    // without it every patrol car brought a light of its own and each one recompiled every shader program of the scene
+    this._polLight = new THREE.PointLight(0x3060ff, 0, 26, 1.8); this._polLight.name = 'walk-police-light'; this.scene.add(this._polLight);
     this.skyEnv = null;
     // Building wrappers: commons groups (building-local) live inside these.
     this.bWrap = {};
@@ -863,14 +876,17 @@ export class Walkthrough {
     this._hideFloorsForWalker(true);
   }
   // Swap ghost lights for the real ones that have arrived (keeps every light-type count constant).
+  // V11: both ways — a real light that goes away (the police of the game, a streamed group) gets its ghost back, so the
+  // light count, and with it every compiled shader program, stays the same for the whole visit.
   _reconcileGhosts() {
-    const G = this._ghosts; if (!G || !G.length) return;
+    const G = this._ghosts; if (!G) return;
     const real = {};
     this.scene.traverseVisible(o => { if (o.isLight && !o.userData._ghost) real[o.type] = (real[o.type] || 0) + 1; });
     const have = {}; for (const g of G) have[g.userData._ghost] = (have[g.userData._ghost] || 0) + 1;
-    for (const type of Object.keys(have)) {
-      let extra = have[type] - Math.max(0, (LIGHT_TOTALS[type] || 0) - (real[type] || 0));
+    for (const type of Object.keys(GHOSTS)) {
+      let extra = (have[type] || 0) - Math.max(0, (LIGHT_TOTALS[type] || 0) - (real[type] || 0));
       for (let i = G.length - 1; i >= 0 && extra > 0; i--) if (G[i].userData._ghost === type) { this.scene.remove(G[i]); G.splice(i, 1); extra--; }
+      for (; extra < 0 && (have[type] || 0) < GHOSTS[type]; extra++) { const l = new THREE[type](); l.intensity = 0; l.name = 'walk-ghost-light'; l.userData._ghost = type; this.scene.add(l); G.push(l); have[type] = (have[type] || 0) + 1; }
     }
   }
   // After the first frame: corridor & lifts → environment → exterior → cars, one per frame, so the view stays live.
@@ -879,9 +895,9 @@ export class Walkthrough {
     const next = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
     const steps = [
       async () => { if (!this.commons && this.unit) await this._setFloor(this.unit.building, this.floor != null ? this.floor : this.unit.floor); },
-      () => this._initEnv(),
-      () => this._initComplex(),
-      () => { this._initOutdoor(); this._initCars(); if (this.commons) this._adoptParking(this.commons); },
+      () => { this._initEnv(); return this._bgCompile(this.env && this.env.group); },
+      () => { this._initComplex(); return this._bgCompile(this.complex && this.complex.group); },
+      () => { this._initOutdoor(); this._initCars(); if (this.commons) this._adoptParking(this.commons); return this._bgCompile(this.fleet && this.fleet.group); },
     ];
     this._worldP = (async () => {
       await next(); await new Promise(r => setTimeout(r, 450));    // let the page's reveal (fade of the still) finish first
@@ -899,6 +915,16 @@ export class Walkthrough {
       if (!this._isTouch && Mm && Mm.prewarmTextures) for (const st of this.styles) if (st.id !== this.styleId) Mm.prewarmTextures(st.id, { cacheOnly: true });
     })();
     return this._worldP;
+  }
+  // V11: a streamed-in group stays hidden while its shader programs link in the background (KHR_parallel_shader_compile),
+  // so the next frame does not compile them synchronously (a 0.5–3 s freeze on phones). Without the extension: no-op.
+  async _bgCompile(obj) {
+    if (!obj || !this.renderer.compileAsync) return;
+    if (this._par == null) { try { this._par = !!this.renderer.getContext().getExtension('KHR_parallel_shader_compile'); } catch { this._par = false; } }
+    if (!this._par) return;
+    const v = obj.visible; obj.visible = false;
+    try { await Promise.race([this.renderer.compileAsync(obj, this.camera, this.scene), new Promise(r => setTimeout(r, 8000))]); } catch { /* render compiles */ }
+    if (!this.disposed) obj.visible = v;
   }
   // Textures for the current design (from the worker / IndexedDB); no-op when already there or unsupported.
   async _texReady(styleId = this.styleId) {
@@ -1109,6 +1135,7 @@ export class Walkthrough {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    if (this._lm) { try { this._lm.dispose(); } catch { /* */ } this._lm = null; }   // V10-lift music
     try { if (this._cgSpoke && typeof speechSynthesis !== 'undefined') speechSynthesis.cancel(); } catch { /* optional */ }
     cancelAnimationFrame(this._raf);
     if (this._pano) {
@@ -1132,7 +1159,12 @@ export class Walkthrough {
     safe(() => { for (const o of this._own) disposeTree(o); this._own = []; });
     safe(() => disposeTree(this.scene));   // sweep anything left (textures of shared caches are re-uploaded if reused)
     safe(() => { this.scene.environment = null; this.scene.background = null; this.scene.clear(); });
+    // V11 (leak fix): shared module-level geometries / materials (the intercom monitor kit) kept a 'dispose' listener and a
+    // buffer entry of this renderer, which held the GL context → canvas → the whole closed walkthrough (≈ 7 MB per visit).
+    // Disposing them drops both (a later walkthrough re-uploads them); the canvas is also detached from the HUD tree.
+    safe(() => { for (const k of Object.keys(MON)) { const v = MON[k]; if (v && v.dispose) v.dispose(); if (v && v.map) v.map.dispose(); delete MON[k]; } });
     safe(() => { this.renderer.dispose(); this.renderer.forceContextLoss(); });
+    safe(() => { this.canvas && this.canvas.remove(); });
     this.root.remove();
     this.solids = this.floors = this.actions = [];
   }
@@ -1501,6 +1533,7 @@ export class Walkthrough {
     this._hiddenDoors = [];
     this._hideDuplicateDoor();   // also registers the commons colliders/actions
     this._adoptParking(c);
+    this._roomsAttach(c);        // V10-doors: rooms behind the common-area doors (built lazily by the commons)
   }
 
   _disposeCommons(c = this.commons) {
@@ -1594,6 +1627,9 @@ export class Walkthrough {
 
   // ======================= movement & collisions =======================
   _floorAt(x, y, z, entries) {
+    // V10-doors: a stair well of the commons goes below grade (floor 1 → car park): the outdoor ground is no floor there
+    const rs = this.commons && this.commons.rooms;
+    if (rs && rs.inStair && entries.some(o => o.name === 'outdoor-floor') && rs.inStair(new THREE.Vector3(x, y, z))) entries = entries.filter(o => o.name !== 'outdoor-floor');
     const o = this._v1.set(x, y + STEP_UP, z);
     const hits = this._cast(entries, o, this._v2.set(0, -1, 0), STEP_UP + STEP_DOWN);
     return hits.length ? hits[0].point.y : null;
@@ -2600,9 +2636,16 @@ export class Walkthrough {
     if (this.riding || this.busy) return false;
     if (floor === this.floor) return true;
     await this._callLift(stair, bId);
-    const inf = this._carOf(this.player.pos);
+    let inf = this._carOf(this.player.pos);
+    if (!inf && !this.disposed && !this.busy && !this.riding) {
+      // V11: _callLift steps in only within 5 m of the doors (a landing call); the car-park lobby spawn and the corridor
+      // spot can be farther — walk into the car that answered (doors open, this building) before pressing the key
+      const P = this.player.pos, dist = i => { const [x, z] = localToWorldXZ(i.bId, i.door[0], i.door[1]); return Math.hypot(P.x - x, P.z - z); };
+      const open = (this.liftInfos || []).filter(i => i.bId === bId && i.lift && i.lift.doorsOpen).sort((a, b) => dist(a) - dist(b))[0];
+      if (open && dist(open) < 25) { this.busy = true; this.glide = null; try { await this._walkIntoCar(open); } finally { this.busy = false; } inf = this._carOf(this.player.pos); }
+    }
     if (!inf) return false;
-    await this._pressKey(inf, floor);
+    await this._pressKey(inf, floor, { quick: true });
     return this.floor === floor;
   }
   async _icGoApt() {
@@ -2688,25 +2731,42 @@ export class Walkthrough {
   }
   _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-  // Landing call plate: the tapped key lights, the car arrives, doors open, we step in and turn to the panel.
+  // Landing call plate (up / down) — V10-lift: the tapped key lights and stays lit until the car is here. The car comes
+  // from the floor where it stands (`_shaftAt`: where the visitor left it; a car not used yet waits at floor 1, the second
+  // lift of a tower half way up); of the two cars at the plate the one with the shorter trip answers. The landing
+  // indicator counts the floors with the arrow, chime, doors open; a visitor still at the doors steps in.
   async _callLift(stair, building, plate, hitObj, hit) {
-    const inf = this._nearestLift(stair, true, building) || this._nearestLift(stair, true);
-    if (!inf || this.busy || this.riding) return;
-    this.busy = true; this.glide = null;
+    const first = this._nearestLift(stair, false, building) || this._nearestLift(stair, false);
+    if (!first || this.busy || this.riding) return;
+    const P = this.player.pos, dist = i => { const [x, z] = localToWorldXZ(i.bId, i.door[0], i.door[1]); return Math.hypot(P.x - x, P.z - z); };
+    const F = liftFloors(first.bId), d0 = dist(first);
+    const cost = i => (i.lift.doorsOpen ? -1 : Math.abs(F.indexOf(this._shaftAt(i)) - F.indexOf(i.floor)));
+    const inf = this.liftInfos.filter(i => i.bId === first.bId && dist(i) < d0 + 4).sort((a, b) => cost(a) - cost(b) || dist(a) - dist(b))[0] || first;
     const light = plate && plate.userData && typeof plate.userData.light === 'function' ? plate.userData.light : null;
     if (plate && hit && (!hitObj || hitObj === plate)) {   // tapped the plate body → light the key nearest the finger
       let bd = Infinity; const v = new THREE.Vector3();
       for (const c of plate.children) if (c.userData && c.userData.dir) { const d = c.getWorldPosition(v).distanceTo(hit.point); if (d < bd) { bd = d; hitObj = c; } }
     }
+    this._click();
+    if (light) light(true, hitObj);
+    this._liftMusicPrime();                                   // inside the tap: the stream may sound once we step in
+    if (this._liftCalling && this._liftCalling.has(inf)) return;   // already on its way
+    (this._liftCalling = this._liftCalling || new Set()).add(inf);
     try {
-      this._click();
-      if (light) light(true, hitObj);
-      if (!inf.lift.doorsOpen) { await this._sleep(650); await inf.lift.open(); }
-      else await this._sleep(250);
+      const from = this._shaftAt(inf);
+      if (!inf.lift.doorsOpen) {
+        if (from !== inf.floor && typeof inf.lift.arriveFrom === 'function') { this._toast(this.t('walk.liftCalled'), 2400); await inf.lift.arriveFrom(from); }
+        else { await this._sleep(650); await inf.lift.open(); }
+      } else await this._sleep(250);
+      this._shaftSet(inf, inf.floor);
       if (light) light(false);
-      await this._walkIntoCar(inf);
+      // step in — only when the visitor still stands at these doors (and this floor is still the loaded one)
+      if (!this.disposed && this.liftInfos.includes(inf) && !this.busy && !this.riding && !this._carOf(this.player.pos) && dist(inf) < 5) {
+        this.busy = true; this.glide = null;
+        try { await this._walkIntoCar(inf); } finally { this.busy = false; }
+      }
     } catch (e) { console.warn('[walk] lift call', e); if (light) light(false); }
-    finally { this.busy = false; }
+    finally { this._liftCalling.delete(inf); }
   }
   async _walkIntoCar(inf) {
     const P = this.player, [cx, cz] = this._carWorld(inf);
@@ -2744,6 +2804,7 @@ export class Walkthrough {
     if (this._inCarInf && this._inCarInf !== inf) this._inCarInf.lift.occupied = false;
     this._inCarInf = inf || null;
     if (inf) inf.lift.occupied = true;
+    if (inf) this._liftMusicOn();                             // V10-lift: soft music while inside a car
   }
   _zoomForPanel(on, dur = 700) {
     if (on) {
@@ -2762,50 +2823,161 @@ export class Walkthrough {
   }
 
   async _pressLiftButton(floor, act) {
-    if (this.riding || this.busy) return;
-    let inf = this._carOf(this.player.pos);
+    if (this.busy && !this.riding) return;
+    let inf = this.riding ? this._inCarInf : this._carOf(this.player.pos);
     if (!inf) {
       inf = this._infOfAction(act) || this._nearestLift(null, true);
       if (!inf) return;
+      this._liftMusicPrime();
       this.busy = true;
       try { if (!inf.lift.doorsOpen) await inf.lift.open(); await this._walkIntoCar(inf); } finally { this.busy = false; }
     }
     return this._pressKey(inf, floor);
   }
-  // A floor key (3D panel or the 2D fallback grid): light it, click, then ride.
-  async _pressKey(inf, floor) {
-    if (this.riding || !inf || !liftFloors(inf.bId).includes(floor)) return;   // each tower has its own keypad: −1, 1 … N
-    const L = inf.lift;
+  // ======================= lift: collective control (V10-lift) =======================
+  // The car the visitor rides keeps a set of calls (keys lit on the 3D keypad and on the HUD "Поверх" grid alike). A key
+  // adds its floor; a lit key pressed again cancels it, unless the car is already braking for that floor. The car goes on in
+  // its direction serving every call on the way (also calls added while it travels, when it can still stop for them), then
+  // reverses. At each stop: chime, doors open, held LIFT_SPEC.dwell (the close key ends the hold, the open key restarts it),
+  // then on to the next call. With no calls left the car waits with its doors open. The visitor stepping out of the car
+  // CLEARS the remaining calls (the car stays at that floor: `_shaftAt`).
+  _liftSpec() { return (this.mods && this.mods.commons && this.mods.commons.LIFT_SPEC) || { dwell: 4500, pressDwell: 3000 }; }
+  _liftKey(inf) { return inf ? inf.bId + ':' + inf.doorIndex : ''; }
+  _liftQueue(inf) {
+    const key = this._liftKey(inf);
+    if (!this._lq || this._lq.key !== key) { if (this._lq) this._lq.calls.clear(); this._lq = { key, calls: new Set(), dir: 0, dwellUntil: 0, run: null }; }
+    return this._lq;
+  }
+  _liftNext(F, calls, dir, at) {
+    const fn = this.mods && this.mods.commons && this.mods.commons.liftNextStop;
+    if (fn) return fn(F, calls, dir, at);
+    let best = null; for (const f of calls) if (best == null || Math.abs(F.indexOf(f) - F.indexOf(at)) < Math.abs(F.indexOf(best) - F.indexOf(at))) best = f;
+    return best == null ? null : { floor: best, dir: Math.sign(F.indexOf(best) - F.indexOf(at)) };
+  }
+  // where a shaft's car stands (remembered per lift for the page session)
+  _shaftAt(inf) {
+    const k = this._liftKey(inf), m = this._shafts || (this._shafts = new Map());
+    if (m.has(k)) return m.get(k);
+    const F = liftFloors(inf.bId);
+    return inf.doorIndex ? F[Math.floor(F.length / 2)] : (F.includes(1) ? 1 : F[0]);
+  }
+  _shaftSet(inf, f) { (this._shafts || (this._shafts = new Map())).set(this._liftKey(inf), f); }
+  // light the keys of the car we are in exactly as the calls are; the HUD grid follows
+  _liftSync() {
+    const Q = this._lq, inf = this._inCarInf;
+    for (const i of this.liftInfos) if (i.lift && i.lift.setCalls) i.lift.setCalls(Q && inf && this._liftKey(i) === Q.key ? Q.calls : null);
+    if (this._rideLift && this._rideLift.setCalls) this._rideLift.setCalls(Q ? Q.calls : null);
+    this._renderLiftPanel();
+  }
+  // A floor key (3D keypad or the HUD grid).
+  async _pressKey(inf, floor, opts = {}) {
+    if (!inf || !liftFloors(inf.bId).includes(floor)) return;   // each tower has its own keypad: −1, 1 … N
+    const L = inf.lift, Q = this._liftQueue(inf), S = this._liftSpec(), now = performance.now();
     this._click();
-    if (floor === inf.floor) {
+    this._liftMusicOn();
+    if (Q.calls.has(floor)) {
+      const m = this.riding && this._rideLift && this._rideLift.motion;
+      if (m && m.braking && m.target === floor) { if (L.press) L.press(floor); return; }   // already stopping there: stays lit
+      Q.calls.delete(floor);
+      if (L.press) L.press(floor);
+      this._liftSync();
+      if (!Q.calls.size && !this.riding) Q.dir = 0;
+      return;
+    }
+    const stopped = !this.riding && !L.moving;
+    if (stopped && floor === inf.floor) {                      // this floor: the doors (re)open
       if (L.press) L.press(floor, 500);
+      Q.dwellUntil = now + S.pressDwell;
       if (!L.doorsOpen) L.open();
       return;
     }
+    Q.calls.add(floor);
+    if (!Q.dir) { const F = liftFloors(inf.bId); Q.dir = Math.sign(F.indexOf(floor) - F.indexOf(this.riding ? (this._liftFloorNow ?? inf.floor) : inf.floor)) || 1; }
     if (L.press) L.press(floor);
-    return this._ride(inf, floor);
+    this._liftSync();
+    if (stopped) Q.dwellUntil = Math.max(Q.dwellUntil, now + (opts.quick ? 400 : S.pressDwell));
+    if (!Q.run) Q.run = this._liftRun(Q).catch(e => console.warn('[walk] lift run', e)).finally(() => { Q.run = null; });
+    return Q.run;
+  }
+  async _liftRun(Q) {
+    const S = this._liftSpec();
+    while (Q === this._lq && Q.calls.size && !this.disposed) {
+      let inf = this._inCarInf;
+      if (!inf || this._liftKey(inf) !== Q.key) break;
+      // the doors stay open until the hold time is over (the close key ends it)
+      while (Q === this._lq && Q.calls.size && inf.lift.doorsOpen && performance.now() < Q.dwellUntil && !this.disposed) await this._sleep(80);
+      if (Q !== this._lq || !Q.calls.size || this.disposed) break;
+      if (this.busy || this.riding) { await this._sleep(100); continue; }   // still stepping in / turning
+      inf = this._inCarInf; if (!inf || this._liftKey(inf) !== Q.key) break;
+      const F = liftFloors(inf.bId), nx = this._liftNext(F, Q.calls, Q.dir, inf.floor);
+      if (!nx) break;
+      if (nx.floor === inf.floor) { Q.calls.delete(nx.floor); this._liftSync(); try { await inf.lift.open(); } catch (e) { console.warn(e); } Q.dwellUntil = performance.now() + S.dwell; continue; }
+      Q.dir = nx.dir;
+      const reached = await this._ride(inf, nx.floor, Q);
+      if (reached == null) break;
+      Q.calls.delete(reached);
+      const nn = this._liftNext(F, Q.calls, Q.dir, reached);
+      if (!nn) Q.dir = 0;
+      if (this._inCarInf && this._inCarInf.lift.showFloor) this._inCarInf.lift.showFloor(reached, nn ? nn.dir : 0);
+      this._liftSync();
+      Q.dwellUntil = performance.now() + S.dwell;
+      if (this._liftLog) this._liftLog.push({ floor: reached, t: Math.round(performance.now()), calls: [...Q.calls] });
+    }
+  }
+  // the visitor left the car: the remaining calls are cleared, the music fades out
+  _liftLeft() {
+    const Q = this._lq; this._lq = null;
+    if (Q) Q.calls.clear();
+    this._liftSync();
+    this._liftMusicOff();
+  }
+  // ---- music (lift-audio.js, loaded at the top of this module)
+  _liftMusic() {
+    if (this._lm !== undefined && this._lm !== null) return this._lm;
+    if (!LIFT_AUDIO) return null;                            // module still loading (or missing): silence
+    try { this._lm = LIFT_AUDIO.createLiftMusic((this.opts && this.opts.liftMusic) || {}); this._lm.onChange(() => this._liftMusicHud()); }
+    catch (e) { console.warn('[walk] lift music', e); this._lm = null; }
+    return this._lm;
+  }
+  _liftMusicPrime() { const m = this._liftMusic(); if (m && !m.inside) m.prime(); }
+  _liftMusicOn() { const m = this._liftMusic(); if (m && !m.inside) m.start(); this._liftMusicHud(); }
+  _liftMusicOff() { if (this._lm && this._lm.inside) this._lm.stop(); this._liftMusicHud(); }
+  _liftMusicToggle() { const m = this._liftMusic(); if (m) m.toggleMute(); this._liftMusicHud(); }
+  _liftMusicHud() {
+    const b = this.el && this.el.liftMusic; if (!b) return;
+    const m = this._liftMusic(), muted = !!(m && m.muted);
+    b.classList.toggle('off', muted); b.setAttribute('aria-pressed', String(!muted));
+    const st = m && m.station; b.title = this.t('walk.liftMusic') + (st && !muted ? ' · ' + st.name : '');
+    b.setAttribute('aria-label', this.t('walk.liftMusic'));
   }
   async _liftDoorKey(act) {
-    const inf = this._carOf(this.player.pos) || this._infOfAction(act);
-    if (!inf || this.riding) return;
+    const inf = (this.riding && this._inCarInf) || this._carOf(this.player.pos) || this._infOfAction(act);
+    if (!inf) return;
     const L = inf.lift;
     this._click();
     if (L.press) L.press(act.open ? 'open' : 'close', 700);
-    try { if (act.open) await L.open(); else await L.close(); } catch (e) { console.warn(e); }
+    if (this.riding || L.moving) return;                       // travelling: the door keys do nothing
+    const Q = this._lq && this._lq.key === this._liftKey(inf) ? this._lq : null;
+    try {
+      if (act.open) { if (Q) Q.dwellUntil = performance.now() + this._liftSpec().dwell; await L.open(); }
+      else { if (Q) Q.dwellUntil = 0; if (!Q || !Q.calls.size) await L.close(); }   // with calls the car departs at once (it closes them)
+    } catch (e) { console.warn(e); }
   }
   _liftAlarm(act) {
-    const inf = this._carOf(this.player.pos) || this._infOfAction(act);
+    const inf = (this.riding && this._inCarInf) || this._carOf(this.player.pos) || this._infOfAction(act);
     this._click(); this._bell();
     if (inf && inf.lift.press) inf.lift.press('bell', 1600);
     this._toast(this.t('walk.alarm'), 2200);
   }
 
-  async _ride(inf, target) {
-    if (this.riding || !this.unit) return;
+  // One leg of a ride: from inf.floor to `target` (Q = the collective call set: the car may stop earlier for a call on
+  // the way, or later when its target is cancelled). → the floor reached (null when no ride happened).
+  async _ride(inf, target, Q = null) {
+    if (this.riding || !this.unit) return null;
     const from = inf.floor;
-    if (target === from) { if (!inf.lift.doorsOpen) inf.lift.open(); return; }
+    if (target === from) { if (!inf.lift.doorsOpen) inf.lift.open(); return from; }
     this.riding = true; this.glide = null; this.root.classList.add('riding');
-    this._rideTarget = target; this._renderLiftPanel();
+    this._rideTarget = target; this._rideLift = inf.lift; this._renderLiftPanel();
     const P = this.player, bId = inf.bId;
     this._occupy(inf);
     // stand at the panel (the floor screen counts the floors while we travel)
@@ -2824,16 +2996,25 @@ export class Walkthrough {
     this.scene.add(anchor); anchor.add(this.camera);
     this.camera.position.set(0, P.eye, 0);
     this._anchor = anchor;
-    // Build the destination floor while we travel (its own car is hidden until we arrive).
-    const nextP = this._buildCommons(bId, target);
+    // Build the destination floor while we travel (its own car is hidden until we arrive); a new stop on the way
+    // (collective control) starts the build of that floor and drops the other one.
+    const hideTwin = c => { const tw = c && (c._infos || []).find(i => i.bId === inf.bId && i.core === inf.core && i.doorIndex === inf.doorIndex); if (tw && tw.lift.group) tw.lift.group.visible = false; return c; };
+    let nextF = target, nextP = this._buildCommons(bId, target).then(hideTwin);
+    const onRetarget = f => {
+      if (f === nextF || this.disposed) return;
+      nextP.then(c => { if (c && c !== this.commons) this._disposeCommons(c); }).catch(() => {});
+      nextF = f; nextP = this._buildCommons(bId, f).then(hideTwin);
+      this._rideTarget = f; this._renderLiftPanel();
+    };
     let absMode = null, lastY = null, lastT = 0, vy = 0;
     this._rideSway = 0; this._rideSpeed = 0;
-    const y0 = floorY(bId, from), y1 = floorY(bId, target);
+    const y0 = floorY(bId, from), FL = liftFloors(bId), yLo = floorY(bId, FL[0]), yHi = floorY(bId, FL[FL.length - 1]);
+    let y1 = floorY(bId, target), reached = target;
     const onTick = y => {
       if (typeof y !== 'number' || !isFinite(y)) return;
       if (absMode === null && Math.abs(y0) > 0.3) absMode = Math.abs(y - y0) < Math.abs(y);
       const wy = absMode === false ? y0 + y : y;
-      anchor.position.y = Math.min(Math.max(wy, Math.min(y0, y1) - 0.5), Math.max(y0, y1) + 0.5);
+      anchor.position.y = Math.min(Math.max(wy, yLo - 0.5), yHi + 0.5);
       this._liftFloorNow = this._floorFromY(anchor.position.y, bId);
       // acceleration feel: the eye lags behind the car (dips when accelerating up, lifts when braking)
       const now = performance.now();
@@ -2848,13 +3029,16 @@ export class Walkthrough {
     };
     let next;
     try {
+      await nextP;
+      if (typeof inf.lift.travelTo === 'function') {
+        const r = await inf.lift.travelTo(target, onTick, { calls: Q ? Q.calls : null, onRetarget, noOpen: true });
+        if (typeof r === 'number') reached = r;
+      } else { const F = liftFloors(bId); await tween(Math.min(6000, Math.max(1800, 1200 * Math.abs(F.indexOf(target) - F.indexOf(from)))), k => onTick(y0 + (y1 - y0) * k)); }
       next = await nextP;
-      const twin = (next._infos || []).find(i => i.bId === inf.bId && i.core === inf.core && i.doorIndex === inf.doorIndex);
-      if (twin && twin.lift.group) twin.lift.group.visible = false;
-      if (typeof inf.lift.travelTo === 'function') await inf.lift.travelTo(target, onTick);
-      else { const F = liftFloors(bId); await tween(Math.min(6000, Math.max(1800, 1200 * Math.abs(F.indexOf(target) - F.indexOf(from)))), k => onTick(y0 + (y1 - y0) * k)); }
+      if (next && next.floor !== reached) { this._disposeCommons(next); next = await this._buildCommons(bId, reached).then(hideTwin); }
     } catch (e) { console.warn('[walk] lift travel', e); if (!next) next = await nextP.catch(() => null); }
-    if (this.disposed) return;
+    y1 = floorY(bId, reached);
+    if (this.disposed) return null;
     this._rideSway = 0; this._rideSpeed = 0;
     // Arrive: swap commons, drop the camera back into the world at the same spot of the twin car.
     anchor.remove(this.camera); this.scene.add(this.camera); this.scene.remove(anchor); this._anchor = null;
@@ -2864,7 +3048,7 @@ export class Walkthrough {
       const [lx0, lz0] = worldToLocal(bId, P.pos.x, P.pos.z), offX = lx0 - inf.car[0], offZ = lz0 - inf.car[1];
       this._disposeCommons();
       this._activateCommons(next);
-      this.floor = target; this.bId = bId;
+      this.floor = reached; this.bId = bId;
       const twin = this.liftInfos.find(i => i.bId === inf.bId && i.core === inf.core && i.doorIndex === inf.doorIndex);
       if (twin) {
         arrived = twin;
@@ -2873,17 +3057,20 @@ export class Walkthrough {
         const [tx, tz] = localToWorldXZ(bId, twin.car[0] + offX, twin.car[1] + offZ); P.pos.x = tx; P.pos.z = tz;
         twin.lift.car.visible = true;
         this._occupy(twin);
+        this._shaftSet(twin, reached);
+        this._rideLift = null; this._liftSync();
         this._syncCamera();
         try { if (!twin.lift.doorsOpen) await twin.lift.open(); } catch (e) { console.warn(e); }
       }
-    }
+    } else { try { await inf.lift.open(); } catch (e) { console.warn(e); } }
     this._syncCamera();
     this._hideFloorsForWalker(true);
-    this.riding = false; this._rideTarget = null; this._liftFloorNow = null;
+    this.riding = false; this._rideTarget = null; this._liftFloorNow = null; this._rideLift = null;
     this.root.classList.remove('riding');
     this._renderLiftPanel(); this._updateHud(true);
-    // turn back toward the open doors, ready to walk out
-    if (arrived) {
+    // last stop: turn back toward the open doors, ready to walk out (with more calls the visitor stays at the keypad)
+    const more = Q && [...Q.calls].some(f => f !== reached);
+    if (arrived && !more) {
       const [nx, nz] = dirToWorld(arrived.bId, arrived.n[0], arrived.n[1]);
       const [cx, cz] = this._carWorld(arrived);
       const sx = P.pos.x, sz = P.pos.z, sy = P.yaw, sp = P.pitch, ty = sy + wrapPi(yawFromDir(nx, nz) - sy);
@@ -2892,6 +3079,7 @@ export class Walkthrough {
       try { await tween(800, k => { P.pos.x = sx + (cx - sx) * k; P.pos.z = sz + (cz - sz) * k; P.yaw = P.tYaw = sy + (ty - sy) * k; P.pitch = P.tPitch = sp * (1 - k); }); }
       finally { this.busy = false; }
     }
+    return reached;
   }
   // The stop nearest to a height in a tower's shaft (−1, 1 … N) — what the floor indicator shows during a ride.
   // (data.js floorFromY gives the storey band containing y; a car between two stops reads better with the nearest one.)
@@ -3044,7 +3232,7 @@ export class Walkthrough {
     await this._callLift(stair, this.bId);
     const inf = this._carOf(this.player.pos);
     if (!inf) return false;
-    await this._pressKey(inf, floor);
+    await this._pressKey(inf, floor, { quick: true });
     return this.floor === floor;
   }
   async _cgGoApt() {
@@ -3107,6 +3295,7 @@ export class Walkthrough {
     try { this.env && this.env.update && this.env.update(dt, this.camera); } catch (e) { if (!this._envErr) { console.warn(e); this._envErr = true; } }
     if (this._game) this._gameTick(dt);                              // V9: people + police, after the cars moved (drive-game.js)
     this.renderer.render(this.scene, this.camera);
+    if (this._dyn) this._dyn.frame(performance.now());
   }
 
   _update(dt) {
@@ -3172,6 +3361,7 @@ export class Walkthrough {
     this._balconyDoorsTick(dt);
     this._syncCamera();
     this._conciergeTick(dt);
+    this._roomsTick();
     this._intercomTick();
     this._aptEnterWatch();
     this._cullWorld();
@@ -3696,6 +3886,7 @@ export class Walkthrough {
       this._renderLiftPanel();
     } else if (!inf && this._inCarInf) {
       this._occupy(null);
+      this._liftLeft();                                         // V10-lift: calls cleared, music fades out
       this._zoomForPanel(false, 600);
       this._renderLiftPanel();
     }
@@ -3770,6 +3961,7 @@ export class Walkthrough {
       <button class="vw-mapbtn vw-panel" data-k="map">${ICON_MAP}</button>
       <div class="vw-lift vw-panel"><div class="hd"><span class="lt"></span><span class="ind"></span></div><div class="grid"></div></div>
       <button class="vw-floorsbtn vw-ghost" data-k="floors" aria-expanded="false"><span aria-hidden="true">⇅</span><span class="lbl"></span></button>
+      <button class="vw-liftmusic vw-ghost" data-k="liftmusic" aria-pressed="true"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M9 18V6l10-2v12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.5" fill="currentColor"/><circle cx="16.5" cy="16" r="2.5" fill="currentColor"/><path class="x" d="M3 3l18 18" stroke="currentColor" stroke-width="1.9"/></svg></button>
       <div class="vw-pad">
         <button class="u" data-p="u" aria-label="forward">▲</button><button class="l" data-p="l" aria-label="turn left">◀</button>
         <button class="r" data-p="r" aria-label="turn right">▶</button><button class="d" data-p="d" aria-label="back">▼</button>
@@ -3806,7 +3998,7 @@ export class Walkthrough {
       carChip: q('.vw-carchip'), sofaChip: q('.vw-sofachip'), drive: q('.vw-drive'), carView: q('[data-k=carview]'), carExit: q('[data-k=carexit]'), carLights: q('[data-k=carlights]'), carSound: q('[data-k=carsound]'),
       spdo: q('.vw-spdo'), spd: q('.vw-spdo .spd'), gear: q('.vw-spdo .gear'), lim: q('.vw-spdo .lim'), arc: q('.vw-spdo .arc'),
       steerPad: q('.vw-steer'), knob: q('.vw-steer .knob'), gas: q('.vw-pedals .gas'), brake: q('.vw-pedals .brake'), dhint: q('.vw-dhint'),
-      floorsBtn: q('[data-k=floors]'), ucard: q('.vw-ucard'), u1: q('.vw-ucard .u1'), u2: q('.vw-ucard .u2'), ureserve: q('[data-k=ureserve]'),
+      floorsBtn: q('[data-k=floors]'), liftMusic: q('[data-k=liftmusic]'), ucard: q('.vw-ucard'), u1: q('.vw-ucard .u1'), u2: q('.vw-ucard .u2'), ureserve: q('[data-k=ureserve]'),
     };
     this._renderLiftGrid(DEFAULT_SEL.b);
     this._applyTexts();
@@ -3845,6 +4037,7 @@ export class Walkthrough {
     e.flabel.textContent = this.t('walk.finish');
     e.liftT.textContent = this.t('walk.lift');
     e.floorsBtn.querySelector('.lbl').textContent = this.t('walk.floors');
+    this._liftMusicHud();
     e.ureserve.textContent = this.t('walk.reserveThis');
     e.modes.children[0].textContent = this.t('walk.mode.live');
     e.modes.children[1].textContent = this.t('walk.mode.photo');
@@ -3956,11 +4149,18 @@ export class Walkthrough {
     this.root.classList.toggle('incar', !!inf);
     this._renderLiftGrid((inf && inf !== true && inf.bId) || (this._inCarInf && this._inCarInf.bId) || this.bId);
     const here = this.riding ? this._liftFloorNow : this.floor;
-    this.el.liftInd.textContent = here == null ? '' : floorLabel(here) + (this.riding ? (this._rideTarget > (here ?? 0) ? ' ▲' : ' ▼') : '');
+    const Q = this._lq, m = this.riding && this._rideLift && this._rideLift.motion;
+    const dir = m ? m.dir : (this.riding ? (this._rideTarget > (here ?? 0) ? 1 : -1) : (Q && Q.calls.size ? Q.dir : 0));
+    this.el.liftInd.textContent = here == null ? '' : floorLabel(here) + (dir > 0 ? ' ▲' : dir < 0 ? ' ▼' : '');
     for (const b of this.el.liftGrid.children) {
       const f = +b.dataset.f;
-      b.classList.toggle('on', this.riding && f === this._rideTarget);
+      b.classList.toggle('on', !!(Q && Q.calls.has(f)) || (this.riding && !Q && f === this._rideTarget));
       b.classList.toggle('here', !this.riding && f === this.floor);
+      b.setAttribute('aria-pressed', String(b.classList.contains('on')));
+    }
+    if (this.commons && this._shaftShown !== this.commons) {   // landing indicators show where each car stands
+      this._shaftShown = this.commons;
+      for (const i of this.liftInfos) if (i.lift && i.lift.showFloor && !i.lift.doorsOpen && i !== this._inCarInf && !this.riding) i.lift.showFloor(this._shaftAt(i), 0);
     }
   }
 
@@ -4116,7 +4316,9 @@ export class Walkthrough {
     this._h = {
       down: ev => this._onDown(ev), move: ev => this._onMove(ev), up: ev => this._onUp(ev),
       key: ev => this._onKey(ev, true), keyup: ev => this._onKey(ev, false), blur: () => { this.keys.clear(); this.pad = { u: 0, d: 0, l: 0, r: 0 }; },
-      vis: () => { this._paused = document.hidden; if (!this._paused) this.clock.getDelta(); },
+      vis: () => { this._paused = document.hidden; if (!this._paused) this.clock.getDelta();
+        // V11: the sound engine (engine, tyres, clicks, people) sleeps with the hidden tab; the radios mute themselves (radio.js)
+        try { const ac = this._ac; if (ac) { if (document.hidden) { if (ac.state === 'running') { this._acHid = true; ac.suspend(); } } else if (this._acHid) { this._acHid = false; ac.resume(); } } } catch { /* */ } },
       ctx: ev => ev.preventDefault(), wheel: ev => this._onWheel(ev),
       hud: ev => this._onHudClick(ev),
       poke: ev => this._onAnyDown(ev),
@@ -4188,7 +4390,7 @@ export class Walkthrough {
 
   _resize() {
     const w = this.container.clientWidth || window.innerWidth, h = this.container.clientHeight || window.innerHeight;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_DPR));
+    this.renderer.setPixelRatio(this._dyn ? this._dyn.ratio : Math.min(window.devicePixelRatio || 1, MAX_DPR));
     this.renderer.setSize(w, h, false);
     const a = w / Math.max(1, h);
     this.camera.aspect = a;
@@ -4329,7 +4531,12 @@ export class Walkthrough {
       return;
     }
     this._taps = { t: now, x, y };
-    if (this.riding || this.drive) return;
+    if (this.drive) return;
+    if (this.riding) {   // riding: only the car's own keys answer (V10-lift: more floors, cancel, alarm)
+      const a = this._pickAction(x, y), ty = a && a.action && a.action.type;
+      if (ty === 'liftButton' || ty === 'liftDoor' || ty === 'liftAlarm') return this._doAction(a);
+      return;
+    }
     const a = this._pickAction(x, y);
     if (a) return this._doAction(a);
     const car = this.mode === 'walk' && this._pickCarAt(x, y);
@@ -4504,6 +4711,8 @@ export class Walkthrough {
     this._owT = now;
     const P = this.player.pos;
     if (P.y < -4.6 || P.y > 1.5) return;
+    if (this.commons && this.commons.rooms && this.commons.rooms.inStair && this.commons.rooms.inStair(P)) return;   // V10: on a stair flight the commons stay
+
     const rd = this._rampDist(P.x, P.z), cur = this.bId || (this.unit && this.unit.building) || this._nearestBuilding(P.x, P.z);
     let want = null;
     if (rd < 0.5 && (P.y < -0.3 || this.drive)) want = [cur, -1];
@@ -4526,6 +4735,45 @@ export class Walkthrough {
     this._swapBusy = true;
     this._setFloor(want[0], want[1]).catch(e => console.warn('[walk] floor swap', e)).finally(() => { this._swapBusy = false; });
   }
+  // ---- V10-doors: every common-area / car-park door opens; the rooms behind them are built lazily by the commons
+  // (result.rooms = commons-rooms.js RoomSet) and registered here; stair-landing doors take the visitor to that floor.
+  _roomsAttach(c) {
+    const rs = c && c.rooms; if (!rs || typeof rs.attach !== 'function') return;
+    rs.attach({
+      add: g => { this._unregisterTree(g); this._register(g, 'commons'); },
+      remove: g => this._unregisterTree(g),
+      goTo: (bId, floor, from) => this._stairGo(bId, floor, from),
+    });
+    try { rs.tick(this.player.pos); } catch (e) { console.warn('[walk] rooms', e); }
+  }
+  _roomsTick() {
+    const rs = this.commons && this.commons.rooms; if (!rs || typeof rs.tick !== 'function') return;
+    const now = performance.now(); if (now - (this._roomsT || 0) < 200) return; this._roomsT = now;
+    try { rs.tick(this.player.pos); } catch (e) { if (!this._roomsErr) { this._roomsErr = true; console.warn('[walk] rooms', e); } }
+  }
+  _unregisterTree(g) {
+    const inG = o => { for (; o; o = o.parent) if (o === g) return true; return false; }, keep = e => !inG(e.o);
+    this.solids = this.solids.filter(keep); this.floors = this.floors.filter(keep); this.actions = this.actions.filter(keep);
+  }
+  async _stairGo(bId, floor, from) {
+    if (this._stairBusy || this.riding || this.drive || !BUILDINGS[bId]) return;
+    this._stairBusy = true;
+    try {
+      await this._fade(true);
+      const out = floor === 'outside';
+      await this._setFloor(bId, out ? 1 : floor);
+      if (this.disposed) return;
+      if (out) { this._initOutdoor(); const s = this._outdoorSpot(bId, 'outside'); if (s) this._place(s.pos, s.yaw, s.pitch || 0); }
+      else {
+        const c = this.commons, rs = c && c.rooms, a = rs && rs.arrival ? rs.arrival({ tower: (from && from.tower) || bId, from: from && from.from }) : null;
+        if (a && a.world) this._place(new THREE.Vector3(a.world[0], a.world[1], a.world[2]), a.yaw, 0);
+        else { const sp = c.spawn, [x, z] = localToWorldXZ(bId, sp.x, sp.z); this._place(new THREE.Vector3(x, floorY(bId, floor), z), (sp.yaw || 0) + BUILDINGS[bId].rotY, 0); }
+      }
+      this._updateHud(true);
+    } catch (e) { console.warn('[walk] stairs', e); }
+    finally { try { await this._fade(false); } catch { /* fade is cosmetic */ } this._stairBusy = false; }
+  }
+
   // Automatic sliding doors of the lobbies. From inside they open on approach (and stay unlocked for a moment after you
   // step out); from the forecourt they are locked until the video intercom beside them releases them.
   _autoDoors(dt) {
@@ -4625,7 +4873,8 @@ export class Walkthrough {
     if (b.dataset.s) { this.el.tools.classList.add('col'); return this.setStyle(b.dataset.s); }
     if (b.dataset.tp) return this._goto(b.dataset.tp);
     if (b.dataset.room != null) { const r = this.rooms[+b.dataset.room]; if (r) return this._goto({ room: r }); }
-    if (b.dataset.f != null && b.parentElement === this.el.liftGrid) { const inf = this._carOf(this.player.pos); if (inf) this._pressKey(inf, +b.dataset.f); }   // _pressKey ignores stops this tower does not have
+    if (k === 'liftmusic') return this._liftMusicToggle();
+    if (b.dataset.f != null && b.parentElement === this.el.liftGrid) { const inf = this.riding ? this._inCarInf : this._carOf(this.player.pos); if (inf) this._pressKey(inf, +b.dataset.f); }   // _pressKey ignores stops this tower does not have
   }
 }
 Object.assign(Walkthrough.prototype, driveMixin, gameMixin);

@@ -11,7 +11,18 @@
    "fr": "Vue aérienne depuis le sud-est : quatre bâtiments autour d’une cour commune",
    "it": "Vista aerea da sud-est: quattro edifici attorno a una corte comune",
    "de": "Luftbild von Südosten: vier Gebäude um einen gemeinsamen Innenhof"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/aerial-southeast-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/aerial-southeast-1200.webp",
+    1200
+   ]
+  ],
+  "width": 2400
  },
  {
   "src": "assets/gallery/day-corner-view.jpg",
@@ -25,7 +36,18 @@
    "fr": "Vue depuis l’angle des rues Hrouchevskoho et Zankovetskoï, de jour",
    "it": "Vista dall’angolo tra le vie Hruševs’koho e Zankovec’koï, di giorno",
    "de": "Blick von der Ecke Hruschewskyj-/Sankowezka-Straße bei Tag"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/day-corner-view-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/day-corner-view-1200.webp",
+    1200
+   ]
+  ],
+  "width": 2400
  },
  {
   "src": "assets/gallery/night-corner-view.jpg",
@@ -39,7 +61,18 @@
    "fr": "Vue du soir depuis l’angle des rues : le socle commercial et les tours",
    "it": "Vista serale dall’angolo delle strade: il podio commerciale e le torri",
    "de": "Abendansicht von der Straßenecke: Gewerbesockel und Türme"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/night-corner-view-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/night-corner-view-1200.webp",
+    1200
+   ]
+  ],
+  "width": 2400
  },
  {
   "src": "assets/web/group-12-1.jpg",
@@ -54,7 +87,18 @@
    "fr": "Le pavillon VILNYI SPA au pied de la tour : façade vitrée et terrasse avec transats",
    "it": "Il padiglione VILNYI SPA ai piedi della torre: facciata vetrata e terrazza con lettini",
    "de": "Der Pavillon VILNYI SPA am Fuß des Turms: Glasfassade und Terrasse mit Sonnenliegen"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/group-12-1-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/group-12-1-1200.webp",
+    1200
+   ]
+  ],
+  "width": 1920
  },
  {
   "src": "assets/gallery/street-southeast-panorama.jpg",
@@ -68,7 +112,18 @@
    "fr": "Panorama depuis la rue Zankovetskoï : les quatre bâtiments",
    "it": "Panorama da via Zankovec’koï: tutti e quattro gli edifici",
    "de": "Panorama von der Sankowezka-Straße: alle vier Gebäude"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/street-southeast-panorama-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/street-southeast-panorama-1200.webp",
+    1200
+   ]
+  ],
+  "width": 2400
  },
  {
   "src": "assets/web/lun-06.jpg",
@@ -83,7 +138,18 @@
    "fr": "La cour : aire de jeux pour enfants entre les bâtiments",
    "it": "La corte: area giochi per bambini tra gli edifici",
    "de": "Der Innenhof: Kinderspielplatz zwischen den Gebäuden"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/lun-06-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/lun-06-1200.webp",
+    1200
+   ]
+  ],
+  "width": 1600
  },
  {
   "src": "assets/gallery/commercial-podium-corner.jpg",
@@ -97,7 +163,18 @@
    "fr": "Bâtiment 2 : le socle commercial de deux niveaux à l’angle des rues",
    "it": "Edificio 2: il podio commerciale a due piani all’angolo delle strade",
    "de": "Gebäude 2: der zweigeschossige Gewerbesockel an der Straßenecke"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/commercial-podium-corner-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/commercial-podium-corner-1200.webp",
+    1200
+   ]
+  ],
+  "width": 2400
  },
  {
   "src": "assets/web/lun-05.jpg",
@@ -112,7 +189,18 @@
    "fr": "Bâtiment 2 côté rue : le socle commercial aux pilastres aspect bois et les terrasses plantées au-dessus",
    "it": "Edificio 2 dalla strada: il podio commerciale con lesene effetto legno e le terrazze verdi sovrastanti",
    "de": "Gebäude 2 von der Straße: Gewerbesockel mit Pilastern in Holzoptik, darüber begrünte Terrassen"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/lun-05-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/lun-05-1200.webp",
+    1200
+   ]
+  ],
+  "width": 1600
  },
  {
   "src": "assets/gallery/aerial-south.jpg",
@@ -126,7 +214,18 @@
    "fr": "Vue aérienne depuis le sud : la cour et le toit végétalisé du socle",
    "it": "Vista aerea da sud: la corte e il tetto verde del podio",
    "de": "Luftbild von Süden: Innenhof und begrüntes Dach des Sockels"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/aerial-south-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/aerial-south-1200.webp",
+    1200
+   ]
+  ],
+  "width": 2400
  },
  {
   "src": "assets/web/lun-07.jpg",
@@ -141,7 +240,18 @@
    "fr": "Une allée de la cour, le long de l’aire de jeux et des plantations",
    "it": "Un vialetto della corte accanto all’area giochi e al verde",
    "de": "Weg im Innenhof entlang des Spielplatzes und der Bepflanzung"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/lun-07-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/lun-07-1200.webp",
+    1200
+   ]
+  ],
+  "width": 1600
  },
  {
   "src": "assets/gallery/street-east-buildings-2-1.jpg",
@@ -155,7 +265,18 @@
    "fr": "Vue depuis la rue Hrouchevskoho : bâtiments 2 et 1",
    "it": "Vista da via Hruševs’koho: edifici 2 e 1",
    "de": "Blick von der Hruschewskyj-Straße: Gebäude 2 und 1"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/street-east-buildings-2-1-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/street-east-buildings-2-1-1200.webp",
+    1200
+   ]
+  ],
+  "width": 2400
  },
  {
   "src": "assets/web/lun-12.jpg",
@@ -170,7 +291,18 @@
    "fr": "Les niveaux supérieurs : terrasses et angle arrondi vitré",
    "it": "I piani alti: terrazze e angolo arrotondato vetrato",
    "de": "Die oberen Geschosse: Terrassen und die verglaste, abgerundete Ecke"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/lun-12-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/lun-12-1200.webp",
+    1200
+   ]
+  ],
+  "width": 1920
  },
  {
   "src": "assets/gallery/commercial-podium-entrance.jpg",
@@ -184,7 +316,18 @@
    "fr": "Bâtiment 2 côté rue Hrouchevskoho : commerces et portail d’entrée",
    "it": "Edificio 2 da via Hruševs’koho: fronte commerciale e portale d’ingresso",
    "de": "Gebäude 2 von der Hruschewskyj-Straße: Gewerbefront und Eingangsportal"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/commercial-podium-entrance-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/commercial-podium-entrance-1200.webp",
+    1200
+   ]
+  ],
+  "width": 2400
  },
  {
   "src": "assets/web/lun-04.jpg",
@@ -199,7 +342,18 @@
    "fr": "Bâtiment 2 : les niveaux d’habitation au-dessus du socle commercial vitré",
    "it": "Edificio 2: i piani residenziali sopra il podio commerciale vetrato",
    "de": "Gebäude 2: Wohngeschosse über dem verglasten Gewerbesockel"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/lun-04-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/lun-04-1200.webp",
+    1200
+   ]
+  ],
+  "width": 1600
  },
  {
   "src": "assets/gallery/street-south-buildings-4-2.jpg",
@@ -213,7 +367,18 @@
    "fr": "Vue depuis le sud : bâtiments 4 et 2 au premier plan, les deux tours plus hautes derrière",
    "it": "Vista da sud: edifici 4 e 2 in primo piano, le due torri più alte dietro",
    "de": "Blick von Süden: Gebäude 4 und 2 vorn, die beiden höheren Türme dahinter"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/street-south-buildings-4-2-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/street-south-buildings-4-2-1200.webp",
+    1200
+   ]
+  ],
+  "width": 2400
  },
  {
   "src": "assets/gallery/tower-and-spa.jpg",
@@ -227,7 +392,18 @@
    "fr": "Une tour résidentielle et le pavillon VILNYI SPA",
    "it": "Una torre residenziale e il padiglione VILNYI SPA",
    "de": "Ein Wohnturm und der Pavillon VILNYI SPA"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/tower-and-spa-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/tower-and-spa-1200.webp",
+    1200
+   ]
+  ],
+  "width": 2400
  },
  {
   "src": "assets/web/lun-15.jpg",
@@ -242,7 +418,18 @@
    "fr": "Le soir, à l’entrée d’un bâtiment : auvents éclairés et allée bordée de haies",
    "it": "Sera all’ingresso di un edificio: pensiline illuminate e vialetto tra le siepi",
    "de": "Abend am Eingang eines Gebäudes: beleuchtete Vordächer und ein von Hecken gesäumter Weg"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/lun-15-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/lun-15-1200.webp",
+    1200
+   ]
+  ],
+  "width": 1920
  },
  {
   "src": "assets/web/lun-13.jpg",
@@ -257,7 +444,18 @@
    "fr": "Contre-plongée sur la façade d’une tour : balcons et parement ton pierre",
    "it": "Vista dal basso della facciata di una torre: balconi e rivestimento color pietra",
    "de": "Blick hinauf an der Fassade eines Turms: Balkone und steinfarbene Verkleidung"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/lun-13-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/lun-13-1200.webp",
+    1200
+   ]
+  ],
+  "width": 1920
  },
  {
   "src": "assets/web/group-03.jpg",
@@ -272,7 +470,14 @@
    "fr": "Les niveaux supérieurs avec terrasses et l’enseigne VILNYI en toiture",
    "it": "I piani alti con le terrazze e l’insegna VILNYI sul tetto",
    "de": "Obere Geschosse mit Terrassen und dem VILNYI-Schriftzug auf dem Dach"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/group-03-640.webp",
+    640
+   ]
+  ],
+  "width": 1200
  },
  {
   "src": "assets/gallery/courtyard-walkway-detail.jpg",
@@ -286,7 +491,18 @@
    "fr": "Au niveau du sol : une allée paysagée le long de la façade",
    "it": "A livello del suolo: vialetto sistemato a verde lungo la facciata",
    "de": "Auf Straßenniveau: begrünter Weg entlang der Fassade"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/courtyard-walkway-detail-640.webp",
+    640
+   ],
+   [
+    "assets/gallery/sm/courtyard-walkway-detail-1200.webp",
+    1200
+   ]
+  ],
+  "width": 2400
  },
  {
   "src": "assets/web/group-07.jpg",
@@ -301,6 +517,13 @@
    "fr": "Contre-plongée : vitrages et balcons d’une tour",
    "it": "Vista dal basso: vetrate e balconi di una torre",
    "de": "Blick nach oben: Verglasung und Balkone eines Turms"
-  }
+  },
+  "variants": [
+   [
+    "assets/gallery/sm/group-07-640.webp",
+    640
+   ]
+  ],
+  "width": 1200
  }
 ]

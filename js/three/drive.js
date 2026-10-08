@@ -30,6 +30,17 @@ const SESSION_DMG = new Map();                        // record id → damage re
 const wrapPi = a => { a = (a + Math.PI) % (2 * Math.PI); return (a < 0 ? a + 2 * Math.PI : a) - Math.PI; };
 const carMass = S => ((S.perf && S.perf.mass) || 1) * 1600;
 const TICK_MS = 100;                                  // drive:tick events (10 per second)
+// V10 driver's view: the resting gaze turns this much towards the middle of the car (rad; + = the driver's side) and down
+const FP_YAW = -0.1, FP_PITCH = -0.07;
+// camera-frame point (x right, y up, −z ahead) → projection plane: Panini d = 1 (pan) or a plain lens; and back to a plain lens
+const NOOP = function () {};
+function fpProj(x, y, z, pan) { const d = Math.max(0.02, -z); if (!pan) return [x / d, y / d]; const th = Math.atan2(x, d), S = 2 / (1 + Math.cos(th)); return [S * Math.sin(th), S * y / Math.hypot(x, d)]; }
+function fpInv(xp, yp, pan) { if (!pan) return [xp, yp]; const th = 2 * Math.atan(xp / 2), S = 2 / (1 + Math.cos(th)); return [Math.tan(th), yp / S / Math.cos(th)]; }
+// portrait (aspect below FP_DECK_ASPECT): the 3D band's largest vertical angle (°), the room kept above the glass for the title card,
+// the deck's smallest height (px) and the band's smallest share of the screen height
+const FP_DECK_ASPECT = 1.05, FP_VMAX = 112, FP_DECK_TOP = 58, FP_DECK_MIN = 300, FP_BAND_MIN = 0.42;
+// landscape / desktop: the room kept above the glass for the title card (px)
+const FP_TOP_UI = 56;
 
 const CSS = `
 .vw-dx{position:absolute;display:flex;gap:8px;align-items:center;direction:ltr}
@@ -78,6 +89,62 @@ const CSS = `
 .vw.phone .vw-dradio .st{max-width:132px}
 @media (orientation:portrait){.vw.phone .vw-dradio{bottom:calc(256px + var(--sb))}.vw.phone .vw-dname{bottom:calc(304px + var(--sb))}}
 @media (orientation:landscape){.vw.phone .vw-dradio{bottom:auto;top:calc(56px + var(--st));left:calc(12px + var(--sl));transform:none}.vw[dir=rtl].phone .vw-dradio{left:auto;right:calc(12px + var(--sr))}.vw.phone .vw-dradio .st{max-width:150px}.vw.phone .vw-dname{bottom:calc(126px + var(--sb))}}
+/* V10: the controls keep to the edges and the bottom strip, small and see-through, so the windscreen and the side windows stay
+   free (no backdrop blur: lighter on phones). The radio folds into a button; open, it floats above the bottom controls. */
+.vw-dradiobtn{position:absolute;left:calc(12px + var(--sl));bottom:calc(84px + var(--sb));width:42px;height:42px;pointer-events:auto;touch-action:manipulation}
+.vw[dir=rtl] .vw-dradiobtn{left:calc(12px + var(--sl))}
+.vw-dradiobtn .dot{position:absolute;right:7px;top:7px;width:7px;height:7px;border-radius:50%;background:#7fe08f;opacity:0;box-shadow:0 0 6px #7fe08f}
+.vw-dradiobtn.play .dot{opacity:1}.vw-dradiobtn.on .dot{background:#111;box-shadow:none}
+.vw.driving:not(.radio-open) .vw-dradio{display:none}
+.vw:not(.phone) .vw-dradiobtn{left:calc(50% - 21px);bottom:calc(22px + var(--sb))}.vw.radio-open:not(.phone) .vw-dradiobtn{bottom:calc(72px + var(--sb))}
+.vw.drive-fp:not(.phone) .vw-dradio,.vw:not(.phone) .vw-dradio{bottom:calc(22px + var(--sb))}
+.vw.phone .vw-dradio{bottom:calc(166px + var(--sb))!important;top:auto!important;left:50%!important;right:auto!important;transform:translateX(-50%)!important;background:rgba(12,11,9,.72);-webkit-backdrop-filter:none;backdrop-filter:none}
+.vw.phone .vw-dround,.vw.phone .vw-dgear{background:rgba(12,11,9,.42);-webkit-backdrop-filter:none;backdrop-filter:none;border-color:rgba(201,164,92,.28)}
+.vw.phone .vw-dround{width:42px;height:42px}.vw.phone .vw-dgear{height:42px;min-width:52px;font-size:14px}
+.vw.phone .vw-dround.on{background:linear-gradient(180deg,#f0d596,#b88a3c)}
+.vw.phone .vw-dx{gap:6px}
+.vw.phone .vw-steer{width:140px;height:52px;border-radius:26px;left:calc(10px + var(--sl));bottom:calc(14px + var(--sb));background:rgba(12,11,9,.36);border-color:rgba(201,164,92,.26);-webkit-backdrop-filter:none;backdrop-filter:none}
+.vw.phone .vw-steer .knob{width:42px;height:42px;margin:-21px 0 0 -21px;opacity:.9}
+.vw.phone .vw-pedals{right:calc(10px + var(--sr));bottom:calc(12px + var(--sb));gap:7px}
+.vw.phone .vw-pedals button{background:linear-gradient(180deg,rgba(40,36,28,.45),rgba(10,10,10,.5));border-color:rgba(201,164,92,.3)}
+.vw.phone .vw-pedals button i{inset:7px 8px 22px}
+.vw.phone .vw-pedals .brake{width:54px;height:66px}.vw.phone .vw-pedals .gas{width:46px;height:92px}
+.vw.phone .vw-pedals button.on{background:linear-gradient(180deg,#e6c987,#b88a3c)}
+.vw.phone .vw-spdo{left:50%!important;transform:translateX(-50%)!important;bottom:calc(10px + var(--sb))!important;width:84px!important;height:84px!important;background:radial-gradient(circle at 50% 40%,rgba(28,24,17,.62),rgba(6,6,6,.55) 70%);box-shadow:0 4px 14px rgba(0,0,0,.3)}
+.vw.phone .vw-spdo .num b{font-size:27px!important;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+.vw.phone .vw-spdo .num i{font-size:8px;margin-top:2px}.vw.phone .vw-spdo .gear{bottom:8px;font-size:10px}
+.vw.phone .vw-spdo .lim{width:28px;height:28px;right:-10px;top:-6px;font-size:11px;line-height:21px;border-width:3px}
+.vw.phone .vw-dxr{right:calc(10px + var(--sr));bottom:calc(114px + var(--sb))!important}
+.vw.phone .vw-dname{bottom:calc(214px + var(--sb))!important}
+@media (orientation:landscape){
+  .vw.phone .vw-dxr{right:calc(126px + var(--sr));bottom:calc(10px + var(--sb))!important}
+  .vw.phone .vw-spdo{left:auto!important;right:calc(298px + var(--sr));transform:none!important;width:74px!important;height:74px!important;bottom:calc(8px + var(--sb))!important}
+  .vw.phone .vw-spdo .num b{font-size:23px!important}
+  .vw.phone .vw-dradiobtn{bottom:calc(74px + var(--sb))}
+  .vw.phone .vw-dradio{bottom:calc(122px + var(--sb))!important}
+  .vw.phone .vw-dname{bottom:calc(66px + var(--sb))!important}
+}
+/* V10 portrait driver's view: the 3D picture is a band at the top, this deck fills the screen below it (height --deck) */
+.vw-ddeck{display:none}
+.vw.driving.drive-deck .vw-ddeck{display:block;position:absolute;left:0;right:0;bottom:0;height:var(--deck);pointer-events:none!important;
+  background:linear-gradient(180deg,#26221b 0,#15130f 10px,#0f0e0c 38%,#090908 100%);border-top:1px solid rgba(201,164,92,.38);box-shadow:0 -10px 24px rgba(0,0,0,.35)}
+.vw.driving.drive-deck .vw-ddeck::before{content:"";position:absolute;left:14px;right:14px;top:7px;border-top:1px dashed rgba(201,164,92,.22)}
+.vw.drive-deck .vw-dtop{top:auto!important;bottom:calc(var(--deck) - 104px);right:calc(10px + var(--sr));left:auto;max-width:calc(100% - 136px);flex-wrap:wrap;justify-content:flex-end;gap:6px}
+.vw[dir=rtl].drive-deck .vw-dtop{right:calc(10px + var(--sr));left:auto}
+.vw.phone.drive-fp .vw-dtop [data-k=carview] .lbl{display:none}.vw.phone.drive-fp .vw-dtop [data-k=carview]{width:40px;padding:0;justify-content:center}
+@media (orientation:landscape){.vw.phone.drive-fp .vw-dtop{gap:5px}.vw.phone.drive-fp .vw-dtop .vw-btn{height:36px;opacity:.88}.vw.phone.drive-fp .vw-dtop .vw-ico,.vw.phone.drive-fp .vw-dtop [data-k=carview]{width:36px}}
+.vw.drive-deck .vw-spdo{left:calc(12px + var(--sl))!important;right:auto!important;transform:none!important;bottom:calc(var(--deck) - 122px)!important;width:104px!important;height:104px!important;opacity:1!important;pointer-events:auto}
+.vw.drive-deck .vw-spdo .num b{font-size:32px!important}
+.vw.drive-deck .vw-spdo .lim{width:32px;height:32px;right:-8px;top:-4px;font-size:12px;line-height:25px}
+.vw.drive-deck .vw-dradio{display:flex!important;bottom:calc(var(--deck) - 178px)!important;left:50%!important;transform:translateX(-50%)!important;width:calc(100% - 20px);justify-content:space-between;background:rgba(0,0,0,.35)}
+.vw.drive-deck .vw-dradio .st{max-width:none;flex:1}
+.vw.drive-deck .vw-dradiobtn{display:none}
+.vw.drive-deck .vw-steer{width:min(200px,calc(100vw - 186px));height:70px;border-radius:35px;bottom:calc(16px + var(--sb))}
+.vw.drive-deck .vw-steer .knob{width:52px;height:52px;margin:-26px 0 0 -26px}
+.vw.drive-deck .vw-pedals .brake{width:66px;height:88px}.vw.drive-deck .vw-pedals .gas{width:58px;height:126px}
+.vw.drive-deck .vw-dxr{right:auto;left:calc(10px + var(--sl));bottom:calc(100px + var(--sb))!important}
+.vw.drive-deck .vw-dname{bottom:calc(166px + var(--sb))!important;animation:none;opacity:.75;background:none;font-size:10px;letter-spacing:.2em}
+.vw.drive-deck .vw-dhint{display:none}
 `;
 const ICON = {
   horn: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10v4h3l6 4V6l-6 4z"/><path d="M16.5 9.5c1 .7 1.5 1.5 1.5 2.5s-.5 1.800-1.500 2.500M19 7c1.600 1.300 2.500 3 2.500 5s-.9 3.700-2.500 5"/></svg>',
@@ -88,6 +155,7 @@ const ICON = {
   volDn: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.500L12 6v12l-4.500-3.500H4z"/><path d="M16 12h5"/></svg>',
   volUp: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.500L12 6v12l-4.500-3.500H4z"/><path d="M16 12h5M18.500 9.500v5"/></svg>',
   hand: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6.2"/><path d="M4.600 6.500a9.500 9.500 0 0 0 0 11M19.400 6.500a9.500 9.500 0 0 1 0 11"/><path d="M10.500 15v-6h2.200a1.800 1.800 0 0 1 0 3.600h-2.200"/></svg>',
+  radio: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="9" width="18" height="11" rx="2"/><path d="M7 9l10-5"/><circle cx="15.500" cy="14.500" r="2.300"/><path d="M6.500 13h4M6.500 16h4"/></svg>',
   power: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3.500v8"/><path d="M6.600 6.800a7.500 7.500 0 1 0 10.800 0"/></svg>',
 };
 
@@ -507,6 +575,7 @@ export const driveMixin = {
       this.fleet.setFocus(null); this.fleet.moved(rec);
       for (const e of this.solids) if (e.o === rec.collider) e.box = null;
       this.drive = null;
+      this._driveViewport(0); this._paniniSet(null);
       this.root.classList.remove('driving', 'tilt', 'drive-fp');
       this._tiltStop();
       this._applyFov();
@@ -540,6 +609,106 @@ export const driveMixin = {
     D.view = D.view === 'fp' ? 'chase' : 'fp'; D.cam = null; D.look.yaw = D.look.pitch = 0;
     D.car.setInside(D.view === 'fp'); if (D.car.cockpit) D.car.cockpit.group.visible = true; lsSet('vrc.walk.carView', D.view); this.root.classList.toggle('drive-fp', D.view === 'fp');
     this._renderDriveHud(true);
+  },
+  // V10: frame the driver's view on the glass — the windscreen's four corners and the front half of both side windows must be in
+  // the picture on any screen shape. Seen from the driver's real head point those span ≈ 100–125° across. A plain (rectilinear)
+  // lens that wide stretches the edges and shrinks the road; so the picture goes through a Panini projection (d = 1, as in game
+  // engines' wide-angle modes): verticals stay straight, the middle keeps its natural size, the sides are compressed — the road
+  // ahead is ≈ 1.5 × larger than with a plain lens of the same width. ?panini=0 switches it off (plain off-centre lens).
+  // The key points are mapped into that projection at the resting gaze (FP_YAW / FP_PITCH); the frame = their extent + a margin,
+  // widened to the screen's shape, off-centre (lens shift) instead of turning the head further.
+  // Landscape / desktop: the whole screen; the spare height goes 30 % above the glass, 70 % below (dashboard).
+  // Portrait (a phone held upright): that width would need ≈ 150° vertically — a fish-eye of seat cushions and headliner. Instead
+  // the 3D picture is a band at the top at a sane vertical angle (≤ FP_VMAX), from just above the glass (room for the title card)
+  // into the dashboard, and the rest of the screen is the control deck — none of the controls lies over the glass.
+  // Returns { deck (px), out: frame in projection units, src: the rectangle the camera renders, eye }. Cached per car + screen.
+  _fpFrame(D, W, H) {
+    const car = D.car, pan = this._paniniOK(), aspect = W / Math.max(1, H), key = W + 'x' + H + (pan ? 'p' : 'r');
+    if (D.fpf && D.fpf.key === key) return D.fpf;
+    const S = car.spec, eye = (car.head || car.eye).clone(); { const rw = S.gh && S.gh.roofW; if (rw) eye.x = Math.min(eye.x, rw - 0.22); }   // under a narrow roof the head is nearer the middle
+    const K = car.glassKeys ? car.glassKeys(eye) : { screen: [], sides: [] }, pts = [...K.screen, ...K.sides.flat()];
+    const o = new THREE.Object3D(); o.position.copy(eye); o.rotation.set(FP_PITCH, Math.PI + FP_YAW, 0, 'YXZ'); o.updateMatrixWorld(true);
+    const inv = o.matrixWorld.clone().invert(), q = new THREE.Vector3();
+    let u0 = -0.9, u1 = 0.9, v0 = -0.3, v1 = 0.35;                       // fallback (no glass found): a plain wide view
+    if (pts.length) { u0 = v0 = Infinity; u1 = v1 = -Infinity; for (const p of pts) { q.copy(p).applyMatrix4(inv); const [u, v] = fpProj(q.x, q.y, q.z, pan); u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); } }
+    const pu = 0.05 + 0.02 * (u1 - u0), pv = 0.05;
+    u0 -= pu; u1 += pu; v0 -= pv; v1 += pv;
+    const Wu = u1 - u0, Hv = v1 - v0;
+    let deck = 0, Wf, Hf, vTop;
+    if (aspect < FP_DECK_ASPECT) {
+      Wf = Wu; const px = W / Wf;                                        // px per projection unit across
+      const top = FP_DECK_TOP / px, HfMax = 2 * Math.tan(FP_VMAX / 2 * Math.PI / 180), need = Hv + top + 0.3;   // + a strip of dashboard
+      Hf = Math.min(HfMax, Math.max(need, H * FP_BAND_MIN / px));
+      const band = Math.round(Math.min(H - FP_DECK_MIN, Hf * px)); Hf = band / px; deck = H - band;
+      // spare height: half above the glass (headliner, mirror — or sky in an open car), half below (dashboard, wheel)
+      const spare = Hf - need; vTop = spare >= 0 ? v1 + top + 0.5 * spare : v1 + Math.max(0, top + spare);
+    } else {
+      const v0d = Math.min(v0, -0.42), Hvd = v1 - v0d;                    // always a little of the bonnet / dashboard top: the car is felt
+      const topF = Math.min(0.2, FP_TOP_UI / H);                          // the title card stays off the glass
+      Wf = Math.max(Wu, aspect * Hvd / (1 - topF)); Hf = Wf / aspect;
+      vTop = v1 + Math.max(topF * Hf, (Hf - Hvd) * 0.3);
+    }
+    // horizontal slack (wide screens): move the centre towards straight ahead
+    const ex = (Wf - Wu) / 2, uc = clamp(0, (u0 + u1) / 2 - ex, (u0 + u1) / 2 + ex), vc = vTop - Hf / 2;
+    const out = { uc, vc, W: Wf, H: Hf };
+    // the rectangle the camera must render: the output's border mapped back to a plain lens (the inverse is monotonic: the border
+    // holds the extremes)
+    let s0 = Infinity, s1 = -Infinity, t0 = Infinity, t1 = -Infinity;
+    for (let k = 0; k <= 24; k++) { const f = k / 24 - 0.5;
+      for (const [xp, yp] of [[uc + f * Wf, vc - Hf / 2], [uc + f * Wf, vc + Hf / 2], [uc - Wf / 2, vc + f * Hf], [uc + Wf / 2, vc + f * Hf]]) {
+        const [u, v] = fpInv(xp, yp, pan); s0 = Math.min(s0, u); s1 = Math.max(s1, u); t0 = Math.min(t0, v); t1 = Math.max(t1, v); } }
+    const Ws = s1 - s0, Hs = t1 - t0, suc = (s0 + s1) / 2, svc = (t0 + t1) / 2;
+    const src = { uc: suc, vc: svc, W: Ws, H: Hs, aspect: Ws / Hs, fov: 2 * Math.atan(Hs / 2) * 180 / Math.PI, sx: 2 * suc / Ws, sy: 2 * svc / Hs };
+    D.fpf = { key, eye, deck, pan, out, src, hfov: 2 * Math.atan(pan ? Math.tan(2 * Math.atan(Wf / 4)) : Wf / 2) * 180 / Math.PI };
+    return D.fpf;
+  },
+  _paniniOK() {
+    if (this._panOK == null) { let off = false; try { off = /[?&]panini=0\b/.test(location.search); } catch { /* */ } this._panOK = !off && !!this.renderer.capabilities; }
+    return this._panOK;
+  },
+  // V10: the Panini pass. The main render (walk.js loop → renderer.render(scene, camera)) is redirected into a render target by
+  // scene.onBeforeRender, and scene.onAfterRender draws it onto the screen band through the projection. The target is flagged as
+  // an "XR" target so three.js tone-maps and sRGB-encodes into it exactly as for the screen (same shader programs, no recompiles).
+  _paniniSet(fr) {
+    let P = this._pan;
+    const on = !!(fr && fr.pan);
+    if (!on) { if (P) { this.scene.onBeforeRender = NOOP; this.scene.onAfterRender = NOOP; P.rt.dispose(); P.mat.dispose(); P.geo.dispose(); this._pan = null; } return; }
+    const r = this.renderer;
+    if (!P) {
+      const rt = new THREE.WebGLRenderTarget(4, 4, { samples: r.capabilities.isWebGL2 ? 4 : 0, depthBuffer: true });
+      rt.texture.colorSpace = THREE.SRGBColorSpace; rt.texture.internalFormat = 'RGBA8'; rt.isXRRenderTarget = true;
+      const geo = new THREE.PlaneGeometry(2, 2);
+      const mat = new THREE.ShaderMaterial({ depthTest: false, depthWrite: false, toneMapped: false,
+        uniforms: { tSrc: { value: rt.texture }, uOut: { value: new THREE.Vector4() }, uSrc: { value: new THREE.Vector4() } },
+        vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+        fragmentShader: `uniform sampler2D tSrc; uniform vec4 uOut, uSrc; varying vec2 vUv;
+          void main(){ vec2 p = uOut.xy + (vUv - 0.5) * uOut.zw;            // Panini (d = 1) → direction → plain-lens coordinates
+            float th = 2.0 * atan(p.x * 0.5), S = 2.0 / (1.0 + cos(th));
+            vec2 q = vec2(tan(th), p.y / S / cos(th));
+            gl_FragColor = texture2D(tSrc, (q - uSrc.xy) / uSrc.zw + 0.5); }` });
+      const mesh = new THREE.Mesh(geo, mat); mesh.frustumCulled = false;
+      const qs = new THREE.Scene(); qs.add(mesh);
+      P = this._pan = { rt, geo, mat, qs, qc: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), deck: 0 };
+      this.scene.onBeforeRender = (rr, sc, cam, T) => { const Q = this._pan; if (Q && cam === this.camera && !T) rr.setRenderTarget(Q.rt); };
+      this.scene.onAfterRender = (rr, sc, cam) => { const Q = this._pan; if (!Q || cam !== this.camera || rr.getRenderTarget() !== Q.rt) return; rr.setRenderTarget(null); (this.__draw || rr.render.bind(rr))(Q.qs, Q.qc); };   // __draw: the test tools keep the real render() there while they stub it
+    }
+    const W = this.container.clientWidth || window.innerWidth, H = this.container.clientHeight || window.innerHeight, dpr = r.getPixelRatio();
+    const ow = W * dpr, oh = (H - fr.deck) * dpr;
+    // the source sharp enough in the middle (there the projection is 1 : 1), but at most 1.6 × the screen's pixels (phones 1.15 ×)
+    let kx = fr.src.W / fr.out.W, ky = fr.src.H / fr.out.H; const k = Math.min(1, Math.sqrt((this._isTouch ? 1.15 : 1.6) / Math.max(1e-3, kx * ky))); kx *= k; ky *= k;
+    const mx = r.capabilities.maxTextureSize || 4096, w = Math.min(mx, Math.max(16, Math.round(ow * kx))), h = Math.min(mx, Math.max(16, Math.round(oh * ky)));
+    if (P.rt.width !== w || P.rt.height !== h) P.rt.setSize(w, h);
+    P.mat.uniforms.uOut.value.set(fr.out.uc, fr.out.vc, fr.out.W, fr.out.H); P.mat.uniforms.uSrc.value.set(fr.src.uc, fr.src.vc, fr.src.W, fr.src.H);
+    P.deck = fr.deck;
+  },
+  // V10: the 3D picture in a band at the top (portrait driver's view) or the whole canvas; the deck below is HTML (CSS var --deck)
+  _driveViewport(deck) {
+    const r = this.renderer, W = this.container.clientWidth || window.innerWidth, H = this.container.clientHeight || window.innerHeight;
+    r.setViewport(0, deck, W, H - deck);                                 // three.js: (x, y) = lower-left corner; re-set every frame (setSize resets it)
+    if (deck !== this._deckPx) {
+      this._deckPx = deck; this.root.classList.toggle('drive-deck', deck > 0); this.root.style.setProperty('--deck', deck + 'px');
+      if (!deck) { this.camera.aspect = W / Math.max(1, H); this.camera.updateProjectionMatrix(); }
+    }
   },
   _toggleGear(g) {
     const D = this.drive; if (!D) return;
@@ -611,6 +780,13 @@ export const driveMixin = {
     e.dradioName.textContent = st.on && s ? s.name : this.t('walk.radio.off');
     e.dradioSub.textContent = !st.on ? this.t('walk.radio.title') : (s ? s.freq + ' · ' : '') + (st.status === 'playing' ? this.t('walk.radio.live') : st.status === 'error' ? this.t('walk.radio.none') : this.t('walk.radio.connecting'));
     e.dradio.querySelector('[data-kr=power]').classList.toggle('on', st.on);
+    if (e.dradioBtn) { e.dradioBtn.classList.toggle('play', st.on && st.status === 'playing'); e.dradioBtn.title = e.dradioName.textContent; }
+  },
+  // V10: radio bar open / folded (null = the remembered choice, else folded on a phone, open on a computer)
+  _radioBar(open) {
+    if (open == null) { const v = lsGet('vrc.walk.radioBar'); open = v ? v === 'open' : !this._phone; } else lsSet('vrc.walk.radioBar', open ? 'open' : 'min');
+    this.root.classList.toggle('radio-open', !!open);
+    const b = this.el && this.el.dradioBtn; if (b) { b.setAttribute('aria-expanded', open ? 'true' : 'false'); b.setAttribute('aria-label', this.t('walk.radio.title')); b.classList.toggle('on', !!open); }
   },
 
   // ======================= the physics world =======================
@@ -763,7 +939,11 @@ export const driveMixin = {
     try {
       if (/[?&]mirrors=0/.test(location.search) || lsGet('vrc.walk.mirrors') === 'off') return;
       const touch = !!this._isTouch, w = touch ? 256 : 384, h = touch ? 64 : 96;
-      const rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, depthBuffer: true, generateMipmaps: false });
+      // V11: an "XR" target in RGBA8 with the screen's colour space → three.js tone-maps and sRGB-encodes into it with the SAME
+      // shader programs as for the screen (a plain half-float target needed a second, linear variant of every program of the
+      // scene: ≈ 150 compiles when getting into a car). The mirror quads read it back without a second tone mapping.
+      const rt = new THREE.WebGLRenderTarget(w, h, { depthBuffer: true, generateMipmaps: false });
+      rt.texture.colorSpace = THREE.SRGBColorSpace; rt.texture.internalFormat = 'RGBA8'; rt.isXRRenderTarget = true; rt.texture.userData.displayEncoded = true;
       const cam = new THREE.PerspectiveCamera(ck.mirrorPose.fov, ck.mirrorPose.aspect, 0.4, touch ? 140 : 240);
       D.mirror = { rt, cam, every: touch ? 6 : 3, n: 0 };
       ck.setMirrorMap(rt.texture);
@@ -865,15 +1045,23 @@ export const driveMixin = {
     const cam = this.camera, L = D.look, kmhAbs = Math.abs(ctl.v) * 3.6;
     if (!this._dragging) { L.yaw *= 1 - damp(2.2, dt); L.pitch *= 1 - damp(2.2, dt); }
     const rush = Math.min(13, Math.max(0, kmhAbs - 70) * 0.062);              // the view widens a little at speed
-    const vf = (D.view === 'fp' ? Math.min(this._fovWalk || cam.fov, cam.aspect < 1 ? 92 : 70) : Math.min(this._fovWalk || cam.fov, cam.aspect < 1 ? 100 : 72)) + rush;
-    if (Math.abs(cam.fov - vf) > 0.05) { cam.fov += (vf - cam.fov) * (dt ? damp(4, dt) : 1); cam.updateProjectionMatrix(); }
-    if (D.view === 'fp') {
-      const e = car.eye.clone(); { const rw = S.gh && S.gh.roofW; if (rw) e.x = Math.min(e.x, rw - 0.22); }   // under a narrow roof the driver's head is nearer the middle (the A-pillar stays out of the road ahead)
+    const fr = D.view === 'fp' ? this._fpFrame(D, this.container.clientWidth || window.innerWidth, this.container.clientHeight || window.innerHeight) : null;
+    this._driveViewport(fr ? fr.deck : 0);
+    this._paniniSet(fr);
+    if (fr) {
+      // V10: the driver's real head point (car-models.js `head`), the view framed on the glass (_fpFrame): the camera renders the
+      // source rectangle (off-centre lens); with the Panini pass on, _paniniSet maps it onto the screen
+      if (cam.aspect !== fr.src.aspect || cam.fov !== fr.src.fov) { cam.aspect = fr.src.aspect; cam.fov = fr.src.fov; }
+      cam.updateProjectionMatrix(); const P = cam.projectionMatrix.elements; P[8] = fr.src.sx; P[9] = fr.src.sy; cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
+      const e = fr.eye.clone();
       car.group.localToWorld(e);
       cam.position.copy(e);
       // look a little into the corner, like a driver does; reversing with the view turned far round = looking over the shoulder
-      cam.rotation.set(ctl.pitch * 0.9 - 0.05 + L.pitch, ctl.yaw + Math.PI + L.yaw + ctl.steer * 0.22, -ctl.roll * 0.6, 'YXZ');
+      cam.rotation.set(ctl.pitch * 0.9 + FP_PITCH + L.pitch, ctl.yaw + Math.PI + FP_YAW + L.yaw + ctl.steer * 0.14, -ctl.roll * 0.6, 'YXZ');
     } else {
+      const vf = Math.min(this._fovWalk || cam.fov, cam.aspect < 1 ? 100 : 72) + rush;
+      if (Math.abs(cam.fov - vf) > 0.05) { cam.fov += (vf - cam.fov) * (dt ? damp(4, dt) : 1); cam.updateProjectionMatrix(); }
+      { const P = cam.projectionMatrix.elements; if (P[8] || P[9]) cam.updateProjectionMatrix(); }
       const dist = (under ? 5.2 : 6.4) + Math.min(3.2, Math.abs(ctl.v) * 0.045), h = under ? 1.7 : 2.4;
       const a = ctl.yaw + L.yaw;
       const want = new THREE.Vector3(ctl.x - Math.sin(a) * dist, ctl.y + h, ctl.z - Math.cos(a) * dist);
@@ -921,6 +1109,7 @@ export const driveMixin = {
   _driveHudInit() {
     const e = this.el; if (!e || e.dgear || !e.drive) return;
     const st = document.createElement('style'); st.textContent = CSS; e.drive.appendChild(st);
+    { const dk = document.createElement('div'); dk.className = 'vw-ddeck'; dk.setAttribute('aria-hidden', 'true'); e.drive.insertBefore(dk, e.drive.firstChild); }   // V10: portrait control deck (below the 3D band)
     const x = document.createElement('div'); x.className = 'vw-dx vw-dxr';
     x.innerHTML = `<button class="vw-dround vw-dhand" data-kd="hand">${ICON.hand}</button><button class="vw-dround" data-kd="horn">${ICON.horn}</button><button class="vw-dgear" data-kd="gear"><i data-g="D">D</i><i data-g="R">R</i></button>`;
     e.drive.appendChild(x);
@@ -932,6 +1121,11 @@ export const driveMixin = {
     rd.addEventListener('click', ev => { const b = ev.target.closest('[data-kr]'); if (!b) return; ev.stopPropagation(); this._radioCmd(b.dataset.kr); });
     rd.addEventListener('pointerdown', ev => ev.stopPropagation());
     e.dradio = rd; e.dradioName = rd.querySelector('.st b'); e.dradioSub = rd.querySelector('.st i');
+    // V10: the radio folds into a small button (phones: folded by default, the windscreen stays free); the choice is remembered
+    const rbtn = document.createElement('button'); rbtn.className = 'vw-dround vw-dradiobtn'; rbtn.innerHTML = ICON.radio + '<i class="dot" aria-hidden="true"></i>';
+    rbtn.addEventListener('click', ev => { ev.stopPropagation(); this._radioBar(!this.root.classList.contains('radio-open')); });
+    rbtn.addEventListener('pointerdown', ev => ev.stopPropagation());
+    e.drive.appendChild(rbtn); e.dradioBtn = rbtn;
     const top = e.drive.querySelector('.vw-dtop');
     const mk = (kd, html) => { const b = document.createElement('button'); b.className = 'vw-btn vw-ghost vw-ico'; b.dataset.kd = kd; b.innerHTML = html; top.insertBefore(b, top.firstChild); return b; };
     e.dreset = mk('reset', ICON.reset);
@@ -966,6 +1160,7 @@ export const driveMixin = {
       if (e.dname) e.dname.innerHTML = `<b>${ctl.S.name}</b>${D.car.plate ? ' · ' + D.car.plate : ''}`;
       const lab = (b, k) => { if (b) { b.setAttribute('aria-label', this.t(k)); b.title = this.t(k); } };
       lab(e.dgear, 'walk.car.gear'); lab(e.dhorn, 'walk.car.horn'); lab(e.dhand, 'walk.car.handbrake'); lab(e.dreset, 'walk.car.resetBtn'); lab(e.dtilt, 'walk.car.tilt'); lab(e.carSound, 'walk.car.sound');
+      this._radioBar(null);
       if (e.dradio) { e.dradio.setAttribute('aria-label', this.t('walk.radio.title')); for (const [kr, key] of [['prev', 'walk.radio.prev'], ['next', 'walk.radio.next'], ['down', 'walk.radio.volDown'], ['up', 'walk.radio.volUp'], ['power', 'walk.radio.power']]) lab(e.dradio.querySelector(`[data-kr=${kr}]`), key); this._radioHud(); }
       if (e.dtilt) e.dtilt.classList.toggle('on', !!D.tiltOn);
       const sp = e.brake && e.brake.querySelector('span'); if (sp) sp.textContent = this.t('walk.car.brakeShort');

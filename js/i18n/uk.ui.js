@@ -289,6 +289,8 @@ export default {
   'walk.upper': 'Верхній рівень',
   'walk.chooseFloor': 'Оберіть поверх',
   'walk.alarm': 'Виклик диспетчера',
+  'walk.liftMusic': 'Музика в ліфті',
+  'walk.liftCalled': 'Ліфт викликано — він уже їде',
   'walk.goto': 'Перейти',
   'walk.rooms': 'Кімнати',
   'walk.map': 'Мапа',

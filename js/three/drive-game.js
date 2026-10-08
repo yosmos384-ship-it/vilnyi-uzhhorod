@@ -89,7 +89,7 @@ export const gameMixin = {
         cityOptions: SH && SH.uTime ? { signalTime: () => SH.uTime.value } : undefined });
       const hud = document.createElement('div'); hud.className = 'vw-ghud'; this.el.hud.appendChild(hud);
       const phone = !!this._phone;
-      const police = PO.createPolice(this.scene, { city: people.city, people, drive: hooks, lang: String(this.lang).slice(0, 2), lightMode, audio: this._gAudio,
+      const police = PO.createPolice(this.scene, { city: people.city, people, drive: hooks, lang: String(this.lang).slice(0, 2), lightMode, audio: this._gAudio, light: this._polLight || null,   // V11: the walkthrough's police light slot
         respawn: { x: 0, z: 0 }, hud,
         // a patrol car on one of the site's own car bodies (desktop); phones keep the light built-in body
         carFactory: phone || !cars.createCar ? undefined : () => { const m = cars.createCar('ev', 'white'), S = cars.carSpec('ev'); return { group: m.group, L: S.L, W: S.W, H: S.H, setDoor: k => m.setDoor && m.setDoor(k) }; } });

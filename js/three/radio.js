@@ -30,6 +30,11 @@ const clamp01 = v => Math.max(0, Math.min(1, +v || 0));
 /** One radio. → { state, stations, start(), stop(), next(), prev(), tune(i), toggle(), setVolume(v), volumeBy(d), setMuted(b), onChange(cb), dispose(), el }
  *  state: { on, index, station, status: 'off' | 'connecting' | 'playing' | 'error', volume, muted, fails }
  *  opts: stations, volume (0…1, default 0.45), connectMs (give a stream this long to start, default 9000), audio (a factory for tests). */
+// V11: every player falls silent while the tab is hidden (the walkthrough's render loop pauses too) and comes back on return
+const LIVE = new Set();
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => {
+  for (const p of LIVE) { const el = p.el; if (!el) continue; try { el.muted = document.hidden ? true : p.state.muted; } catch { /* a mock */ } }
+});
 export function createRadio({ stations = STATIONS, volume = null, connectMs = 9000, audio = null, remember = true } = {}) {
   const list = (stations || []).filter(s => s && /^https:\/\//i.test(s.url || ''));          // HTTPS only (the site is served over HTTPS)
   const saved = remember ? lsGet(LS_STATION) : null, savedVol = remember ? parseFloat(lsGet(LS_VOLUME)) : NaN;
@@ -82,7 +87,7 @@ export function createRadio({ stations = STATIONS, volume = null, connectMs = 90
     if (byUser && remember) { lsSet(LS_OFF, '1'); state.wantOff = true; }
     set('off'); emit();
   }
-  return {
+  const api = {
     state, stations: list,
     get el() { return el; },
     /** Start with the last station (call inside the gesture that puts the visitor into the car). `force` ignores "the visitor switched it off last time". */
@@ -98,6 +103,8 @@ export function createRadio({ stations = STATIONS, volume = null, connectMs = 90
     setDuck(k) { state.duck = clamp01(k); try { if (el) el.volume = state.volume * state.duck; } catch { /* */ } },
     setMuted(b) { state.muted = !!b; try { if (el) el.muted = state.muted; } catch { /* */ } emit(); },
     onChange(cb) { subs.add(cb); return () => subs.delete(cb); },
-    dispose() { disposed = true; stop(false); subs.clear(); el = null; },
+    dispose() { disposed = true; LIVE.delete(api); stop(false); subs.clear(); el = null; },
   };
+  LIVE.add(api);
+  return api;
 }

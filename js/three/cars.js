@@ -926,7 +926,7 @@ export function createFleet({ maxDetailed = 4, detailRadius = 24, farRadius = 23
     const now = performance.now();
     if (!force && !dirty && now - lastT < 280 && cp.distanceToSquared(lastCam) < 4) return;
     lastT = now; lastCam.copy(cp);
-    const camUnder = cp.y < -0.4, ramp = nearRamp(cp);
+    const camUnder = cp.y < -0.4, ramp = cp.y < 3 && nearRamp(cp);   // V11: the ramp exception only for an eye near grade (from a flat upstairs the car park is never visible)
     const vis = [];
     for (const r of records) {
       const u = underground(r);

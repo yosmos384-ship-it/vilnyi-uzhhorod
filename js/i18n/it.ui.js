@@ -288,6 +288,8 @@ export default {
   'walk.upper': 'Livello superiore',
   'walk.chooseFloor': 'Scegliete il piano',
   'walk.alarm': 'Chiamata di emergenza',
+  'walk.liftMusic': 'Musica in ascensore',
+  'walk.liftCalled': 'Ascensore chiamato — sta arrivando',
   'walk.goto': 'Andare',
   'walk.rooms': 'Locali',
   'walk.map': 'Mappa',

@@ -1070,7 +1070,13 @@ export function buildCar(kind, tier = 0) {
     res.trim = mergeAll(out.trim, ['position', 'normal', 'color', 'mr']);
     res.lights = mergeAll(out.lights, ['position', 'normal', 'color', 'lk']);
     res.headliner = out.headliner || null;
-    res.steering = steer; res.eye = [S.driverX, S.eye, S.seat + 0.02]; res.mirrorPos = out.mirrorPos || [S.W / 2 + 0.1, S.eye - 0.12, S.seat + 0.75];
+    res.steering = steer; res.eye = [S.driverX, S.eye, S.seat + 0.02];
+    { // V10: the driver's real head point — the back of the head against the head restraint of the reclined seat (interiorGeometry
+      // `seat`), the eyes ≈ 0.24 m in front of the restraint's centre and a touch higher (the old `eye` sat above the hip point)
+      const rec = S.H < 1.25 ? 0.42 : S.H < 1.42 ? 0.32 : 0.24, bh2 = clamp(S.eye - S.cushion - 0.1, 0.42, 0.62);
+      const hz = S.seat - 0.19 - (bh2 + 0.08) * Math.sin(rec) + 0.24;
+      res.head = [S.driverX, Math.min(S.eye + 0.03, S.H - (S.dlo.open ? 0.08 : 0.15)), Math.min(S.seat + 0.02, hz)]; }
+    res.mirrorPos = out.mirrorPos || [S.W / 2 + 0.1, S.eye - 0.12, S.seat + 0.75];
     if (door0) {
       const hx = B.sideX(door0.z1, (B.rock(door0.z1) + B.sh(door0.z1)) / 2) - 0.03;
       door0.hinge = [hx, 0, door0.z1];
@@ -1276,10 +1282,31 @@ export function createCar(kind = 'sedan', colour = 'black', opts = {}) {
     if (v && !cockpit) { try { cockpit = createCockpit(S, opts); group.add(cockpit.group); } catch (e) { console.warn('[cars] cockpit', e); cockpit = null; } }
     if (cockpit) cockpit.group.visible = !!v;
   }
+  // V10: key points of the glass in the car frame, as the driver at `eye` sees it (drive.js frames the driver's view on them):
+  // screen = the windscreen's four corners [top-left, top-right, bottom-left, bottom-right] (left = the driver's side, +x);
+  // sides = per side window ([driver's, passenger's]) the points of its front half — from the A-pillar back to half-way to the eye
+  let keysCache = null;
+  function glassKeys(eye) {
+    if (keysCache && keysCache.ez === eye.z) return keysCache.k;
+    const P = [], v = new THREE.Vector3(), nv = new THREE.Vector3();
+    const add = (geo, off) => { if (!geo || !geo.attributes.normal) return; const p = geo.attributes.position, n = geo.attributes.normal;
+      for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); if (off) v.add(off); nv.fromBufferAttribute(n, i); P.push([v.x, v.y, v.z, Math.abs(nv.x), Math.abs(nv.y)]); } };
+    add(G.glass); if (G.door) add(G.door.glass, new THREE.Vector3(...G.door.hinge));
+    const ws = P.filter(p => p[2] > eye.z + 0.25 && p[3] < 0.55 && p[4] < 0.9), best = f => ws.reduce((a, p) => (!a || f(p) > f(a) ? p : a), null);
+    const screen = ws.length ? [best(p => p[0] + p[1]), best(p => -p[0] + p[1]), best(p => p[0] - p[1]), best(p => -p[0] - p[1])].map(p => new THREE.Vector3(p[0], p[1], p[2])) : [];
+    const sides = [1, -1].map(sg => { const s = P.filter(p => p[3] > 0.6 && p[0] * sg > 0 && p[2] > eye.z); if (!s.length) return [];
+      const zf = Math.max(...s.map(p => p[2])), zc = (eye.z + zf) / 2, f = s.filter(p => p[2] >= zc);
+      // a handful of extreme points of that part is enough: top / bottom at the front, top / bottom at the cut, the rest thinned
+      const pick = [f.reduce((a, p) => p[2] - p[1] * 0.3 > a[2] - a[1] * 0.3 ? p : a), f.reduce((a, p) => p[2] + p[1] * 0.3 > a[2] + a[1] * 0.3 ? p : a), f.reduce((a, p) => p[1] - p[2] * 0.3 > a[1] - a[2] * 0.3 ? p : a), f.reduce((a, p) => -p[1] - p[2] * 0.3 > -a[1] - a[2] * 0.3 ? p : a)];
+      for (let i = 0; i < f.length; i += Math.max(1, Math.floor(f.length / 24))) pick.push(f[i]);
+      return pick.map(p => new THREE.Vector3(p[0], p[1], p[2])); });
+    keysCache = { ez: eye.z, k: { screen, sides } };
+    return keysCache.k;
+  }
   function setDoor(t) { state.door = clamp(t); if (doorG) { doorG.rotation.y = -state.door * 1.12; doorG.updateMatrixWorld(true); } }
   Object.defineProperties(api, Object.getOwnPropertyDescriptors({
     group, wheels, steering, lights: lightsMat, setLights, setWheels, setInside, setDoor, kind: S.kind, colour, spec: S, name: S.name,
-    eye: new THREE.Vector3(...G.eye), body, door: doorG, hinge: G.door ? G.door.hinge : null, plate: opts.plate === false ? null : plateText(opts.plate ?? hashStr(kind + ':' + colour)),
+    eye: new THREE.Vector3(...G.eye), head: new THREE.Vector3(...(G.head || G.eye)), glassKeys, body, door: doorG, hinge: G.door ? G.door.hinge : null, plate: opts.plate === false ? null : plateText(opts.plate ?? hashStr(kind + ':' + colour)),
     get cockpit() { return cockpit; }, /** live cockpit of the driven car (created by setInside(true)); also usable from the chase view */ ensureCockpit(o) { if (!cockpit) { setInside(true, o); setInside(false); } return cockpit; },
     panels: () => carPanels(S.kind),
     get lightsOn() { return on; }, get doorOpen() { return state.door; },
@@ -1496,7 +1523,16 @@ export function createCockpit(kind, { size = 1 } = {}) {
   const mirrorPose = { pos: new THREE.Vector3(0, Math.min(S.eye, 1.25), S.zR - 0.15), fov: 38, aspect: 4 };
   return {
     group, draw, setWipers, mirrorPose, cluster: CL, screen: SC, mirrors,
-    setMirrorMap(tex) { mirrorMat.map = tex || still; mirrorMat.color.set(tex ? '#e4e8ea' : '#d6dadd'); mirrorMat.needsUpdate = true; },
+    setMirrorMap(tex) {
+      // V11: a picture that is already tone-mapped and sRGB-encoded (drive.js mirror target) is decoded back to linear in the
+      // shader and not tone-mapped again; the output encoding then gives the same colours as on the screen
+      const enc = !!(tex && tex.userData && tex.userData.displayEncoded);
+      if (enc !== !!mirrorMat.userData.enc) {
+        mirrorMat.userData.enc = enc; mirrorMat.toneMapped = !enc;
+        mirrorMat.onBeforeCompile = enc ? sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n\tdiffuseColor.rgb = mix(pow((diffuseColor.rgb + 0.055) / 1.055, vec3(2.4)), diffuseColor.rgb / 12.92, vec3(lessThanEqual(diffuseColor.rgb, vec3(0.04045)))) * vec3(0.776, 0.807, 0.823);'); } : () => {};
+        mirrorMat.customProgramCacheKey = () => (enc ? 'vrc-mirror-enc' : 'vrc-mirror');
+      }
+      mirrorMat.map = tex || still; mirrorMat.color.set(tex ? (enc ? '#ffffff' : '#e4e8ea') : '#d6dadd'); mirrorMat.needsUpdate = true; },
     dispose() { for (const o of own) o.dispose && o.dispose(); group.parent?.remove(group); },
   };
 }

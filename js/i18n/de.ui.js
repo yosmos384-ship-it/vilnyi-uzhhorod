@@ -287,6 +287,8 @@ export default {
   'walk.upper': 'Obere Ebene',
   'walk.chooseFloor': 'Etage wählen',
   'walk.alarm': 'Notruf',
+  'walk.liftMusic': 'Musik im Aufzug',
+  'walk.liftCalled': 'Aufzug gerufen – er ist unterwegs',
   'walk.goto': 'Gehe zu',
   'walk.rooms': 'Räume',
   'walk.map': 'Karte',

@@ -22,13 +22,21 @@ function idb() {
 }
 const tx = (db, mode, fn) => new Promise((res, rej) => { const t = db.transaction(STORE, mode); const out = fn(t.objectStore(STORE)); t.oncomplete = () => res(out && out.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); });
 
-async function fromCache(key) {
+// V11: a bitmap larger than `max` (phones: 512) is handed over already shrunk (same result as the page's uploadSize())
+async function fit(bm, max) {
+  if (!max || (bm.width <= max && bm.height <= max)) return bm;
+  const k = max / Math.max(bm.width, bm.height);
+  const out = await createImageBitmap(bm, { resizeWidth: Math.max(1, Math.round(bm.width * k)), resizeHeight: Math.max(1, Math.round(bm.height * k)), resizeQuality: 'high' });
+  try { bm.close(); } catch (e) { /* */ }
+  return out;
+}
+async function fromCache(key, max = 0) {
   try {
     const db = await idb();
     const rec = await tx(db, 'readonly', s => s.get(key)); db.close();
     if (!rec || !Array.isArray(rec.entries)) return null;
     const opt = { premultiplyAlpha: 'default', colorSpaceConversion: 'none' };
-    return await Promise.all(rec.entries.map(async ([k, parts]) => [k, await Promise.all(parts.map(async ([p, blob]) => [p, await createImageBitmap(blob, opt)]))]));
+    return await Promise.all(rec.entries.map(async ([k, parts]) => [k, await Promise.all(parts.map(async ([p, blob]) => [p, await fit(await createImageBitmap(blob, opt), max)]))]));
   } catch (e) { return null; }
 }
 async function toCache(key, entries, hash) {
@@ -48,7 +56,7 @@ self.onmessage = ({ data }) => { chain = chain.then(() => handle(data)); };
 async function inCache(key) {
   try { const db = await idb(); const n = await tx(db, 'readonly', s => s.count(key)); db.close(); return n > 0; } catch (e) { return false; }
 }
-async function handle({ id, styleId, src, three, cacheOnly }) {
+async function handle({ id, styleId, src, three, cacheOnly, max = 0 }) {
   try {
     if (!modP) modP = loadMaterials(src, three);
     const mod = await modP, hash = await hashP, key = hash + ':' + styleId;
@@ -57,11 +65,11 @@ async function handle({ id, styleId, src, three, cacheOnly }) {
       self.postMessage({ id, cached: await inCache(key) });
       return;
     }
-    let entries = await fromCache(key);
+    let entries = await fromCache(key, max);
     let fresh = null;
     if (!entries) {
       fresh = mod.generateStyleTextures(styleId);
-      entries = await Promise.all(fresh.map(async ([k, parts]) => [k, await Promise.all(parts.map(async ([p, c]) => [p, await createImageBitmap(c)]))]));
+      entries = await Promise.all(fresh.map(async ([k, parts]) => [k, await Promise.all(parts.map(async ([p, c]) => [p, await fit(await createImageBitmap(c), max)]))]));
     }
     const transfer = []; for (const [, parts] of entries) for (const [, bm] of parts) transfer.push(bm);
     self.postMessage({ id, entries }, transfer);

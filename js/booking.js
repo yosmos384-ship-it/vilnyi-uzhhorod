@@ -4,6 +4,7 @@
 // localStorage outbox + a copyable summary with direct call / Viber / WhatsApp / e-mail buttons (the only path while the endpoint is empty).
 import { PROJECT, TYPES, money, usd, usdOf } from './data.js';
 import { t, pick, planText, lang, dir, onLangChange, LANG_CODES, unitLabelL } from './i18n.js';
+import { onRate } from './rate.js';   // V10: prices follow the day's NBU rate
 
 // ---------- small utils shared with app.js ----------
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -175,7 +176,7 @@ function ensureCss() {
 }
 
 // ---------- modal ----------
-let dlg = null; let S = null; let unbindLang = null;
+let dlg = null; let S = null; let unbindLang = null; let unbindRate = null;
 
 function ensureDialog() {
   if (dlg) return dlg;
@@ -191,7 +192,7 @@ function ensureDialog() {
 function close() {
   if (!dlg?.open) return;
   dlg.classList.add('is-closing');
-  setTimeout(() => { dlg.classList.remove('is-closing'); dlg.close(); document.documentElement.classList.remove('modal-open'); S?.returnFocus?.focus?.(); unbindLang?.(); unbindLang = null; }, 180);
+  setTimeout(() => { dlg.classList.remove('is-closing'); dlg.close(); document.documentElement.classList.remove('modal-open'); S?.returnFocus?.focus?.(); unbindLang?.(); unbindLang = null; unbindRate?.(); unbindRate = null; }, 180);
 }
 
 // opts: unit (required), planId, discount ('military' | 'medical'), onLead(fields) after step 1,
@@ -215,6 +216,7 @@ export function openBooking({ unit, planId, discount = '', onReserved = () => {}
   if (!dlg.open) dlg.showModal();
   document.documentElement.classList.add('modal-open');
   unbindLang = onLangChange(() => render());
+  unbindRate?.(); unbindRate = onRate(() => { if (S && S.step < 3 && dlg?.open) { readForm(); render(); } });   // the confirmation keeps the figures that were sent
   setTimeout(() => dlg.querySelector('.modal-body input:not([tabindex="-1"]),button.primary')?.focus(), 30);
 }
 
@@ -286,6 +288,7 @@ function reachLinks(sum) {
   if (c.phone) out.push(`<a class="btn primary" href="${esc(telHref(c.phone))}"><span>${esc(t('bk.call'))}</span><small>${esc(fmtPhone(c.phone))}</small></a>`);
   if (c.viber) out.push(`<a class="btn gold-outline" data-act="viber" href="viber://chat?number=${encodeURIComponent('+' + String(c.viber).replace(/\D/g, ''))}"><span>${esc(t('bk.sendViber'))}</span><small>${esc(fmtPhone(c.viber))}</small></a>`);
   if (c.whatsapp) out.push(`<a class="btn gold-outline" href="https://wa.me/${String(c.whatsapp).replace(/\D/g, '')}?text=${encodeURIComponent(sum)}" target="_blank" rel="noopener"><span>${esc(t('bk.sendWa'))}</span><small>${esc(fmtPhone(c.whatsapp))}</small></a>`);
+  if (/^https:\/\//.test(c.instagram || '')) out.push(`<a class="btn gold-outline" data-social="instagram" href="${esc(c.instagram)}" target="_blank" rel="noopener"><span>Instagram</span><small dir="ltr">@${esc(c.instagram.replace(/\/+$/, '').split('/').pop())}</small></a>`);
   if (c.email) out.push(`<a class="btn gold-outline" href="mailto:${esc(c.email)}?subject=${encodeURIComponent(PROJECT.name + ' — ' + r.resNo)}&body=${encodeURIComponent(sum)}"><span>${esc(t('bk.sendMail'))}</span><small>${esc(c.email)}</small></a>`);
   return out.join('');
 }

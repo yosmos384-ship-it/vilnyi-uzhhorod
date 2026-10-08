@@ -26,11 +26,14 @@ A plain file:// open does not work (ES modules and `fetch` need http).
 
 ## Prices
 
-One rule for every apartment: **1300 US dollars per m² of total area, shown in hryvnia**. The constants are at one place in
-`js/data.js` ("Money, prices, status"): `USD_PER_M2`, `UAH_PER_USD`, `RATE_DATE`, `RATE_SOURCE`. To update the prices, change
-`UAH_PER_USD` and `RATE_DATE` (official NBU rate) — the unit sheets, list, filters, tiles, calculator, booking and CRM follow,
-and the texts take the numbers through `{usdM2}` / `{uahM2}` / `{rateDate}`. Only the static `<meta name="description">` in
-`index.html` repeats "1300 $". `data/sales.json` → `js/data-sales.js` can still override the price or status of single units.
+One rule for every apartment: **1300 US dollars per m² of total area, shown in hryvnia at the day's official NBU rate**.
+The rate is loaded at start by `js/rate.js`: `rate.json` at the site root (written and committed every day by the GitHub
+Actions workflow `.github/workflows/nbu-rate.yml`, which also runs on manual dispatch) → if that is missing or older than
+today (Kyiv), the NBU API directly (it allows cross-origin reads) → otherwise `RATE_FALLBACK` in `js/data.js`
+("Money, prices, status"). `setRate()` re-prices every unit; the unit sheets, list, filters, tiles, calculator, booking and
+CRM re-render on the `vrc:rate` event, and the texts take the numbers through `{usdM2}` / `{uahM2}` / `{rateDate}`. Only the
+static `<meta name="description">` in `index.html` repeats "1300 $". `data/sales.json` → `js/data-sales.js` can still override
+the price or status of single units.
 
 ## Language
 

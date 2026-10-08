@@ -31,7 +31,9 @@ export const PROJECT = {
   address: { uk: 'вул. Михайла Грушевського, 4А, Ужгород', en: '4A Mykhaila Hrushevskoho St, Uzhhorod, Ukraine' },
   district: { uk: 'район «Новий»', en: 'Novyi district' },
   geo: { lat: 48.61133, lon: 22.27685, est: false },                    // plot centre (OpenStreetMap)
-  totals: { buildings: 4, apartments: 462, byRooms: { 1: 310, 2: 130, 3: 22 }, parking: 155, plotHa: 0.896 },
+  // parking: places of the working drawing src/parking-plan.pdf (notes/V6-parking.md) — 179 car + 4 motorcycle; the concept
+  // plan (plans.pdf p9/p21) had 155, the lun.ua listing 190. evCharging: wall boxes in the drawing's charger table / on the plan.
+  totals: { buildings: 4, apartments: 462, byRooms: { 1: 310, 2: 130, 3: 22 }, parking: 179, parkingMoto: 4, evCharging: 76, plotHa: 0.896 },
   currency: 'UAH',
   numbering: 'provisional',                                             // no apartment numbers on the plans: apNo is sequential
   facts: {
@@ -69,10 +71,10 @@ export const PROJECT = {
   contact: {
     // whatsapp: the sales number the lun.ua listing publishes as its messenger contact (the listing labels it "Написати у
     // Viber"; it does not name WhatsApp) — used for the WhatsApp button on the owner's instruction of 03.10.2026.
-    // instagram: the project's Instagram as recorded from the lun.ua listing (data/content-lun.json); the developer's own
-    // site links instagram.com/vilnyi.uzhhorod instead (instagramAlt).
+    // instagram: the project's own account, confirmed by the owner on 08.10.2026 (BRIEF addendum 7, item 1; also the
+    // link on vilnyi.group). The lun.ua listing's vilnyi.group link is no longer used anywhere.
     phone: '+380500100723', viber: '+380675279818', whatsapp: '+380675279818', email: 'gvilnyi@gmail.com', site: 'https://vilnyi.group',
-    instagram: 'https://www.instagram.com/vilnyi.group/', instagramAlt: 'https://www.instagram.com/vilnyi.uzhhorod/', facebook: 'https://www.facebook.com/profile.php?id=61552331798401',
+    instagram: 'https://www.instagram.com/vilnyi.uzhhorod/', facebook: 'https://www.facebook.com/profile.php?id=61552331798401',
     office: { uk: 'вул. Грушевського, 23, Ужгород', en: '23 Hrushevskoho St, Uzhhorod' },
     hours: { 'mon-fri': '10:00–18:00', sat: '11:00–15:00', sun: null },  // vilnyi.group
   },
@@ -83,7 +85,7 @@ export const PROJECT = {
   // with panoramas, off otherwise (no button, no toggle) — app.js decides after reading the manifest.
   features: { hero3d: true, walk: true, pano360: 'auto', photoTour: 'auto', progress: true, drive: true, driveGame: true, cityBalcony: false, booking: 'lead' },
   // legacy aliases so untouched code does not crash:
-  permit: { number: '', date: '', issuer: '', applicant: '', designer: '', cadastral: '', totalApartments: 462, parkingPlaces: 155, regime: '', pot: '', cut: '' },
+  permit: { number: '', date: '', issuer: '', applicant: '', designer: '', cadastral: '', totalApartments: 462, parkingPlaces: 179, regime: '', pot: '', cut: '' },
   phase: '', deliveryMonths: null, partner: { name: 'VILNYI Group', role: {} },
 };
 
@@ -212,16 +214,40 @@ function pointInPoly(p, x, z) { let c = false; for (let i = 0, j = p.length - 1;
 
 // ---------- Money, prices, status ----------
 // ONE RULE (owner, 03.10.2026): every apartment in every building costs 1300 US dollars per m² of its total area, shown in
-// hryvnia at the official UAH/USD rate. To update the prices, change UAH_PER_USD and RATE_DATE below — nothing else.
-//   price per m² in ₴ = USD_PER_M2 × UAH_PER_USD, rounded to the hryvnia;  unit price = total area × that, rounded.
+// hryvnia at the official UAH/USD rate of the National Bank of Ukraine.
+//   price per m² in ₴ = USD_PER_M2 × rate, rounded to the hryvnia;  unit price = total area × that, rounded.
+// DAILY RATE (owner, 08.10.2026, v0.5): the page loads the day's official rate at start (js/rate.js: rate.json written every
+// day by the GitHub Actions workflow .github/workflows/nbu-rate.yml → else the NBU API directly → else the FALLBACK below)
+// and calls setRate(); every price below is recomputed in place and modules re-render on the 'vrc:rate' event.
+// The exports UAH_PER_USD, RATE_DATE, RATE_SOURCE, UAH_PER_M2, PRICE_PER_M2 are live bindings (`let`): importers always
+// read the current value. To change the fallback, edit RATE_FALLBACK only.
 // data/sales.json → SALES may still override price / ppm / status per unit id (priceSource 'list').
 export const USD_PER_M2 = 1300;
-export const UAH_PER_USD = 44.8333;                                      // official NBU rate, hryvnias for 1 US dollar
-export const RATE_DATE = '2026-10-03';                                   // the day that rate is set for
-export const RATE_SOURCE = 'НБУ, офіційний курс гривні до долара США на 03.10.2026 (прочитано 03.10.2026 на minfin.com.ua/ua/currency/nbu/usd/; bank.gov.ua API відповідав 403)';
-export const UAH_PER_M2 = Math.round(USD_PER_M2 * UAH_PER_USD);          // 58 283 ₴
-export const PRICE_RANGE = { min: UAH_PER_M2, max: UAH_PER_M2 };         // one price; kept for callers that ask for a range
-export const PRICE_PER_M2 = UAH_PER_M2;
+export const RATE_FALLBACK = Object.freeze({
+  rate: 44.8639,                                                         // official NBU rate, hryvnias for 1 US dollar
+  date: '2026-10-08',                                                    // the day that rate is set for
+  source: 'НБУ, офіційний курс гривні до долара США на 08.10.2026 (bank.gov.ua NBUStatService API, прочитано 08.10.2026)',
+});
+export let UAH_PER_USD = RATE_FALLBACK.rate;
+export let RATE_DATE = RATE_FALLBACK.date;
+export let RATE_SOURCE = RATE_FALLBACK.source;
+export let UAH_PER_M2 = Math.round(USD_PER_M2 * UAH_PER_USD);           // 58 323 ₴ at the fallback rate
+export const PRICE_RANGE = { min: UAH_PER_M2, max: UAH_PER_M2 };         // one price; kept for callers that ask for a range (updated in place)
+export let PRICE_PER_M2 = UAH_PER_M2;
+// RATE: one object, updated in place. `origin`: 'fallback' | 'file' (rate.json) | 'nbu' (API read by the browser).
+export const RATE = { usdPerM2: USD_PER_M2, uahPerUsd: UAH_PER_USD, uahPerM2: UAH_PER_M2, date: RATE_DATE, source: RATE_SOURCE, origin: 'fallback' };
+export function getRate() { return RATE; }
+// Set the UAH/USD rate and re-price every unit. Returns true when something changed. Invalid input is ignored (false).
+export function setRate({ rate, date, source, origin } = {}) {
+  rate = Number(rate);
+  if (!(rate > 20 && rate < 200) || !/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return false;
+  if (rate === UAH_PER_USD && date === RATE_DATE) { if (origin) RATE.origin = origin; return false; }
+  UAH_PER_USD = rate; RATE_DATE = date; RATE_SOURCE = source || RATE_FALLBACK.source.split(',')[0];
+  UAH_PER_M2 = PRICE_PER_M2 = Math.round(USD_PER_M2 * rate); PRICE_RANGE.min = PRICE_RANGE.max = UAH_PER_M2;
+  Object.assign(RATE, { uahPerUsd: rate, uahPerM2: UAH_PER_M2, date, source: RATE_SOURCE, origin: origin || RATE.origin });
+  if (UNITS.length) applySales();
+  return true;
+}
 export const STATUSES = ['available', 'reserved', 'sold', 'blocked'];
 export function pricePerM2(u) { return SALES.units[u.id]?.ppm ?? UAH_PER_M2; }
 export function priceOf(u) { return SALES.units[u.id]?.price ?? Math.round(TYPES[u.type].total * pricePerM2(u)); }
@@ -232,7 +258,6 @@ export const toUsd = uah => Math.round(uah / UAH_PER_USD);
 const _grp = n => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');   // no-break spaces
 export function money(n) { return _grp(n) + '\u00a0₴'; }                      // '1 794 000 ₴'
 export function usd(n) { return _grp(n) + '\u00a0$'; }                        // '44 850 $'
-export const RATE = { usdPerM2: USD_PER_M2, uahPerUsd: UAH_PER_USD, uahPerM2: UAH_PER_M2, date: RATE_DATE, source: RATE_SOURCE };
 
 // ---------- Apartment types: one per distinct plate slot ----------
 // kind: living | kitchen | hall | bedroom | bath | storage | dressing | balcony | loggia | terrace     level: always 0 (no duplexes)

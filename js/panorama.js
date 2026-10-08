@@ -258,7 +258,9 @@ async function boot() {
     let map = f === 'map';
     if (!map) {
       const have = (PROBE || PANO_CAPTURE.ready) && MODES.length > 0 && PANO_SIZES.length > 0;
-      const ok = have && await probeFace(faceUrl(firstMode(), PANO_SIZES[PANO_SIZES.length - 1], PANO_FACES[0].id));
+      // V11: PANO_CAPTURE.ready (written by the capture tool) is trusted — no 150 KB face is fetched on the first load just to
+      // see that it exists; if the faces are missing after all, the viewer falls back to the flat map (loadFaces → setMapMode)
+      const ok = have && (PROBE ? await probeFace(faceUrl(firstMode(), PANO_SIZES[PANO_SIZES.length - 1], PANO_FACES[0].id)) : true);
       if (!ok && f !== 'auto') map = true;
       else if (!ok) { setShown(sec, false); return; }                // 'auto' and nothing captured yet → the section stays hidden
     }

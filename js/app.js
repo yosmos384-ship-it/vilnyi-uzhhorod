@@ -6,6 +6,7 @@
 import { PROJECT, TYPES, UNITS, BUILDINGS, B_IDS, DEFAULT_SEL, TOP_FLOOR, PLOT, STREETS, PODIUM, CONTEXT_BLOCKS, COMPASS, UAH_PER_M2,
   floorsOf, topFloor, floorY, roofY, floorLabel, unitsOn, blocksOn, unitById, localToWorld, footprintOf, money, usd, usdOf } from './data.js';
 import { t, pick, planText, num, setLang, lang, dir, onLangChange, initialLang, i18nApi, LANGS, langInfo, unitLabelL } from './i18n.js';
+import { loadRate, rateReady, onRate } from './rate.js';   // V10: the day's NBU rate (rate.json → NBU API → data.js fallback)
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -218,7 +219,7 @@ function renderStatic() {
 
   // One price for every flat: the ₴ price of a square metre (data.js UAH_PER_M2 = 1300 $ × the official rate).
   set('#heroStats', [
-    [num(tot.apartments), 'hero.stat.units'], [num(tot.parking), 'hero.stat.parking'],
+    [num(tot.apartments), 'hero.stat.units'], [tot.parkingMoto ? `${num(tot.parking)} + ${num(tot.parkingMoto)}` : num(tot.parking), 'hero.stat.parking'],
     [num(tot.buildings), 'hero.stat.buildings'], [money(UAH_PER_M2), 'hero.stat.price'],
   ].map(([v, k]) => `<div class="stat"><p class="stat-v"><b dir="ltr">${esc(v)}</b></p><span>${esc(t(k))}</span></div>`).join(''));
 
@@ -249,7 +250,9 @@ function renderStatic() {
   const fx = P.facts || {}, tv = k => (has(k) ? t(k) : ''), listed = v => (v ? `${v} — ${tx('facts.perListing')}` : '');
   const facts = [
     ['facts.developer', P.developer], ['facts.class', P.class && tv('facts.classV')],
-    ['facts.buildings', tv('facts.buildingsV') || num(tot.buildings)], ['facts.apartments', num(tot.apartments)], ['facts.parking', num(tot.parking)],
+    ['facts.buildings', tv('facts.buildingsV') || num(tot.buildings)], ['facts.apartments', num(tot.apartments)],
+    ['facts.parking', tot.parkingMoto && has('facts.parkingV') ? t('facts.parkingV', { n: num(tot.parking), m: num(tot.parkingMoto) }) : num(tot.parking)],
+    ['facts.ev', tot.evCharging && has('facts.evV') && t('facts.evV', { n: num(tot.evCharging) })],
     ['facts.plot', tot.plotHa && tv('facts.plotV')],
     ['facts.tech', fx.tech && tv('facts.techV')], ['facts.walls', fx.walls && tv('facts.wallsV')], ['facts.insulation', fx.insulation && tv('facts.insulationV')],
     ['facts.heating', fx.heating && tv('facts.heatingV')], ['facts.ceiling', fx.ceiling && tv('facts.ceilingV')],
@@ -1119,6 +1122,14 @@ async function loadGallery() {
   if (dlgU().open) { renderUnitGallery(); if (canWalk(S.unit)) preloadStill(stillFor(S.unit, 'apartment')); }
 }
 
+// V11: the grid uses the 640 / 1200 px WebP variants of the manifest (`variants`), the full render only in the lightbox;
+// every picture loads lazily (the gallery is far below the first screen).
+function galSrcset(it, feat, sizes = null) {
+  const v = Array.isArray(it.variants) ? it.variants.filter(x => Array.isArray(x) && safeSrc(x[0]) && x[1] > 0) : [];
+  if (!v.length) return '';
+  const set = [...v.map(([u, w]) => `${u} ${w}w`), ...(it.width ? [`${it.url} ${it.width}w`] : [])].join(', ');
+  return ` srcset="${esc(set)}" sizes="${sizes || (feat ? '(max-width: 799px) 100vw, 50vw' : '(max-width: 799px) 50vw, 25vw')}"`;
+}
 function galList() { return G.tab === 'all' ? G.items : G.items.filter(i => i.type === G.tab); }
 function dropGalItem(url) { G.items = G.items.filter(it => it.url !== url); if (!G.items.length) renderGallery(); }
 function renderGallery() {
@@ -1130,7 +1141,7 @@ function renderGallery() {
   $('#galTabs').innerHTML = types.length > 1 ? ['all', ...types].map(ty => `<button type="button" role="tab" data-gt="${ty}" aria-selected="${ty === G.tab}" class="${ty === G.tab ? 'on' : ''}">${esc(t('gal.' + ty))}</button>`).join('') : '';
   const list = galList();
   $('#galGrid').innerHTML = list.map((it, i) => `<button type="button" class="gal-item${i === 0 ? ' feat' : ''}" data-gu="${esc(it.url)}" aria-label="${esc(t('gal.open'))}: ${esc(capOf(it) || t('gal.' + it.type))}">
-      <img src="${esc(it.url)}" alt="" loading="${i < 3 ? 'eager' : 'lazy'}" decoding="async">
+      <img src="${esc(it.url)}"${galSrcset(it, i === 0)} alt="" loading="lazy" decoding="async">
       <span class="gal-cap"><span class="gal-k">${esc(t('gal.' + it.type))}${it.style ? ' · ' + esc(t('style.' + it.style + '.n')) : ''}</span>${capOf(it) ? `<span class="gal-t">${esc(capOf(it))}</span>` : ''}</span></button>`).join('');
   $$('#galGrid img').forEach(img => img.addEventListener('error', () => { const b = img.closest('.gal-item'); if (b) { dropGalItem(b.dataset.gu); b.remove(); } }, { once: true }));
 }
@@ -1146,7 +1157,7 @@ function renderUnitGallery() {
   const host = dlgU().querySelector('#unitGal'); if (!host || !S.unit) return;
   const list = unitGalleryList(S.unit);
   host.hidden = !list.length;
-  host.innerHTML = list.length ? `<h3 class="h5">${esc(t('unit.gallery'))}</h3><div class="ug-strip">${list.map((it, i) => `<button type="button" class="ug-item" data-ui="${i}" aria-label="${esc(t('gal.open'))}: ${esc(capOf(it) || t('gal.' + it.type))}"><img src="${esc(it.url)}" alt="" loading="lazy" decoding="async"></button>`).join('')}</div>` : '';
+  host.innerHTML = list.length ? `<h3 class="h5">${esc(t('unit.gallery'))}</h3><div class="ug-strip">${list.map((it, i) => `<button type="button" class="ug-item" data-ui="${i}" aria-label="${esc(t('gal.open'))}: ${esc(capOf(it) || t('gal.' + it.type))}"><img src="${esc(it.url)}"${galSrcset(it, false, '240px')} alt="" loading="lazy" decoding="async"></button>`).join('')}</div>` : '';
   host._list = list;
   host.querySelectorAll('img').forEach(img => img.addEventListener('error', () => img.closest('.ug-item')?.remove(), { once: true }));
 }
@@ -1317,9 +1328,18 @@ function applyHash() {
 }
 
 // ---------------------------------------------------------------- boot
+// V10: the day's rate arrived after the first paint (or changed) → every price figure is drawn again in place.
+function rerenderPrices() {
+  renderStatic(); renderFilters(); renderCount();
+  try { plan.refresh(); } catch (e) { /* plan keeps old figures */ }
+  if (S.view === 'list') renderList();
+  if (dlgU().open) renderUnit();
+}
+
 async function boot() {
   appStyles();
-  await loadSiblings();
+  loadRate();                                              // starts at once; boot waits at most 1.2 s for it (no price jump in the common case)
+  await Promise.all([loadSiblings(), rateReady(1200)]);
   setLang(initialLang(), { save: false });                 // ?lang= → the visitor's saved menu choice → Ukrainian (always; nothing is detected)
   try {
     plan = PL?.createPlan?.($('#plan'), {
@@ -1338,6 +1358,7 @@ async function boot() {
   rerenderAll();
   setFloor(S.b, S.f);
   onLangChange(rerenderAll);
+  onRate(rerenderPrices);
 
   applyHash();
   addEventListener('hashchange', () => applyHash());
@@ -1349,10 +1370,11 @@ async function boot() {
   const kick = () => {
     (window.requestIdleCallback ? requestIdleCallback(startHero, { timeout: 1500 }) : setTimeout(startHero, 400));
     if (!F.walk) return;
-    setTimeout(() => onIdle(preloadWalkModules), 1500);           // fetch + compile the walkthrough's modules
-    // then its textures (worker; cached in IndexedDB). Phones wait for a unit sheet (intent): the decoded textures of
-    // one design weigh tens of MB until the walkthrough uses them.
-    if (!dlgU().open && !matchMedia('(pointer: coarse)').matches) prewarmWalkFor(null, 4000);
+    // V11: nothing of the walkthrough (≈ 2.5 MB of modules + one design's textures) loads before the visitor shows the
+    // intent: a unit sheet (renderUnit → prewarmWalkFor) or a pointer resting on / focus on a walkthrough button.
+    const intent = e => { const b = e.target.closest?.('#heroTour,[data-act="walk"],[data-act="lobby"],[data-act="tour"],.walk-btn'); if (b) { prewarmWalkFor(null, 150); off(); } };
+    const off = () => { document.removeEventListener('pointerover', intent); document.removeEventListener('focusin', intent); };
+    document.addEventListener('pointerover', intent, { passive: true }); document.addEventListener('focusin', intent);
   };
   if (document.readyState === 'complete') kick(); else addEventListener('load', kick, { once: true });
 }

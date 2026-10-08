@@ -18,6 +18,7 @@
 // hook for a module that wants to add its own group: KIT.cars.parkingScene(PARKING, {bId, world, y}) → {group, list}.
 import * as THREE from 'three';
 import { BUILDINGS, B_IDS, PARKING, RAMPS, coresOf, floorY, localToWorld, worldToLocal, rampY, parkingDrivable } from '../data.js';
+import { RoomSet, kindOfName, maxRect } from './commons-rooms.js';
 
 const H = PARKING.ceiling || 3.0, SLAB = 0.3, DOOR_H = 2.1, CLEAR = (RAMPS[0] && RAMPS[0].clear) || 2.5, Y0 = PARKING.y;
 const yl = y => y - Y0;                                    // world level → local y
@@ -87,6 +88,69 @@ function layout(K) {
   }
   LAY = { lifts, carve, carved, roomOf, halls, inHall, spawns };
   return LAY;
+}
+
+// ------------------------------------------------------------------ rooms behind the doors (V10-doors)
+// The working drawing numbers every room but names none of them ("explication — see the AR drawings"). Names below:
+// 'drawing' = printed on the working drawing; 'concept' = the name of the same place on plans.pdf p.21 (the AR concept plan
+// of level −4.200, georeferenced on the axes); 'inferred' = from what is drawn (WC pans, stair flights, a vestibule).
+// Rooms not listed keep the name of data/parking.json (V6). Purpose not determinable → «Технічне приміщення».
+const ROOM_INFO = {
+  '0102/1': ['Приміщення підлогомийної машини', 'cleaning', 'concept'], '0103': ['Венткамера підпору повітря', 'vent', 'concept'],
+  '0109': ['Електрощитова будинку', 'elec', 'concept'], '0110': ['Резерв', 'storage', 'concept'], '0111': ['Приміщення СЗ', 'comms', 'concept'],
+  '0112': ['Насосна пожежогасіння та водопостачання', 'pump', 'concept'], '0113': ['Резервуар пожежогасіння', 'fireTank', 'concept'],
+  '0117': ['Електрощитова паркінгу', 'elec', 'concept'], '0117/1': ['Електрощитова', 'elec', 'concept'], '0121': ['Коридор', 'passage', 'concept'],
+  '0122': ['Венткамера підпору повітря', 'vent', 'concept'], '0123': ['Вузол керування АСПГ', 'asp', 'concept'], '0127/1': ['Тамбур', 'passage', 'inferred'],
+  '0132': ['Венткамера басейну', 'vent', 'concept'], '0135': ['Венткамера підпору повітря', 'vent', 'concept'], '0136': ['Електрощитова', 'elec', 'concept'],
+  '0141': ['Приміщення КЛ 0,4 кВ', 'comms', 'concept'], '0143': ['Вузол керування АСПГ', 'asp', 'concept'], '0144': ['Венткамера підпору повітря', 'vent', 'concept'],
+  '0146': ['Електрощитова', 'elec', 'concept'], '0148': ['Приміщення охорони', 'security', 'concept'], '0149': ['Приміщення прокладання комунікацій', 'comms', 'concept'],
+  '0150': ['Сходова клітка', 'stair', 'drawing'],
+};
+// rooms numbered on the drawing but missing from the extracted polygons (world x/z): 0150, the stair between the R2 walkway and 0149
+const STREET_STAIRS = new Set(['0127', '0150']);
+const EXTRA_ROOMS = [{ no: '0150', nos: ['0150'], kind: 'stair', name: { uk: 'Сходова клітка', en: 'Stair' }, nameSrc: 'drawing', area: 8.98, poly: [[-23.16, 49.46], [-16.56, 49.46], [-16.56, 50.82], [-23.16, 50.82]], holes: [], inner: [-19.86, 50.14] }];
+// every room gets a unique key: its number, or number·k where the drawing prints the same number twice (0128)
+let ROOMS_K = null;
+const roomsK = () => { if (ROOMS_K) return ROOMS_K; const all = [...EXTRA_ROOMS, ...PARKING.rooms], seen = {}; ROOMS_K = all.map(r => { seen[r.no] = (seen[r.no] || 0) + 1; return { r, key: seen[r.no] > 1 ? r.no + '·' + seen[r.no] : r.no }; }); return ROOMS_K; };
+export const roomInfo = key => { const e = roomsK().find(q => q.key === key) || roomsK().find(q => (q.r.nos || []).includes(key)); if (!e) return null; const r = e.r;
+  const i = ROOM_INFO[r.no]; const name = i ? i[0] : r.name.uk; return { key: e.key, no: r.no, name, kind: i ? i[1] : r.kind === 'hall' ? 'hall' : r.kind === 'liftHall' ? 'liftHall' : kindOfName(name), src: i ? i[2] : r.nameSrc, area: r.area, poly: r.poly, holes: r.holes || [], inner: r.inner }; };
+const roomAt = (x, z) => { const e = roomsK().find(({ r }) => inPoly(r.poly, x, z) && !(r.holes || []).some(h => inPoly(h, x, z))); return e ? e.key : null; };
+const inWall = (x, z) => [...PARKING.walls, ...PARKING.lining].some(w => inPoly(w.poly, x, z) && !(w.holes || []).some(h => inPoly(h, x, z)));
+// every opening of the drawing: the room on each side (sampled along the wall normal), and openings that are the same leaf
+// drawn through two wall layers (two openings, one swing arc) — the real door is the one whose leaf length matches its width
+let DPLAN = null;
+export function doorPlan() {
+  if (DPLAN) return DPLAN;
+  const out = PARKING.doors.map((d, i) => {
+    // the room on each side: the first room polygon met within 1.2 m of the wall centre (farther = an unnumbered vestibule)
+    const ax = d.axis === 'x', side = s => { for (let k = 1; k <= 12; k++) { const o = k * 0.1, r = roomAt(ax ? d.c[0] : d.c[0] + s * o, ax ? d.c[1] + s * o : d.c[1]); if (r) return r; } return null; };
+    // how deep the wall material is on each side of the opening (a second wall layer / lining drawn without the opening):
+    // the opening is cut through all of it (walls of the drawing that a door passes through)
+    const tc = ax ? d.c[1] : d.c[0], f0 = ax ? d.z0 : d.x0, f1 = ax ? d.z1 : d.x1, at = o => (ax ? [d.c[0], o] : [o, d.c[1]]);
+    const depth = (face, s) => { let last = face, t = face; for (let k = 1; k <= 45; k++) { t = face + s * k * 0.02; if (inWall(...at(t))) last = t; else if (Math.abs(t - last) > 0.09) break; } return Math.abs(last - tc) + 0.035; };
+    // a door onto a ramp's walkway stands at the walkway level (only where that is within reach of a door: ≤ 2 m)
+    const sn = ax ? [0, 1] : [1, 0], y0 = Math.max(0, ...[-1, 1].map(s => { const y = surfY(d.c[0] + sn[0] * s * 0.55, d.c[1] + sn[1] * s * 0.55); return y < 2.0 ? y : 0; }));
+    return { i, d, id: d.id || 'D' + i, sides: [side(-1), side(1)], dupOf: null, sideN: sn, y0: y0 > 0.05 ? +y0.toFixed(3) : 0, cut: { ax, a0: ax ? d.x0 : d.z0, a1: ax ? d.x1 : d.z1, tc, e0: depth(f0, -1), e1: depth(f1, 1) } };
+  });
+  for (const a of out) for (const b of out) if (a.i < b.i && a.d.leafEnd && b.d.leafEnd && hyp(a.d.leafEnd, b.d.leafEnd) < 0.05) {
+    const fit = q => Math.abs(hyp(q.d.hinge, q.d.leafEnd) - q.d.w), keep = fit(a) <= fit(b) ? a : b, drop = keep === a ? b : a; drop.dupOf = keep.i; }
+  DPLAN = out; return out;
+}
+// edge parameters (0…1) where an opening's cut begins / ends along a wall edge parallel to it
+function cutTs(a, b) {
+  const out = [], L = hyp(a, b); if (L < 1e-6) return out;
+  for (const { cut: c } of doorPlan()) { if (!c) continue;
+    const ia = c.ax ? 0 : 1, ic = c.ax ? 1 : 0, du = (b[ia] - a[ia]) / L; if (Math.abs(du) < 0.9) continue;
+    const across = (a[ic] + b[ic]) / 2; if (across < c.tc - c.e0 - 0.05 || across > c.tc + c.e1 + 0.05) continue;
+    for (const v of [c.a0 + 0.015, c.a1 - 0.015]) { const t = (v - a[ia]) / (b[ia] - a[ia]); if (t > 1e-4 && t < 1 - 1e-4) out.push(t); } }
+  return out;
+}
+// a wall edge parallel to an opening whose midpoint lies in the opening's cut (through every wall layer): not built
+function doorCut(mx, mz, ux, uz) {
+  for (const q of doorPlan()) { const c = q.cut; if (!c) continue;
+    const along = c.ax ? mx : mz, across = c.ax ? mz : mx, par = c.ax ? Math.abs(ux) > 0.9 : Math.abs(uz) > 0.9;
+    if (par && along > c.a0 + 0.015 && along < c.a1 - 0.015 && across > c.tc - c.e0 - 0.005 && across < c.tc + c.e1 + 0.005) return true; }
+  return false;
 }
 
 // ------------------------------------------------------------------ builder
@@ -173,6 +237,37 @@ export function buildTowerParking(KIT, bId) {
     if (solid) { if (Math.abs(Math.sin(2 * yaw)) < 1e-3) { const a = Math.abs(Math.sin(yaw)) > 0.5; C.box(x - (a ? hu : hv), x + (a ? hu : hv), y0, y1, z - (a ? hv : hu), z + (a ? hv : hu)); } else { const c = new T.BoxGeometry(hv * 2, y1 - y0, hu * 2); c.applyMatrix4(mat4(x, (y0 + y1) / 2, z, yaw)); C.geoSolid(c); } }
   };
 
+  // ---------------------------------------------------------------- rooms behind the doors (contents built lazily by commons-rooms.js)
+  const RS = new RoomSet(KIT, W, { bId, floor: -1, H, near: 9, far: 24 });
+  const DP = doorPlan(), stairRects = [], highDoors = DP.filter(q => q.dupOf == null && q.y0 > 0.5);
+  const towerNear = p => { let best = null; for (const L of Lay.lifts) { const d = hyp([L.x, L.z], p); if (!best || d < best.d) best = { d, id: L.id }; } return best; };
+  { const ids = new Set(); for (const q of DP) if (q.dupOf == null) for (const no of q.sides) if (no) ids.add(no);
+    for (const no of ids) {
+      const info = roomInfo(no); if (!info || info.kind === 'hall' || info.kind === 'liftHall') continue;
+      const spec = { id: no, no: info.no, name: info.name, kind: info.kind, src: info.src, poly: info.poly, holes: info.holes, h: H, inner: info.inner, ceil: true };
+      if (info.kind === 'stair') {
+        const rect = maxRect(info.poly, info.holes, 0.1);
+        const high = DP.find(q => q.dupOf == null && q.sides.includes(no) && q.y0 > 0.5);
+        if (rect && high) {     // a stair between the car-park floor and a door that opens at a higher level (0150: the R2 ramp walkway)
+          const ax = rect.x1 - rect.x0 >= rect.z1 - rect.z0, a = ax ? high.d.c[0] : high.d.c[1], lo = ax ? rect.x0 : rect.z0, hi = ax ? rect.x1 : rect.z1, atHi = Math.abs(a - hi) < Math.abs(a - lo);
+          const main = DP.find(q => q.dupOf == null && q !== high && q.sides.includes(no) && q.y0 < 0.05);
+          const far = (atHi ? hi - Math.min(ax ? high.d.x0 : high.d.z0, ax ? high.d.x1 : high.d.z1) : Math.max(ax ? high.d.x0 : high.d.z0, ax ? high.d.x1 : high.d.z1) - lo) + 0.3;
+          spec.stair = { rect, up: high.y0, mid: high.y0, straight: true, landAt: atHi ? 'lo' : 'hi', mainDoor: main && main.id, dm: far, walls: 'above', wallsFrom: H, baseFloor: true, upper: null };
+          stairRects.push(rect);
+        } else if (rect && rect.x1 - rect.x0 > 1.2 && rect.z1 - rect.z0 > 1.2) {
+          // 0127 and 0150 are the separate evacuation stairs with their own exit to the street (plans: «Сходи С1 … own exit on the facade»)
+          const tw = towerNear(info.inner || [(rect.x0 + rect.x1) / 2, (rect.z0 + rect.z1) / 2]), tower = tw && tw.d < 16 && !STREET_STAIRS.has(no) ? tw.id : null, up = floorY(tower || bId, 1) - Y0;
+          spec.tower = tower;
+          // flights up from −4.200 to the drawn landing −2.850 and on to ±0.000, where the door of the tower's ground floor is
+          spec.stair = { rect, up, mid: 1.35, walls: 'above', wallsFrom: H, baseFloor: true,
+            upper: tower ? { label: 'ПОВЕРХ 1', sub: 'БУДИНОК ' + BUILDINGS[tower].no, go: () => RS.goTo(tower, 1, { from: -1, tower }) }
+              : { label: 'ВИХІД', sub: 'ВУЛИЦЯ', go: () => RS.goTo((tw && tw.id) || bId, 'outside', { from: -1 }) } };
+          stairRects.push(rect);
+        }
+      }
+      RS.addRoom(spec);
+    } }
+
   // ---------------------------------------------------------------- floor slab, ceiling (holes where a ramp tunnel rises through it)
   const poly = PARKING.poly;
   const holeOf = R => {       // the stretch where the tunnel roof (ramp + clear height) is above the hall ceiling
@@ -187,6 +282,7 @@ export function buildTowerParking(KIT, bId) {
     B.add(MT.floor, g.clone()); C.geoFloor(g);
     const sc = new T.Shape(poly.map(([x, z]) => new T.Vector2(x, z)));
     for (const h of holes) { const q = [h.R.P(h.a0, h.R.c0), h.R.P(h.a0, h.R.c1), h.R.P(h.a1, h.R.c1), h.R.P(h.a1, h.R.c0)]; if (area2(q) > 0) q.reverse(); sc.holes.push(new T.Path(q.map(([x, z]) => new T.Vector2(x, z)))); }
+    for (const r of stairRects) { const q = [[r.x0, r.z0], [r.x0, r.z1], [r.x1, r.z1], [r.x1, r.z0]]; if (area2(q) > 0) q.reverse(); sc.holes.push(new T.Path(q.map(([x, z]) => new T.Vector2(x, z)))); }      // stair wells rise through
     const gc = new T.ShapeGeometry(sc); gc.rotateX(Math.PI / 2); gc.translate(0, H, 0); topB.add(MT.ceiling, gc);
   }
 
@@ -204,12 +300,14 @@ export function buildTowerParking(KIT, bId) {
       const a = ring[i], b = ring[(i + 1) % n], L = hyp(a, b); if (L < 0.012) continue;
       let nx = (b[1] - a[1]) / L, nz = -(b[0] - a[0]) / L; if (flip) { nx = -nx; nz = -nz; }
       const split = nearRamp(a[0], a[1], b[0], b[1]) || Lay.carve.some(c => Math.max(a[0], b[0]) > c.x0 - 0.1 && Math.min(a[0], b[0]) < c.x1 + 0.1 && Math.max(a[1], b[1]) > c.z0 - 0.1 && Math.min(a[1], b[1]) < c.z1 + 0.1);
-      const k = split ? Math.max(1, Math.ceil(L / 0.25)) : Math.max(1, Math.ceil(L / 8));
-      for (let j = 0; j < k; j++) {
-        const p = [a[0] + (b[0] - a[0]) * j / k, a[1] + (b[1] - a[1]) * j / k], q = [a[0] + (b[0] - a[0]) * (j + 1) / k, a[1] + (b[1] - a[1]) * (j + 1) / k], mx = (p[0] + q[0]) / 2, mz = (p[1] + q[1]) / 2;
-        if (Lay.carved(mx, mz)) continue;
+      // pieces: breaks where a door's cut begins / ends along this edge (V10), then ≤ 8 m (0.25 m near ramps / lift fronts)
+      const ts = [0, 1, ...cutTs(a, b)].sort((p, q) => p - q), parts = [];
+      for (let w = 0; w + 1 < ts.length; w++) { const t0 = ts[w], t1 = ts[w + 1]; if (t1 - t0 < 1e-4) continue; const m = Math.max(1, Math.ceil(L * (t1 - t0) / (split ? 0.25 : 8))); for (let j = 0; j < m; j++) parts.push([t0 + (t1 - t0) * j / m, t0 + (t1 - t0) * (j + 1) / m]); }
+      for (const [ta, tb] of parts) {
+        const p = [a[0] + (b[0] - a[0]) * ta, a[1] + (b[1] - a[1]) * ta], q = [a[0] + (b[0] - a[0]) * tb, a[1] + (b[1] - a[1]) * tb], mx = (p[0] + q[0]) / 2, mz = (p[1] + q[1]) / 2;
+        if (Lay.carved(mx, mz) || doorCut(mx, mz, (b[0] - a[0]) / L, (b[1] - a[1]) / L)) continue;
         const h = split ? topAt(mx, mz) : H; if (h < 0.05) continue;
-        const l = L / k, m = zoneMat(mx + nx * 0.12, mz + nz * 0.12), u0 = (j * l) / 2.4, u1 = ((j + 1) * l) / 2.4;
+        const m = zoneMat(mx + nx * 0.12, mz + nz * 0.12), u0 = (ta * L) / 2.4, u1 = (tb * L) / 2.4;
         // normal: the ring runs so that (nx, nz) points out of the wall material
         wq(m).quad([q[0], 0, q[1]], [p[0], 0, p[1]], [p[0], h, p[1]], [q[0], h, q[1]], [nx, 0, nz], [[u1, 0], [u0, 0], [u0, h / H], [u1, h / H]]);
         const cq = new Quads(); cq.quad([q[0], 0, q[1]], [p[0], 0, p[1]], [p[0], h, p[1]], [q[0], h, q[1]], [nx, 0, nz]); C.geoSolid(cq.geo());
@@ -249,36 +347,37 @@ export function buildTowerParking(KIT, bId) {
     KIT.instanced(W, unit, MT.column, cm); KIT.instanced(W, guard, MT.hazard, gm);
   }
 
-  // ---------------------------------------------------------------- doors: every drawn opening with a leaf; lintels; plates
+  // ---------------------------------------------------------------- doors: every drawn opening with a leaf that opens (V10); lintels; plates
   const plates = [];        // { x, y, z, n, text, sub }
-  for (const d of PARKING.doors) {
-    const ax = d.axis === 'x', x0 = d.x0, x1 = d.x1, z0 = d.z0, z1 = d.z1, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, top = topAt(cx, cz);
+  const PASS = new Set(['hall', 'liftHall', 'passage', 'shelter', 'stair', 'wc']);
+  for (const q of DP) {
+    const d = q.d, ax = d.axis === 'x', x0 = d.x0, x1 = d.x1, z0 = d.z0, z1 = d.z1, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, top = topAt(cx, cz);
     if (top < 1.2) continue;
-    const dh = Math.min(DOOR_H, top - 0.05), m = d.fire ? MT.doorFire : MT.door, tc = ax ? cz : cx;      // wall centre line
-    if (top > dh + 0.02) box(MT.wallIn, x0, x1, dh, top, z0, z1);
+    const yd = q.y0 || 0, dh = yd > 0.5 ? DOOR_H : Math.min(DOOR_H, top - 0.05), tc = ax ? cz : cx;      // wall centre line; yd: sill (a door onto the ramp walkway)
+    { const c = q.cut, e0 = Math.max(c.e0, (ax ? z1 - z0 : x1 - x0) / 2), e1 = Math.max(c.e1, (ax ? z1 - z0 : x1 - x0) / 2);
+      if (ax) { if (top > yd + dh + 0.02) box(MT.wallIn, x0, x1, yd + dh, top, tc - e0, tc + e1); if (yd > 0.02) { solidBox(MT.wallIn, x0, x1, 0, yd - 0.01, tc - e0, tc + e1); box(MT.concrete, x0, x1, yd - 0.01, yd, tc - e0 - 0.05, tc + e1 + 0.05); C.rect(x0, x1, tc - e0 - 0.15, tc + e1 + 0.15, yd); } for (const [p0, p1] of [[x0 - 0.02, x0], [x1, x1 + 0.02]]) solidBox(MT.wallIn, p0, p1, yd, yd + dh, tc - e0, tc + e1); }
+      else { if (top > yd + dh + 0.02) box(MT.wallIn, tc - e0, tc + e1, yd + dh, top, z0, z1); if (yd > 0.02) { solidBox(MT.wallIn, tc - e0, tc + e1, 0, yd - 0.01, z0, z1); box(MT.concrete, tc - e0 - 0.05, tc + e1 + 0.05, yd - 0.01, yd, z0, z1); C.rect(tc - e0 - 0.15, tc + e1 + 0.15, z0, z1, yd); } for (const [p0, p1] of [[z0 - 0.02, z0], [z1, z1 + 0.02]]) solidBox(MT.wallIn, tc - e0, tc + e1, yd, yd + dh, p0, p1); } }
+    if (q.dupOf != null) continue;   // second layer of a double wall: the leaf belongs to the other opening of the same swing
     // frame
-    if (ax) { box(MT.frame, x0, x0 + 0.05, 0, dh, z0 - 0.015, z1 + 0.015); box(MT.frame, x1 - 0.05, x1, 0, dh, z0 - 0.015, z1 + 0.015); box(MT.frame, x0, x1, dh - 0.05, dh, z0 - 0.015, z1 + 0.015); }
-    else { box(MT.frame, x0 - 0.015, x1 + 0.015, 0, dh, z0, z0 + 0.05); box(MT.frame, x0 - 0.015, x1 + 0.015, 0, dh, z1 - 0.05, z1); box(MT.frame, x0 - 0.015, x1 + 0.015, dh - 0.05, dh, z0, z1); }
-    if (d.open) {
-      // the leaf stands open at 90° on the side the drawing swings it to (thin, not a collider: nobody snags on it)
-      const hinge = d.hinge || (ax ? [x0, cz] : [cx, z0]), le = d.leafEnd || (ax ? [x0, cz + 1] : [cx + 1, z0]);
-      const s = ax ? Math.sign(le[1] - cz) || 1 : Math.sign(le[0] - cx) || 1, w = Math.min(d.w, 1.0) - 0.06;
-      if (ax) { const hx = Math.abs(hinge[0] - x0) < Math.abs(hinge[0] - x1) ? x0 + 0.03 : x1 - 0.03; box(m, hx - 0.025, hx + 0.025, 0.02, dh - 0.06, s > 0 ? z1 : z0 - w, s > 0 ? z1 + w : z0); }
-      else { const hz = Math.abs(hinge[1] - z0) < Math.abs(hinge[1] - z1) ? z0 + 0.03 : z1 - 0.03; box(m, s > 0 ? x1 : x0 - w, s > 0 ? x1 + w : x0, 0.02, dh - 0.06, hz - 0.025, hz + 0.025); }
-    } else {
-      if (ax) { solidBox(m, x0 + 0.05, x1 - 0.05, 0.01, dh - 0.05, tc - 0.03, tc + 0.03); for (const s of [-1, 1]) box(MT.steel, x1 - 0.2, x1 - 0.17, 1.0, 1.05, tc + s * 0.03, tc + s * 0.09); }
-      else { solidBox(m, tc - 0.03, tc + 0.03, 0.01, dh - 0.05, z0 + 0.05, z1 - 0.05); for (const s of [-1, 1]) box(MT.steel, tc + s * 0.03, tc + s * 0.09, 1.0, 1.05, z1 - 0.2, z1 - 0.17); }
-    }
-    // a plate beside / on the door: the room behind it, as numbered on the drawing
+    if (ax) { box(MT.frame, x0, x0 + 0.05, yd, yd + dh, z0 - 0.015, z1 + 0.015); box(MT.frame, x1 - 0.05, x1, yd, yd + dh, z0 - 0.015, z1 + 0.015); box(MT.frame, x0, x1, yd + dh - 0.05, yd + dh, z0 - 0.015, z1 + 0.015); }
+    else { box(MT.frame, x0 - 0.015, x1 + 0.015, yd, yd + dh, z0, z0 + 0.05); box(MT.frame, x0 - 0.015, x1 + 0.015, yd, yd + dh, z1 - 0.05, z1); box(MT.frame, x0 - 0.015, x1 + 0.015, yd + dh - 0.05, yd + dh, z0, z1); }
+    // the leaf (or two): hinged where the drawing hinges it, swinging to the side of its drawn arc; open as drawn or shut
+    const infos = q.sides.map(no => no && roomInfo(no));
+    const shelter = infos.some(i => i && i.kind === 'shelter'), tech = infos.some(i => i && !PASS.has(i.kind));
+    const kind = d.fire ? 'fire' : shelter ? 'shelter' : tech ? 'tech' : 'steel';
+    const jA = ax ? [x0 + 0.05, tc] : [tc, z0 + 0.05], jB = ax ? [x1 - 0.05, tc] : [tc, z1 - 0.05];
+    const hb = d.hinge ? hyp(d.hinge, jB) < hyp(d.hinge, jA) : false;
+    let n;
+    if (d.leafEnd) n = ax ? [0, Math.sign(d.leafEnd[1] - cz) || 1] : [Math.sign(d.leafEnd[0] - cx) || 1, 0];
+    else { const hs = infos.findIndex(i => !i || i.kind === 'hall'), sg = hs === 0 ? 1 : -1; n = ax ? [0, sg] : [sg, 0]; }      // undrawn swing: into the room
+    const sides = q.sides.map(no => (no && RS.roomById(no) ? no : null));
+    RS.addDoor({ id: q.id, a: hb ? jB : jA, b: hb ? jA : jB, n, sideN: q.sideN, sides, y0: q.y0, h: dh, wallT: ax ? z1 - z0 : x1 - x0, kind, double: d.w > 1.7, open: !!d.open,
+      label: q.sides.filter(no => no && infos[q.sides.indexOf(no)] && !PASS.has(infos[q.sides.indexOf(no)].kind)).join(' / ') || null });
+    // a plate over the door on each face: the room behind it, as numbered on the drawing (+ its name)
     for (const s of [-1, 1]) {
-      const target = d.rooms[s < 0 ? 0 : 1], from = d.rooms[s < 0 ? 1 : 0]; if (!target || target === '0101' || target === '0137') continue;
-      const rm = PARKING.rooms.find(r => r.no === target); if (!rm) continue;
-      // target room lies on the −normal side when s < 0: the plate hangs on the opposite face
-      const off = d.open ? (ax ? (z1 - z0) : (x1 - x0)) / 2 + 0.012 : 0.034, n = ax ? [0, -s] : [-s, 0];
-      const px = ax ? cx : cx + n[0] * off, pz = ax ? cz + n[1] * off : cz;
-      if (d.open) plates.push({ x: px, y: dh + 0.2, z: pz, n, text: rm.no, sub: rm.name.uk, w: 0.9, lintel: true });
-      else plates.push({ x: px, y: 1.62, z: pz, n, text: rm.no, sub: rm.name.uk, w: 0.56 });
-      void from;
+      const target = q.sides[s < 0 ? 0 : 1], rm = infos[s < 0 ? 0 : 1]; if (!target || !rm || rm.kind === 'hall' || q.sides[0] === q.sides[1]) continue;
+      const nn = ax ? [0, -s] : [-s, 0], off = Math.max((ax ? (z1 - z0) : (x1 - x0)) / 2, -s > 0 ? q.cut.e1 : q.cut.e0) + 0.012;   // on the face of the lintel (cut through every layer)
+      plates.push({ x: ax ? cx : cx + nn[0] * off, y: Math.min(yd + dh + 0.22, Math.max(top, yd + dh + 0.4) - 0.16), z: ax ? cz + nn[1] * off : cz, n: nn, text: rm.no, sub: rm.name, w: d.open ? 0.9 : 0.62, lintel: true });
     }
   }
 
@@ -427,9 +526,14 @@ export function buildTowerParking(KIT, bId) {
       const a0 = R.foot + (kTop - R.foot) * j / n, a1 = R.foot + (kTop - R.foot) * (j + 1) / n, am = (a0 + a1) / 2;
       const yb = drawn(am) ? H : Math.max(0, R.yAt(am) - SLAB), yt = roofY(am) + SLAB;
       if (yt - yb > 0.02) for (const [c, s] of [[R.c0, -1], [R.c1, 1]]) {
-        const p0 = R.P(Math.min(a0, a1), s < 0 ? c - 0.3 : c), p1 = R.P(Math.max(a0, a1), s < 0 ? c : c + 0.3);
-        box(MT.concrete, Math.min(p0[0], p1[0]), Math.max(p0[0], p1[0]), yb, yt, Math.min(p0[1], p1[1]), Math.max(p0[1], p1[1]));
-        C.box(Math.min(p0[0], p1[0]), Math.max(p0[0], p1[0]), yb, yt, Math.min(p0[1], p1[1]), Math.max(p0[1], p1[1]));
+        // pieces along the wall; where a door opens onto the walkway (V10: 0150 → R2) the wall starts above that door
+        const lo = Math.min(a0, a1), hi = Math.max(a0, a1), cuts = [];
+        for (const q of highDoors) { const qa = R.al(q.d.c[0], q.d.c[1]), qc = R.ac(q.d.c[0], q.d.c[1]); if (Math.abs(qc - c) < 0.9 && qa + q.d.w / 2 > lo && qa - q.d.w / 2 < hi) cuts.push([Math.max(lo, qa - q.d.w / 2 - 0.05), Math.min(hi, qa + q.d.w / 2 + 0.05), q.y0 + DOOR_H]); }
+        const pieces = []; let a = lo; for (const [c0, c1, y] of cuts.sort((p, q) => p[0] - q[0])) { if (c0 > a) pieces.push([a, c0, yb]); pieces.push([c0, c1, Math.max(yb, y)]); a = c1; } if (a < hi) pieces.push([a, hi, yb]);
+        for (const [pa, pb, y0w] of pieces) { if (yt - y0w < 0.02) continue;
+          const p0 = R.P(pa, s < 0 ? c - 0.3 : c), p1 = R.P(pb, s < 0 ? c : c + 0.3);
+          box(MT.concrete, Math.min(p0[0], p1[0]), Math.max(p0[0], p1[0]), y0w, yt, Math.min(p0[1], p1[1]), Math.max(p0[1], p1[1]));
+          C.box(Math.min(p0[0], p1[0]), Math.max(p0[0], p1[0]), y0w, yt, Math.min(p0[1], p1[1]), Math.max(p0[1], p1[1])); }
       }
       if (roofY(am) > H + 0.001) { const y0 = roofY(a0), y1 = roofY(a1), A = P3(a0, R.c0, y0), Bp = P3(a0, R.c1, y0), Cc = P3(a1, R.c1, y1), D = P3(a1, R.c0, y1);
         rq.quad(A, Bp, Cc, D, [0, -1, 0], [[0, 0], [3, 0], [3, 1], [0, 1]]);
@@ -580,14 +684,18 @@ export function buildTowerParking(KIT, bId) {
   } catch (e) { console.warn('[parking] cars hook', e); }
 
   // ---------------------------------------------------------------- light: an even fill (the level is lit by its LED lines) + the shared rig near the walker
-  const fill = new T.HemisphereLight(0xffffff, 0xdcdcda, 0.62); fill.name = 'vrc-parking-fill'; fill.position.set(0, 1e6, 0); W.add(fill);      // (a hemisphere light's direction is its world position: keep it straight up whatever the group offsets)
+  // V11: the even fill (sky 0xffffff / ground 0xdcdcda, 0.62) is folded into the rig's hemisphere light below (0.22 + 0.62, colours
+  // weighted in linear light = the same light as the two lights it replaces) — a separate HemisphereLight changed the scene's light
+  // count and recompiled every shader program (≈ 60) on the way into the car park.
+  const FILL = 0.62, RIGH = 0.22, hemiCol = { sky: new T.Color(0xfff1dc).multiplyScalar(RIGH).add(new T.Color(0xffffff).multiplyScalar(FILL)).multiplyScalar(1 / (FILL + RIGH)),
+    ground: new T.Color(0x3b342c).multiplyScalar(RIGH).add(new T.Color(0xdcdcda).multiplyScalar(FILL)).multiplyScalar(1 / (FILL + RIGH)) };
   const sp = Lay.spawns[bId], loc = (x, z) => worldToLocal(bId, x, z);
   const spots = [];
   { const [x, z] = loc(sp.x, sp.z); spots.push([x, 2.5, z, 6, 0xf2f4ff, 22]); }
   if (sp.door) { const [x, z] = loc(sp.door.c[0] - sp.n[0] * 2.2, sp.door.c[1] - sp.n[1] * 2.2); spots.push([x, 2.4, z, 5, 0xffe6c4, 9]); }
   for (const L of (byB[bId] || []).slice(0, 1)) { const [x, z] = loc(L.x + L.n[0] * 1.4, L.z + L.n[1] * 1.4); spots.push([x, 2.4, z, 5, 0xffe6c4, 9]); }
   { const [x, z] = loc(sp.x + sp.n[0] * 9, sp.z + sp.n[1] * 9); spots.push([x, 2.5, z, 5, 0xf2f4ff, 22]); }
-  try { KIT.claimRig(ctx.root, spots.slice(0, 4), 0.22); } catch (e) { console.warn('[parking] lights', e); }
+  try { KIT.claimRig(ctx.root, spots.slice(0, 4), RIGH + FILL, hemiCol); } catch (e) { console.warn('[parking] lights', e); }
 
   const [spx, spz] = loc(sp.x, sp.z);
   const res = KIT.finish(ctx, { x: spx, z: spz, yaw: sp.yaw - rotY });
@@ -599,8 +707,9 @@ export function buildTowerParking(KIT, bId) {
   };
   if (res.parkedCars == null) res.parkedCars = ctx.parkedCars;
   if (res.carInstances === undefined) res.carInstances = ctx.carInstances || null;
+  res.rooms = RS;          // V10: doors that open + lazily built rooms (walk.js: rooms.attach / rooms.tick)
   const d0 = res.dispose ? res.dispose.bind(res) : () => {};
-  res.dispose = () => { d0(); for (const m of ownMat) m.dispose(); for (const g of ownGeo) g.dispose(); for (const t of ownTex) t.dispose(); };
+  res.dispose = () => { RS.dispose(); d0(); for (const m of ownMat) m.dispose(); for (const g of ownGeo) g.dispose(); for (const t of ownTex) t.dispose(); };
   return res;
 }
 

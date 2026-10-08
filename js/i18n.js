@@ -61,7 +61,7 @@ export let lang = DEFAULT_LANG;
 export let dir = 'ltr';
 
 // Price facts every text may use without the caller passing them (data.js is the only place they are written):
-//   {usdM2} = 1300 · {uahM2} = '58 283' · {rateDate} = '03.10.2026'
+//   {usdM2} = 1300 · {uahM2} = '58 323' · {rateDate} = '08.10.2026' (js/rate.js updates uahM2 / rateDate when the day's rate arrives)
 const dmy = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? `${m[3]}.${m[2]}.${m[1]}` : String(iso || ''); };
 export const AUTO_VARS = { usdM2: String(USD_PER_M2), uahM2: String(UAH_PER_M2).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0'), rateDate: dmy(RATE_DATE) };
 

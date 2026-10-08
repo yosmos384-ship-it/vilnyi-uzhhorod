@@ -951,7 +951,9 @@ export function prewarmTextures(styleId = 'milano', { cacheOnly = false } = {}) 
       try { performance.mark('walk:tex-arrived'); } catch { /* */ }
       if (data && data.entries) { adoptTextures(data.entries); res(true); } else { _prewarm.delete(styleId); res(false); }
     });
-    w.postMessage({ id, styleId, src: new URL('./materials.js', import.meta.url).href, three: new URL('../../vendor/three.module.min.js', import.meta.url).href });
+    // V11: `max` — phones get the bitmaps already at the ≤ 512 px upload size from the worker (the page used to redraw each
+    // full-size bitmap into a canvas and then shrink it again: two large copies per texture on the main thread)
+    w.postMessage({ id, styleId, max: TEX_MAX, src: new URL('./materials.js', import.meta.url).href, three: new URL('../../vendor/three.module.min.js', import.meta.url).href });
   });
   _prewarm.set(styleId, p);
   return p;

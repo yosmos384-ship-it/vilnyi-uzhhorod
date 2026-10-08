@@ -69,7 +69,7 @@ function shared() {
 /** A patrol car: → { group, L, W, setLights(on, t, night, withLight), setDoors(k), dispose() } — origin on the ground under the centre, facing +z.
  *  base (optional): a white car of the driving code { group, L, W, H, setDoor?(k) } that gets the livery and the light bar;
  *  without it the simple body built here is used. */
-export function createPatrolCar({ base = null } = {}) {
+export function createPatrolCar({ base = null, light = null } = {}) {
   const S = shared(), g = new THREE.Group(); g.name = 'vrc-police-car'; const own = [];
   const add = (geo, mat, x = 0, y = 0, z = 0, par = g) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); par.add(m); return m; };
   const D = base ? { L: base.L || 4.8, W: base.W || 1.9, H: base.H || 1.45 } : CAR, hl = D.L / 2, hw = D.W / 2, barZ = base ? -0.25 : -0.2, barY = D.H + (base ? 0.0 : 0.03);
@@ -94,11 +94,16 @@ export function createPatrolCar({ base = null } = {}) {
   const glowTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const q = c.getContext('2d'), gr = q.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,255,255,0.5)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); q.fillStyle = gr; q.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
   const sp = col => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: col, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); s.scale.setScalar(1.5); s.visible = false; g.add(s); return s; };
   const gB = sp(0x2f6bff), gR = sp(0xff2a22); gB.position.set(0.29, barY + 0.13, barZ); gR.position.set(-0.29, barY + 0.13, barZ);
-  const pl = new THREE.PointLight(0x3060ff, 0, 26, 1.8); pl.position.set(0, barY + 0.5, barZ); g.add(pl);
+  // V11: `light` = one PointLight shared by all patrol cars and owned by the host (a fixed light count: adding a light per car
+  // recompiled every shader program of the scene). Without it the car has its own light as before.
+  const pl = light || new THREE.PointLight(0x3060ff, 0, 26, 1.8); if (!light) { pl.position.set(0, barY + 0.5, barZ); g.add(pl); }
+  const _lp = new THREE.Vector3();
   return { group: g, pl, L: D.L, W: D.W,
-    setLights(on, t, night = false, withLight = false) { const ph = on ? Math.floor(t * 5.5) % 2 : -1, f = on ? (t * 5.5) % 1 < 0.72 : false; blue.color.setHex(ph === 0 && f ? 0x4d86ff : 0x0b1d55); red.color.setHex(ph === 1 && f ? 0xff3a30 : 0x4a0808); gB.visible = ph === 0 && f; gR.visible = ph === 1 && f; const sc = night ? 3.4 : 1.4; gB.scale.setScalar(sc); gR.scale.setScalar(sc); pl.intensity = on && withLight && f ? (night ? 90 : 25) : 0; pl.color.setHex(ph === 0 ? 0x3060ff : 0xff3020); },
+    setLights(on, t, night = false, withLight = false) { const ph = on ? Math.floor(t * 5.5) % 2 : -1, f = on ? (t * 5.5) % 1 < 0.72 : false; blue.color.setHex(ph === 0 && f ? 0x4d86ff : 0x0b1d55); red.color.setHex(ph === 1 && f ? 0xff3a30 : 0x4a0808); gB.visible = ph === 0 && f; gR.visible = ph === 1 && f; const sc = night ? 3.4 : 1.4; gB.scale.setScalar(sc); gR.scale.setScalar(sc); const lit = on && withLight && f;
+      if (light) { if (lit) { g.updateMatrixWorld(); light.position.copy(_lp.set(0, barY + 0.5, barZ).applyMatrix4(g.matrixWorld)); light.userData.owner = g; light.intensity = night ? 90 : 25; light.color.setHex(ph === 0 ? 0x3060ff : 0xff3020); } else if (light.userData.owner === g) light.intensity = 0; return; }
+      pl.intensity = lit ? (night ? 90 : 25) : 0; pl.color.setHex(ph === 0 ? 0x3060ff : 0xff3020); },
     setDoors(k) { if (base) { if (base.setDoor) base.setDoor(k); return; } for (const d of doors) { d.piv.visible = k > 0.02; d.piv.rotation.y = -d.sx * k * 1.15; } },
-    dispose() { glowTex.dispose(); gB.material.dispose(); gR.material.dispose(); blue.dispose(); red.dispose(); for (const o of own) o.dispose(); if (base && base.dispose) base.dispose(); g.parent?.remove(g); } };
+    dispose() { if (light && light.userData.owner === g) { light.intensity = 0; light.userData.owner = null; } glowTex.dispose(); gB.material.dispose(); gR.material.dispose(); blue.dispose(); red.dispose(); for (const o of own) o.dispose(); if (base && base.dispose) base.dispose(); g.parent?.remove(g); } };
 }
 
 // ---- A* on the drivable road graph ---------------------------------------------------------------------------------------------------
@@ -153,7 +158,7 @@ export function createPolice(scene, opts = {}) {
       const ahead = ((n.x - P.x) * P.vx + (n.z - P.z) * P.vz) / (d * (P.speed || 1) + 1e-6), s = -Math.abs(d - (mode === 'patrol' ? 170 : 110)) / 100 + (mode === 'patrol' ? 0 : ahead * 0.6) + rnd() * 0.3; if (s > bs) { bs = s; best = i; } } }
     else best = at;
     if (best < 0) return null; const n = R.nodes[best], e = R.edges[n.edges[0]], o = R.nodes[e.a === best ? e.b : e.a];
-    const car = createPatrolCar({ base: typeof opts.carFactory === 'function' ? opts.carFactory() : null }), u = { id: nextId++, car, x: n.x, z: n.z, yaw: Math.atan2(o.x - n.x, o.z - n.z), v: 0, mode, node: best, path: null, pi: 0, planT: 0, slot: units.length % 4, siren: null, officers: [], doorK: 0, stuck: 0, hitT: -9, block: null, orderT: 0, born: time, L: car.L, W: car.W, kind: 'police' };
+    const car = createPatrolCar({ base: typeof opts.carFactory === 'function' ? opts.carFactory() : null, light: opts.light || null }), u = { id: nextId++, car, x: n.x, z: n.z, yaw: Math.atan2(o.x - n.x, o.z - n.z), v: 0, mode, node: best, path: null, pi: 0, planT: 0, slot: units.length % 4, siren: null, officers: [], doorK: 0, stuck: 0, hitT: -9, block: null, orderT: 0, born: time, L: car.L, W: car.W, kind: 'police' };
     car.group.position.set(u.x, 0, u.z); car.group.rotation.y = u.yaw; root.add(car.group); units.push(u); emit('police:spawn', { unit: u, mode }); return u;
   }
   function removeUnit(u) { stopSiren(u); for (const a of u.officers) a.remove(); u.officers.length = 0; u.car.dispose(); const i = units.indexOf(u); if (i >= 0) units.splice(i, 1); }
