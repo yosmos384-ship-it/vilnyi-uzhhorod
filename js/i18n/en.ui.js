@@ -288,6 +288,7 @@ export default {
   'walk.chooseFloor': 'Choose a floor',
   'walk.alarm': 'Alarm',
   'walk.liftMusic': 'Lift music',
+  'walk.tandem': 'Tandem — sold separately',
   'walk.liftCalled': 'Lift called — it is on its way',
   'walk.goto': 'Go to',
   'walk.rooms': 'Rooms',

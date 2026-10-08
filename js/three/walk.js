@@ -32,7 +32,7 @@ const MAX_DPR = 1.75;
 // English fallbacks for every HUD string (used when i18n has no such key).
 const EN = {
   'walk.lobby': 'Lobby', 'walk.corridor': 'Corridor', 'walk.apartment': 'Apartment', 'walk.balcony': 'Balcony',
-  'walk.parking': 'Parking', 'walk.lift': 'Lift', 'walk.floor': 'Floor', 'ul.building': 'Building',
+  'walk.parking': 'Parking', 'walk.tandem': 'Tandem — sold separately', 'walk.lift': 'Lift', 'walk.floor': 'Floor', 'ul.building': 'Building',
   'walk.reserve': 'Reserve', 'walk.exit': 'Exit', 'walk.design': 'Design', 'walk.day': 'Day', 'walk.dusk': 'Dusk',
   'walk.night': 'Night', 'walk.walk': 'Walk', 'walk.360': '360°', 'walk.rooms': 'Rooms', 'walk.goto': 'Go to',
   'walk.loading': 'Preparing the residence…', 'walk.chooseFloor': 'Choose a floor', 'walk.help': 'How to move',
@@ -596,6 +596,14 @@ const CSS = `
 .vw-liftmusic .x{display:none}.vw-liftmusic.off{opacity:.7}.vw-liftmusic.off .x{display:inline}
 .vw.phone .vw-liftmusic{inset-inline-end:auto;inset-inline-start:calc(116px + var(--sl));bottom:calc(46px + var(--sb));width:36px;height:36px}
 .vw.driving .vw-liftmusic,.vw.m360 .vw-liftmusic{display:none!important}
+.vw-tandem{display:none;position:absolute;inset-inline-start:calc(10px + var(--sl));bottom:calc(214px + var(--sb));align-items:center;gap:7px;padding:6px 10px;border-radius:16px;font:600 11.5px/1.2 Manrope,Heebo,sans-serif;max-width:min(260px,60vw);text-align:start;touch-action:manipulation}
+.vw-tandem i{flex:none;width:12px;height:12px;border-radius:3px;background:#d9902b;box-shadow:0 0 0 1px rgba(255,255,255,.35)}
+.vw-tandem b{flex:none;font-weight:700;color:#f0b25a}
+.vw-tandem[aria-pressed=true]{border-color:#d9902b;background:rgba(217,144,43,.22)}
+.vw.inpark .vw-tandem{display:inline-flex}
+.vw.phone .vw-tandem{bottom:calc(126px + var(--sb));inset-inline-start:calc(8px + var(--sl));font-size:11px;padding:5px 9px}
+.vw.phone.mapoff .vw-tandem{bottom:calc(90px + var(--sb))}
+.vw.driving .vw-tandem,.vw.m360 .vw-tandem,.vw.riding .vw-tandem,.vw.incar .vw-tandem{display:none!important}
 .vw.phone .vw-floorsbtn{inset-inline-end:auto;inset-inline-start:calc(8px + var(--sl));bottom:calc(46px + var(--sb));height:36px}
 .vw.phone.incar .vw-lift.show{bottom:calc(88px + var(--sb))}
 /* unit card: label + price + reserve chip for the apartment you're in */
@@ -3959,6 +3967,7 @@ export class Walkthrough {
       </div>
       <div class="vw-map vw-panel"><canvas></canvas></div>
       <button class="vw-mapbtn vw-panel" data-k="map">${ICON_MAP}</button>
+      <button class="vw-tandem vw-ghost" data-k="tandem" aria-pressed="false"><i aria-hidden="true"></i><span class="lbl"></span><b dir="ltr"></b></button>
       <div class="vw-lift vw-panel"><div class="hd"><span class="lt"></span><span class="ind"></span></div><div class="grid"></div></div>
       <button class="vw-floorsbtn vw-ghost" data-k="floors" aria-expanded="false"><span aria-hidden="true">⇅</span><span class="lbl"></span></button>
       <button class="vw-liftmusic vw-ghost" data-k="liftmusic" aria-pressed="true"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M9 18V6l10-2v12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.5" fill="currentColor"/><circle cx="16.5" cy="16" r="2.5" fill="currentColor"/><path class="x" d="M3 3l18 18" stroke="currentColor" stroke-width="1.9"/></svg></button>
@@ -3998,7 +4007,7 @@ export class Walkthrough {
       carChip: q('.vw-carchip'), sofaChip: q('.vw-sofachip'), drive: q('.vw-drive'), carView: q('[data-k=carview]'), carExit: q('[data-k=carexit]'), carLights: q('[data-k=carlights]'), carSound: q('[data-k=carsound]'),
       spdo: q('.vw-spdo'), spd: q('.vw-spdo .spd'), gear: q('.vw-spdo .gear'), lim: q('.vw-spdo .lim'), arc: q('.vw-spdo .arc'),
       steerPad: q('.vw-steer'), knob: q('.vw-steer .knob'), gas: q('.vw-pedals .gas'), brake: q('.vw-pedals .brake'), dhint: q('.vw-dhint'),
-      floorsBtn: q('[data-k=floors]'), liftMusic: q('[data-k=liftmusic]'), ucard: q('.vw-ucard'), u1: q('.vw-ucard .u1'), u2: q('.vw-ucard .u2'), ureserve: q('[data-k=ureserve]'),
+      floorsBtn: q('[data-k=floors]'), liftMusic: q('[data-k=liftmusic]'), tandem: q('[data-k=tandem]'), ucard: q('.vw-ucard'), u1: q('.vw-ucard .u1'), u2: q('.vw-ucard .u2'), ureserve: q('[data-k=ureserve]'),
     };
     this._renderLiftGrid(DEFAULT_SEL.b);
     this._applyTexts();
@@ -4182,6 +4191,9 @@ export class Walkthrough {
     else if (isGround(this.floor)) place = this.t('walk.lobby');
     else place = this.t('walk.corridor');
     this._placeKind = kind;
+    { const pk = fl === -1 && !outside && !this.riding;   // V12: «Tandem — sold separately» chip + minimap filter, car park only
+      const chg = pk !== this._inPark; if (chg) { this._inPark = pk; this.root.classList.toggle('inpark', pk); }
+      { if (pk && this.el.tandem && (chg || force)) { this.el.tandem.querySelector('.lbl').textContent = this.t('walk.tandem'); this.el.tandem.querySelector('b').textContent = String((PARKING.bays || []).filter(b => b.tandem).length); } } }
     this._updateTitle(this._placeTitle(room, inf, outside, fl));
     let fname = this._floorName(fl);
     if (outside) { fname = place; place = ''; }
@@ -4258,7 +4270,13 @@ export class Walkthrough {
       for (const r of RAMPS) poly(toL(r.poly || rect(r)), '#2b261d', 'rgba(201,164,92,.3)', 0.6);
       if (PARKING.bays) {
         ctx.lineWidth = 0.5;
-        for (const b of PARKING.bays) poly(toL(b.poly), b.accessible ? 'rgba(70,120,200,.35)' : b.ev ? 'rgba(60,150,100,.22)' : 'rgba(201,164,92,.07)', 'rgba(230,220,200,.28)', 0.5);
+        // V12: tandem places (sold separately) amber; with the «Tandem» chip on, only they and the places blocking them stand out
+        const tOn = !!this._tandemOn, byId = tOn ? new Map(PARKING.bays.map(b => [b.id, b])) : null;
+        for (const b of PARKING.bays) poly(toL(b.poly), b.tandem ? (tOn ? 'rgba(217,144,43,.95)' : 'rgba(217,144,43,.5)') : tOn ? (b.blocks ? 'rgba(201,164,92,.18)' : 'rgba(201,164,92,.03)')
+          : b.accessible ? 'rgba(70,120,200,.35)' : b.ev ? 'rgba(60,150,100,.22)' : 'rgba(201,164,92,.07)', tOn && !b.tandem && !b.blocks ? 'rgba(230,220,200,.1)' : 'rgba(230,220,200,.28)', 0.5);
+        if (tOn) { ctx.strokeStyle = '#f0b25a'; ctx.lineWidth = 1.2;   // pair: tandem place → the place in front of it
+          for (const b of PARKING.bays) { const f = b.tandem && byId.get(b.blockedBy); if (!f) continue; const [ax, az] = worldToLocal(bId, b.x, b.z), [fx, fz] = worldToLocal(bId, f.x, f.z);
+            ctx.beginPath(); ctx.moveTo(X(ax), Z(az)); ctx.lineTo(X(fx), Z(fz)); ctx.stroke(); ctx.beginPath(); ctx.arc(X(fx), Z(fz), 1.4, 0, Math.PI * 2); ctx.fillStyle = '#f0b25a'; ctx.fill(); } }
         ctx.fillStyle = '#6f6452';
         for (const w of PARKING.walls || []) { ctx.beginPath(); for (const ring of [w.poly, ...(w.holes || [])]) { toL(ring).forEach(([x, z], i) => i ? ctx.lineTo(X(x), Z(z)) : ctx.moveTo(X(x), Z(z))); ctx.closePath(); } ctx.fill('evenodd'); }
         for (const c of PARKING.columns || []) if (c.kind === 'red') poly(toL(c.poly), '#8a7a5c');
@@ -4855,6 +4873,7 @@ export class Walkthrough {
     if (b.dataset.z) return this._zoomBy(+b.dataset.z > 0 ? 1 / 1.2 : 1.2);
     if (k === 'reserve') return this.opts.onReserve && this.opts.onReserve(this.unit && this.unit.id);
     if (k === 'ureserve') { const id = this._cardUnit ? this._cardUnit.id : this.unit && this.unit.id; this._hideUnitCard(); return this.opts.onReserve && this.opts.onReserve(id); }
+    if (k === 'tandem') { this._tandemOn = !this._tandemOn; b.setAttribute('aria-pressed', String(this._tandemOn)); if (this._tandemOn && this._phone && !this._mapOpen) this._setMapOpen(true); return this._drawMap(); }
     if (k === 'floors') { this._liftGridOpen = !this._liftGridOpen; return this._renderLiftPanel(); }
     if (k === 'carenter') return this._enterCar(this._chipRec);
     if (k === 'sofabed') return this._sofaUnit && this._sofaToggle(this._sofaUnit);

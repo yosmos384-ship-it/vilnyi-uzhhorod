@@ -219,7 +219,7 @@ function renderStatic() {
 
   // One price for every flat: the ₴ price of a square metre (data.js UAH_PER_M2 = 1300 $ × the official rate).
   set('#heroStats', [
-    [num(tot.apartments), 'hero.stat.units'], [tot.parkingMoto ? `${num(tot.parking)} + ${num(tot.parkingMoto)}` : num(tot.parking), 'hero.stat.parking'],
+    [num(tot.apartments), 'hero.stat.units'], [[tot.parking - (tot.parkingTandem || 0), tot.parkingTandem, tot.parkingMoto].filter(Boolean).map(num).join(' + '), 'hero.stat.parking'],   // V12: 150 + 29 tandem + 4
     [num(tot.buildings), 'hero.stat.buildings'], [money(UAH_PER_M2), 'hero.stat.price'],
   ].map(([v, k]) => `<div class="stat"><p class="stat-v"><b dir="ltr">${esc(v)}</b></p><span>${esc(t(k))}</span></div>`).join(''));
 
@@ -251,7 +251,7 @@ function renderStatic() {
   const facts = [
     ['facts.developer', P.developer], ['facts.class', P.class && tv('facts.classV')],
     ['facts.buildings', tv('facts.buildingsV') || num(tot.buildings)], ['facts.apartments', num(tot.apartments)],
-    ['facts.parking', tot.parkingMoto && has('facts.parkingV') ? t('facts.parkingV', { n: num(tot.parking), m: num(tot.parkingMoto) }) : num(tot.parking)],
+    ['facts.parking', tot.parkingMoto && has('facts.parkingV') ? t('facts.parkingV', { n: num(tot.parking - (tot.parkingTandem || 0)), t: num(tot.parkingTandem || 0), m: num(tot.parkingMoto) }) : num(tot.parking)],
     ['facts.ev', tot.evCharging && has('facts.evV') && t('facts.evV', { n: num(tot.evCharging) })],
     ['facts.plot', tot.plotHa && tv('facts.plotV')],
     ['facts.tech', fx.tech && tv('facts.techV')], ['facts.walls', fx.walls && tv('facts.wallsV')], ['facts.insulation', fx.insulation && tv('facts.insulationV')],

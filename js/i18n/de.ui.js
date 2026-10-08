@@ -288,6 +288,7 @@ export default {
   'walk.chooseFloor': 'Etage wählen',
   'walk.alarm': 'Notruf',
   'walk.liftMusic': 'Musik im Aufzug',
+  'walk.tandem': 'Tandem — separat verkauft',
   'walk.liftCalled': 'Aufzug gerufen – er ist unterwegs',
   'walk.goto': 'Gehe zu',
   'walk.rooms': 'Räume',

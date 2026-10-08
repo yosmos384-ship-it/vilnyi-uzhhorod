@@ -290,6 +290,7 @@ export default {
   'walk.chooseFloor': 'Оберіть поверх',
   'walk.alarm': 'Виклик диспетчера',
   'walk.liftMusic': 'Музика в ліфті',
+  'walk.tandem': 'Тандем — продається окремо',
   'walk.liftCalled': 'Ліфт викликано — він уже їде',
   'walk.goto': 'Перейти',
   'walk.rooms': 'Кімнати',

@@ -387,7 +387,8 @@ export function buildTowerParking(KIT, bId) {
   const decalY = (x, z, e) => { const R = rampAt(x, z); if (!R) return e; const a = R.al(x, z), cut = R.r.cut; return ((R.up < 0 ? a >= cut : a <= cut) ? Math.max(0, R.yAt(a)) : 0) + e; };
   {
     const q = new Quads(), cols = [];
-    const tint = b => (b.kind === 'moto' ? [0.36, 0.37, 0.38] : b.accessible ? [0.16, 0.33, 0.62] : b.sec === 2 ? [0.25, 0.31, 0.3] : [0.27, 0.29, 0.33]);
+    const tint = b => (b.kind === 'moto' ? [0.36, 0.37, 0.38] : b.accessible ? [0.16, 0.33, 0.62] : b.tandem ? [0.5, 0.33, 0.12] :   // V12: tandem places (sold separately) amber
+      b.sec === 2 ? [0.25, 0.31, 0.3] : [0.27, 0.29, 0.33]);
     for (const b of PARKING.bays) { const p = b.poly, m = 0.05, c = tint(b), y = 0.002;
       q.quad([p[0][0] + m, y, p[0][1] + m], [p[3][0] + m, y, p[3][1] - m], [p[2][0] - m, y, p[2][1] - m], [p[1][0] - m, y, p[1][1] + m], [0, 1, 0]); for (let k = 0; k < 6; k++) cols.push(...c); }
     const g = q.geo(); g.setAttribute('color', new T.Float32BufferAttribute(cols, 3)); const mesh = new T.Mesh(g, MT.bay); mesh.name = 'vrc-pk-bays'; mesh.matrixAutoUpdate = false; W.add(mesh); ownGeo.push(g);

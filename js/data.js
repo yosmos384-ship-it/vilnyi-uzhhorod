@@ -32,8 +32,10 @@ export const PROJECT = {
   district: { uk: 'район «Новий»', en: 'Novyi district' },
   geo: { lat: 48.61133, lon: 22.27685, est: false },                    // plot centre (OpenStreetMap)
   // parking: places of the working drawing src/parking-plan.pdf (notes/V6-parking.md) — 179 car + 4 motorcycle; the concept
-  // plan (plans.pdf p9/p21) had 155, the lun.ua listing 190. evCharging: wall boxes in the drawing's charger table / on the plan.
-  totals: { buildings: 4, apartments: 462, byRooms: { 1: 310, 2: 130, 3: 22 }, parking: 179, parkingMoto: 4, evCharging: 76, plotHa: 0.896 },
+  // plan (plans.pdf p9/p21) had 155, the lun.ua listing 190. parkingTandem: the 29 dependent («tandem») places among the 179 —
+  // sold separately (owner, 08.10.2026); shown as 150 + 29 tandem + 4; their price is «on request» (none on the drawing).
+  // evCharging: wall boxes in the drawing's charger table / on the plan.
+  totals: { buildings: 4, apartments: 462, byRooms: { 1: 310, 2: 130, 3: 22 }, parking: 179, parkingTandem: 29, parkingMoto: 4, evCharging: 76, plotHa: 0.896 },
   currency: 'UAH',
   numbering: 'provisional',                                             // no apartment numbers on the plans: apNo is sequential
   facts: {

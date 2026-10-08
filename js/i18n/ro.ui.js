@@ -289,6 +289,7 @@ export default {
   'walk.chooseFloor': 'Alegeți etajul',
   'walk.alarm': 'Apel dispecerat',
   'walk.liftMusic': 'Muzică în lift',
+  'walk.tandem': 'Tandem — se vinde separat',
   'walk.liftCalled': 'Liftul a fost chemat — vine',
   'walk.goto': 'Mergi la',
   'walk.rooms': 'Camere',

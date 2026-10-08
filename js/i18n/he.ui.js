@@ -290,6 +290,7 @@ export default {
   'walk.chooseFloor': 'בחרו קומה',
   'walk.alarm': 'קריאה למוקד',
   'walk.liftMusic': 'מוזיקה במעלית',
+  'walk.tandem': 'חניה עוקבת (טנדם) — נמכרת בנפרד',
   'walk.liftCalled': 'המעלית הוזמנה — היא בדרך',
   'walk.goto': 'מעבר אל',
   'walk.rooms': 'חדרים',

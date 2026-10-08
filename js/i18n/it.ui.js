@@ -289,6 +289,7 @@ export default {
   'walk.chooseFloor': 'Scegliete il piano',
   'walk.alarm': 'Chiamata di emergenza',
   'walk.liftMusic': 'Musica in ascensore',
+  'walk.tandem': 'Tandem — venduto separatamente',
   'walk.liftCalled': 'Ascensore chiamato — sta arrivando',
   'walk.goto': 'Andare',
   'walk.rooms': 'Locali',
