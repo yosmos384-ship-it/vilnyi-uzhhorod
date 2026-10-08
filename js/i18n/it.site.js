@@ -4,7 +4,7 @@
 export default {
   // ── meta ──
   'meta.title': 'VILNYI — appartamenti di classe business a Užhorod, Ucraina',
-  'meta.desc': 'Appartamenti da 1, 2 e 3 locali nel complesso VILNYI, via Hruševs’koho 4A, Užhorod: quattro edifici, corte chiusa senza auto, parcheggio interrato, supermercato, fitness club con piscina. Prezzi indicativi da 47.450 ₴/m², pagamento rateale fino a 17 mesi.',
+  'meta.desc': 'Appartamenti da 1, 2 e 3 locali nel complesso VILNYI, via Hruševs’koho 4A, Užhorod: quattro edifici, corte chiusa senza auto, parcheggio interrato, supermercato, fitness club con piscina. Prezzo: {usdM2} $ al m², in grivnie al cambio della Banca nazionale ucraina; pagamento rateale fino a 17 mesi.',
 
   // ── hero ──
   'hero.eyebrow': 'Užhorod · quartiere Novyi · classe business',
@@ -16,7 +16,7 @@ export default {
   'hero.stat.units': 'appartamenti',
   'hero.stat.parking': 'posti auto interrati',
   'hero.stat.buildings': 'edifici',
-  'hero.stat.price': 'al m², indicativo',
+  'hero.stat.price': 'al m² · {usdM2} $',
   'hero.mode': 'Illuminazione',
   'hero.day': 'Giorno',
   'hero.dusk': 'Crepuscolo',
@@ -49,7 +49,7 @@ export default {
   'terms.title': 'Condizioni di acquisto chiare',
   'terms.lead': 'Pagamento in un’unica soluzione oppure rateale, direttamente dal costruttore, fino a 17 mesi con un primo versamento del 30–50%. Sconto del 5% per militari e personale sanitario.',
   'terms.price': 'Prezzo al m²',
-  'terms.priceD': '1 locale — da 47.450 a 52.000 ₴/m², 2 locali — 56.500 ₴/m², 3 locali — 52.000 ₴/m². Prezzi indicativi al 28/09/2026.',
+  'terms.priceD': 'Un unico prezzo per tutti gli appartamenti: {usdM2} $ al m² — in grivnie, al cambio della Banca nazionale ucraina del {rateDate}.',
   'terms.instT': 'Pagamento rateale',
   'terms.instD': 'Direttamente dal costruttore, fino a 17 mesi. Primo versamento del 30–50% del prezzo, il saldo nel periodo di rateizzazione.',
   'terms.discT': 'Sconto del 5%',
@@ -112,7 +112,7 @@ export default {
   'facts.permitV': 'n. {n} del {d} — secondo l’annuncio pubblico',
   'facts.contractor': 'Impresa generale',
   'facts.cadastral': 'Numero catastale',
-  'facts.disclaimer': 'Le visualizzazioni e le piante presenti sul sito provengono dal concept architettonico; superfici, planimetrie e numerazione degli appartamenti possono cambiare. I prezzi sono indicativi e non costituiscono offerta al pubblico.',
+  'facts.disclaimer': 'Le visualizzazioni e le piante presenti sul sito provengono dal concept architettonico; superfici, planimetrie e numerazione degli appartamenti possono cambiare. Le informazioni presenti sul sito non costituiscono offerta al pubblico.',
   'facts.partner': 'Lo sviluppatore',
 
   // ── view (esposizione dell’appartamento) ──
@@ -144,4 +144,7 @@ export default {
   'brand.city': 'UŽHOROD',
   'facts.perListing': 'secondo l’annuncio pubblico',
   'facts.customer': 'Committente',
+
+  // v0.3 (V4-page): floating WhatsApp button — the prefilled greeting
+  'wa.greeting': 'Buongiorno! Sono interessato/a a un appartamento nel complesso VILNYI a Užhorod.',
 };

@@ -56,11 +56,11 @@ try { SL = await import('./site-layout.js'); } catch (e) { console.info('[env] .
 // Exposure is expressed through the light/sky intensities (the renderer's exposure belongs to the host page).
 const MODES = {
   day: {
-    sunEl: 42, sunAz: 118, sunCol: '#fff1dc', sunI: 3.1, disc: 0.99985,
-    hemiSky: '#d3e2f4', hemiGnd: '#6e6752', hemiI: 0.62, env: 0.95,
+    sunEl: 42, sunAz: 118, sunCol: '#fff1dc', sunI: 2.8, disc: 0.99985,   // V4: softer day — less sun, more sky fill (shadows were near black next to the path-traced stills)
+    hemiSky: '#d3e2f4', hemiGnd: '#6e6752', hemiI: 0.8, env: 0.95,
     zenith: '#3f78c0', horizon: '#cfdce6', horizonSun: '#f3efe6', band: '#000000', ground: '#8c9096', city: '#000000', sunGlow: 0.35,
     clouds: 0.3, cloudLit: '#ffffff', cloudShade: '#c3ccd8', stars: 0, haze: 1, streaks: 0.45, streakLit: '#f4f1ea', streakShade: '#b9c4d0',
-    fog: '#c6d1da', fogD: 0.00046, glow: 0, lit: 0, night: 0, lights: 0, hill: '#4f6f63', hillK: 0.75,
+    fog: '#c6d1da', fogD: 0.0006, glow: 0, lit: 0, night: 0, lights: 0, hill: '#4f6f63', hillK: 0.75,
   },
   dusk: {  // blue hour, as the developer's night render: deep blue sky, pink/orange band on the horizon
     sunEl: -4, sunAz: 292, sunCol: '#ffc49a', sunI: 0.3, disc: 0.99975,
@@ -242,6 +242,7 @@ function windowMaterial(o) {
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vrEm + diffuseColor.rgb * vec3(1., .8, .6) * uGlow * .05 * (1. - vrWin);');
   };
   m.customProgramCacheKey = () => 'vr-win';
+  m.userData.win = { ...o };
   m.userData.envBase = 0.6;
   return m;
 }
@@ -938,6 +939,7 @@ export function createEnvironment(scene, renderer, opts = {}) {
   const within = (g, fn) => { const prev = tgt; tgt = g; try { return fn(); } finally { tgt = prev; } };
   const ext = { context: null };
   let mode = null, disposed = false;
+  let cityCtl = null;                                // the real city (V8-city), see below
   const makeExt = (key, mod) => {
     if (!mod) return null;
     try {
@@ -1058,6 +1060,7 @@ export function createEnvironment(scene, renderer, opts = {}) {
     if (signMat) signMat.emissiveIntensity = P.night * 0.35;
     poolMat.opacity = P.night > 0 ? 0.75 * P.night + 0.1 : 0;
     if (ext.context && ext.context.setMode) { try { ext.context.setMode(m); } catch (err) { console.warn(err); } }
+    if (cityCtl && cityCtl.api) cityCtl.api.setMode(m);
   }
   setMode(mode0);
   scene.add(group);
@@ -1069,10 +1072,15 @@ export function createEnvironment(scene, renderer, opts = {}) {
     if (nightU && renderer) nightU.uViewH.value = renderer.getDrawingBufferSize(_v2).y;
     for (const f of tickers) f(dt, camera);
     if (ext.context && ext.context.update) ext.context.update(dt, camera);
+    if (!cityCtl) return;
+    if (cityCtl.api) cityCtl.api.update(dt, camera);
+    if (camera && cityCtl.auto && (!cityCtl.promise || cityCtl.detail === 'far') && camera.position.y < 8 && camera.position.y > -1 && !inPoly(SITE_PLOT, camera.position.x, camera.position.z)) cityCtl.enable();
   }
 
   function dispose() {
     disposed = true;
+    if (cityCtl && cityCtl.api) { try { cityCtl.api.dispose(); } catch (err) { console.warn(err); } cityCtl.api = null; cityCtl.active = false; }
+    if (attrEl) { attrEl.remove(); attrEl = null; }
     if (ext.context) { const e = ext.context; if (e.dispose) { try { e.dispose(); } catch (err) { console.warn(err); } } if (e.group) group.remove(e.group); }
     scene.remove(group);
     group.traverse(o => {
@@ -1088,9 +1096,50 @@ export function createEnvironment(scene, renderer, opts = {}) {
     scene.fog = null; scene.background = null;
   }
 
+  // ---------------- the real city (V8-city): OpenStreetMap streets, buildings, river … beyond the near-plot rectangle.
+  // Never built (nor downloaded) for the hero / panorama / plain walkthrough scene. It starts on city.enable() — drive.js calls it
+  // when the visitor gets into a car — or, only with opts.city === 'auto', the first time update() sees the camera at street level outside the plot. One way: the generic belt of this module is hidden for good.
+  cityCtl = { active: false, api: null, promise: null, auto: opts.city === 'auto', error: null,
+    enable(o = {}) {                                 // o.detail: 'far' = building volumes only (balcony views); a later enable() without it upgrades to full detail
+      const want = o.detail === 'far' ? 'far' : 'full';
+      if (cityCtl.promise) { if (want === 'full') { cityCtl.detail = 'full'; if (cityCtl.api) cityCtl.api.setDetail('full'); } return cityCtl.promise; }
+      cityCtl.detail = want;
+      cityCtl.promise = import('./city.js').then(m => m.createCity(scene, { mode, quality: opts.cityQuality, detail: want })).then(api => {
+        api.setDetail(cityCtl.detail);
+        if (disposed) { api.dispose(); return null; }
+        cityCtl.api = api; cityCtl.active = true; hideBeltForCity(); api.setMode(mode); showAttribution();
+        return api;
+      }).catch(e => { cityCtl.error = e; console.warn('[env] city failed to load — the generic neighbourhood stays', e); return null; });
+      return cityCtl.promise;
+    } };
+  const HIDE_FOR_CITY = new Set(['carpet', 'road-strips', 'houses', 'blocks', 'far-houses', 'skyline', 'ground']);
+  function hideBeltForCity() {
+    const S = SITE, m = 6, out = (x, z) => x < S.x0 - m || x > S.x1 + m || z < S.z0 - m || z > S.z1 + m;
+    const M4 = new THREE.Matrix4(), P = new THREE.Vector3(), ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+    const visit = o => {
+      if (o.name === 'vrc-city' || o.name === 'traffic' || (ext.context && o === ext.context.group)) return;
+      if (HIDE_FOR_CITY.has(o.name)) { o.visible = false; o.userData.cityHidden = true; return; }
+      if (o.isInstancedMesh) { let hid = 0; for (let i = 0; i < o.count; i++) { o.getMatrixAt(i, M4); P.setFromMatrixPosition(M4).applyMatrix4(o.matrixWorld); if (out(P.x, P.z)) { o.setMatrixAt(i, ZERO); hid++; } } if (hid) { o.instanceMatrix.needsUpdate = true; o.computeBoundingSphere && o.computeBoundingSphere(); } return; }
+      if (o.isMesh && o.geometry && !['sky', 'hills', 'site-plan', 'night-lights', 'street-signs', 'site-furniture'].includes(o.name)) {
+        if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); const b = o.geometry.boundingBox; if (b && (b.max.x < S.x0 - m || b.min.x > S.x1 + m || b.max.z < S.z0 - m || b.min.z > S.z1 + m)) { o.visible = false; o.userData.cityHidden = true; } }
+      for (const c of o.children) visit(c);
+    };
+    group.updateMatrixWorld(true); for (const c of group.children) visit(c);
+    for (let i = nightOnly.length - 1; i >= 0; i--) if (nightOnly[i].userData.cityHidden) nightOnly.splice(i, 1);
+  }
+  let attrEl = null;
+  function showAttribution() {
+    const host = renderer && renderer.domElement && renderer.domElement.parentElement; if (!host || attrEl || typeof document === 'undefined') return;
+    attrEl = document.createElement('a'); attrEl.className = 'vrc-osm-attribution'; attrEl.href = 'https://www.openstreetmap.org/copyright'; attrEl.target = '_blank'; attrEl.rel = 'noopener';
+    attrEl.textContent = '© OpenStreetMap contributors'; attrEl.dir = 'ltr';
+    attrEl.style.cssText = 'position:absolute;right:6px;bottom:4px;z-index:5;font:10px/1.2 Arial,sans-serif;color:rgba(255,255,255,.82);background:rgba(0,0,0,.38);padding:2px 6px;border-radius:3px;text-decoration:none;pointer-events:auto';
+    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+    host.appendChild(attrEl);
+  }
+
   // ready: resolves once context.js has been tried (stills wait for it); modules: the live instances;
   // layout: 'site-layout' | 'inline' (which layout data the environment was built from)
-  return { group, sun, hemi, setMode, update, dispose, ready, modules: ext, layout: LAYOUT_SRC, get mode() { return mode; } };
+  return { group, sun, hemi, setMode, update, dispose, ready, modules: ext, layout: LAYOUT_SRC, get mode() { return mode; }, city: cityCtl };
 
   // ================================================================ painting helpers (world units on a canvas)
   function polyPath(g, pts, close = true) { g.beginPath(); pts.forEach(([x, z], i) => i ? g.lineTo(x, z) : g.moveTo(x, z)); if (close) g.closePath(); }
@@ -1553,20 +1602,20 @@ export function createEnvironment(scene, renderer, opts = {}) {
     const sHead = new THREE.BoxGeometry(0.34, 0.1, 0.8); sHead.translate(0, 8.9, 1.45);
     if (street.length) {
       inst(mergeGeometries([sPole, sArm]), metal, street, (o, [x, z, yaw, k = 1]) => { o.position.set(x, 0, z); o.rotation.set(0, yaw, 0); o.scale.set(1, k, 1); }, shadows);
-      inst(sHead, lampHeadMat, street, (o, [x, z, yaw, k = 1]) => { o.position.set(x, 8.9 * (k - 1), z); o.rotation.set(0, yaw, 0); });
+      inst(sHead, lampHeadMat, street, (o, [x, z, yaw, k = 1]) => { o.position.set(x, 8.9 * (k - 1), z); o.rotation.set(0, yaw, 0); }).name = 'lamp-heads-street';
       for (const [x, z, yaw] of street) addPool(x + Math.sin(yaw) * 1.4, z + Math.cos(yaw) * 1.4, 12);
     }
     if (posts.length) {
       const pPole = new THREE.CylinderGeometry(0.05, 0.06, 3.9, 8); pPole.translate(0, 1.95, 0);
       const pHead = new THREE.CylinderGeometry(0.16, 0.16, 0.5, 12); pHead.translate(0, 4.1, 0);
       inst(pPole, metal, posts, (o, [x, z]) => o.position.set(x, 0, z));
-      inst(pHead, lampHeadMat, posts, (o, [x, z]) => o.position.set(x, 0, z));
+      inst(pHead, lampHeadMat, posts, (o, [x, z]) => o.position.set(x, 0, z)).name = 'lamp-heads-post';
       for (const [x, z] of posts) addPool(x, z, 5.5);
     }
     if (bollards.length) {
       const bPole = new THREE.CylinderGeometry(0.08, 0.08, 0.8, 10); bPole.translate(0, 0.4, 0);
       const bHead = new THREE.CylinderGeometry(0.085, 0.085, 0.12, 10); bHead.translate(0, 0.86, 0);
-      inst(mergeGeometries([bPole, bHead]), lampHeadMat, bollards, (o, [x, z]) => o.position.set(x, 0, z));
+      inst(mergeGeometries([bPole, bHead]), lampHeadMat, bollards, (o, [x, z]) => o.position.set(x, 0, z)).name = 'lamp-bollards';
       for (const [x, z] of bollards) addPool(x, z, 2.2);
     }
     for (const r of RAMP_LIST) if (isPt(r.from)) addPool(r.from[0], r.from[1], 4);   // the car-park portals
@@ -2183,13 +2232,16 @@ export function createEnvironment(scene, renderer, opts = {}) {
     pts.forEach(([x, z, s = 1, y = 0], i) => {
       const h = (set.h[0] + rnd() * (set.h[1] - set.h[0])) * s, r = (set.r[0] + rnd() * (set.r[1] - set.r[0])) * s, th = (set.trunk[0] + rnd() * (set.trunk[1] - set.trunk[0])) * s;
       const ch = Math.max(1, h - th);
-      o.position.set(x, y + th * 0.85, z); o.rotation.set(0, rnd() * TAU, 0); o.scale.set(r, ch, r * (0.85 + rnd() * 0.3)); o.updateMatrix(); crowns.setMatrixAt(i, o.matrix);
+      // V4: fuller crowns that start lower on the trunk (the narrow crowns on tall sticks read as toy trees from above);
+      // the path-traced hero stills (pano-work/hero) grow their trees from exactly these instance matrices
+      const base = th * 0.72, rk = 1.22;
+      o.position.set(x, y + base, z); o.rotation.set(0, rnd() * TAU, 0); o.scale.set(r * rk, ch + th * 0.85 - base, r * rk * (0.85 + rnd() * 0.3)); o.updateMatrix(); crowns.setMatrixAt(i, o.matrix);
       if (rnd() > rare) c.set(rnd() < 0.6 ? '#4a2c30' : '#5e5a2c'); else c.set(pal[Math.floor(rnd() * pal.length)]);
-      c.offsetHSL((rnd() - 0.5) * 0.035, (rnd() - 0.5) * 0.1, (rnd() - 0.5) * 0.09); crowns.setColorAt(i, c);
+      c.offsetHSL((rnd() - 0.5) * 0.035, (rnd() - 0.5) * 0.1, (rnd() - 0.5) * 0.09 + 0.05); crowns.setColorAt(i, c);
       if (trunks) { o.position.set(x, y, z); o.scale.set(s * 1.1, th * 1.05, s * 1.1); o.updateMatrix(); trunks.setMatrixAt(i, o.matrix); }
     });
     crowns.castShadow = set.cast; crowns.receiveShadow = set.cast;
-    crowns.computeBoundingSphere(); (set.g || group).add(crowns);
-    if (trunks) { trunks.castShadow = set.cast; trunks.computeBoundingSphere(); (set.g || group).add(trunks); }
+    crowns.name = 'trees-' + (set.hue || 'far') + (set.leafy ? '-leafy' : set.blob ? '-blob' : '-crown'); crowns.userData.treeV = 2; crowns.computeBoundingSphere(); (set.g || group).add(crowns);
+    if (trunks) { trunks.name = 'tree-trunks'; trunks.castShadow = set.cast; trunks.computeBoundingSphere(); (set.g || group).add(trunks); }
   }
 }

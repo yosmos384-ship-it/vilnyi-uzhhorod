@@ -20,7 +20,7 @@ import { BUILDINGS, SITE, RAMPS, floorsOf, plateOf, floorY, floorH, roofY, units
 //   glass  windows (seed 1…9999 per flat room; 10001 shop, 20001 lobby, 30001 stair)
 //   rail   glass balustrades and balcony screens     soffit timber decking and soffits
 //   roof   flat roofs, paving at grade               hvac   roof plant        hedge  planting        led  parapet line
-// accent and solar stay empty → 12 draw calls per tower at most.
+// accent stays empty → 13 draw calls per tower at most (V4: PV panels on the roof use the solar buffer).
 const SHOP_KINDS = { cafe: 1, commercial: 1, supermarket: 1, playland: 1, fitness: 1, pool: 1 };
 const TALL_KINDS = { supermarket: 1, fitness: 1, pool: 1 };          // double-height halls: glazing continues on floor 2
 // window per room kind: min run width, target cell, pier margin each side, max width, sill height, mullion step
@@ -461,6 +461,7 @@ export function buildTowerFacade(K, bId, bufs) {
         box(frame, e.F, 0, e.L, yP - 0.06, yP, -0.1, 0, tag, 'VY');
       } else {
         box(crown, e.F, 0, e.L, yR, yP, -WALL_T, 0, tag, 'VvY');
+        box(slab, e.F, 0, e.L, yP, yP + 0.07, -WALL_T - 0.06, 0.05, tag, 'VvY');     // V4: dark metal coping on the parapet
         if (e.L > 1.2) box(led, e.F, 0.1, e.L - 0.1, yP - 0.2, yP - 0.14, 0, 0.02, tag, 'V');
       }
     }
@@ -505,6 +506,27 @@ export function buildTowerFacade(K, bId, bufs) {
         const x = bx0 + (bx1 - bx0) * rnd(), z = bz0 + (bz1 - bz0) * rnd(), r = { x0: x - 0.75, x1: x + 0.75, z0: z - 0.5, z1: z + 0.5 };
         if (!fits(r.x0, r.x1, r.z0, r.z1, 2.2) || !free(r)) continue;
         solid(hvac, r.x0, r.x1, r.z0, r.z1, yR + 0.25, yR + 1.3); taken.push(r); placed++;
+      }
+      // V4: rows of PV panels on the free part of the roof (dark glossy rectangles, the largest clear run of each row)
+      const solar = bufs.solar;
+      if (solar) {
+        let n = 0;
+        for (let z = bz0 + 2.4; z < bz1 - 2.4 && n < 18; z += 2.1) {
+          for (let x = bx0 + 2.2; x < bx1 - 3.2 && n < 18; x += 1.25) {
+            const r = { x0: x, x1: x + 1.1, z0: z, z1: z + 1.75 };
+            if (!fits(r.x0, r.x1, r.z0, r.z1, 1.5) || !free(r)) continue;
+            solid(solar, r.x0, r.x1, r.z0, r.z1, yR + 0.36, yR + 0.42); n++;
+            solid(hvac, r.x0 + 0.1, r.x1 - 0.1, r.z0 + 0.75, r.z0 + 0.95, yR, yR + 0.36);
+          }
+        }
+      }
+      // V4: paved maintenance walk from the stair overrun (light concrete slabs laid on the ballast)
+      {
+        const st = (core.stairs || [])[0];
+        if (st) for (let k = 0; k < 9; k++) {
+          const z = st.z1 + 0.7 + k * 0.72, r = { x0: st.x0 + 0.2, x1: st.x0 + 1.0, z0: z, z1: z + 0.6 };
+          if (fits(r.x0, r.x1, r.z0, r.z1, 1.2) && free(r)) solid(crown, r.x0, r.x1, r.z0, r.z1, yR, yR + 0.05);
+        }
       }
     }
   }

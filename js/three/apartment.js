@@ -1,4 +1,8 @@
 // ЖК VILNYI — procedural, fully furnished apartment interiors.
+// V3: a unit with a real interior (data.js interiorOf(unit) — the room polygons, doors, windows and fixtures of the
+// architectural plans) is built from that data: see "REAL INTERIOR" near the end of this file (notes/V3-builder.md).
+// What follows first is the earlier fitted-box planner. It is the FALLBACK: used for a unit without an interior, when
+// opts.box is set, and when the real-interior path throws.
 // buildApartment(unit, styleId) → group in UNIT-LOCAL coords (x = u along the entrance wall 0..width, z = v from the
 // entrance wall into the flat 0..depth, y = 0 at the floor surface). The plan is generated from TYPES[unit.type].plan
 // (the unit's real room list with areas) and fitted into the unit's own box width × depth:
@@ -10,7 +14,7 @@
 // Everything static is baked (merged by material) → roughly one draw call per material. Collisions use invisible boxes.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { TYPES, GEOM, LEVELS } from '../data.js';
+import { TYPES, GEOM, LEVELS, ROOM_DEFAULTS, interiorOf, plateOf, unitsOn, unitToLocal } from '../data.js';
 import { getMaterials, tickTv } from './materials.js';
 import { F, FX } from './furniture.js';
 
@@ -318,7 +322,8 @@ function buildMovers(ctx, sg, root) {
     const sp = mv.spec, door = sp.door || null, part = door ? 'balconyDoor' : sp.curtain ? (sp.part || 'curtain') : (sp.part || 'cabinet');
     px.name = door ? 'balcony-door' : sp.curtain ? 'curtain-' + part : 'cabinet-front'; px.matrixAutoUpdate = false;
     px.userData.action = door ? { type: 'aptDoor', unitId: unit.id, part, door } : sp.curtain ? { type: 'aptDoor', unitId: unit.id, part, curtain: sp.group } : { type: 'aptDoor', unitId: unit.id, part };
-    px.userData.cabinet = !door && !sp.curtain; px.userData.open = false;
+    px.userData.cabinet = !door && !sp.curtain && !sp.idoor; px.userData.open = false;
+    if (sp.idoor) { px.name = 'interior-door'; px.userData.interiorDoor = sp.idoor; px.userData.action.door = sp.idoor; }
     if (sp.curtain) { px.userData.curtain = sp.group; px.userData.motion = 'curtain'; }
     if (door) px.userData.balconyDoor = door;
     px.userData.piece = mv.piece || 'cabinet'; if (!sp.curtain) px.userData.motion = sp.type === 'slide' ? 'slide' : 'hinge';
@@ -337,7 +342,7 @@ function buildMovers(ctx, sg, root) {
     closeAll: () => {
       const ps = [], done = new Set();
       for (const mv of MV) {
-        if (!mv.open || mv.spec.door || mv.spec.curtain) continue;
+        if (!mv.open || mv.spec.door || mv.spec.curtain || mv.spec.idoor) continue;
         if (mv.group) { if (!done.has(mv.group)) { done.add(mv.group); ps.push(mv.group.toggle(false)); } }
         else ps.push(toggle(mv, false));
       }
@@ -355,13 +360,13 @@ function buildMovers(ctx, sg, root) {
 // The collider's userData.solid is true while closed; every change fires window 'vrc:colliders-changed' so the
 // walkthrough can refresh its collider lists.
 const NO_RAYCAST = () => {}, MESH_RAYCAST = THREE.Mesh.prototype.raycast;
-function wireBalconyDoors(ctx, movers) {
-  const { unit } = ctx, out = [];
+function wireBalconyDoors(ctx, movers, key = 'balconyDoor') {
+  const { unit } = ctx, out = [], part = key === 'balconyDoor' ? 'balconyDoor' : 'door';
   const fire = (d) => {
     try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('vrc:colliders-changed', { detail: { unitId: unit.id, door: d.id, open: d.open, collider: d.collider } })); } catch { /* no DOM */ }
   };
   for (const d of ctx.balconyDoors) {
-    d.proxies = movers ? movers.proxies.filter(p => p.userData.balconyDoor === d.id) : [];
+    d.proxies = movers ? movers.proxies.filter(p => p.userData[key] === d.id) : [];
     if (!d.proxies.length) continue;
     d.toggle = (open, o = {}) => {
       const want = open === undefined ? !d.open : !!open;
@@ -385,7 +390,7 @@ function wireBalconyDoors(ctx, movers) {
     if (d.collider) {
       const cu = d.collider.userData;
       cu.doorProxies = d.proxies;
-      cu.action = { type: 'aptDoor', unitId: unit.id, part: 'balconyDoor', door: d.id };
+      cu.action = { type: 'aptDoor', unitId: unit.id, part, door: d.id };
       cu.toggle = (open) => d.toggle(open);
       cu.open = false; cu.doorKind = d.kind; cu.motion = d.kind === 'slide' ? 'slide' : 'hinge';
     }
@@ -2647,8 +2652,2788 @@ function cameraViews(ctx, P) {
   return v;
 }
 
-export function buildApartment(unit, styleId = 'milano', opts = {}) { return build(unit, styleId, opts); }
-export function buildApartmentCutaway(unit, styleId = 'milano', opts = {}) { return build(unit, styleId, { ...opts, cutaway: true }); }
-// Plan only (no geometry): rooms, mode, windows — cheap, for tests and tools.
+// ================================================================== REAL INTERIOR (V3)
+// buildApartment() for a unit that has a real interior (data.js interiorOf(unit): room polygons, doors, windows,
+// fixtures extracted from the architectural plans, unit-local [u, v]). Everything is generated from the polygons:
+//   · every room builds ITS side of its walls: each polygon edge is extruded outwards by half the gap to the room
+//     beyond it (partitions), by the whole gap towards an own outdoor space, by the wall thickness of the data
+//     (exterior / party / entrance wall) where nothing of the flat lies beyond; corners are mitred;
+//   · doors, passages and windows cut the pieces (openings are projected onto the edges they lie on);
+//   · floors / ceilings are the triangulated polygons; outdoor spaces get glazing, side walls or a parapet on the
+//     edges that do not adjoin a room;
+//   · drawn fixtures are placed with the furniture kit (facing worked out from the nearest wall), the rest is
+//     furnished by room kind along free wall stretches.
+// The fitted-box planner above stays as the fallback for a unit without an interior (and if this path throws).
+const RD = ROOM_DEFAULTS || {};
+const RWIN = RD.window || {}, RDOOR = RD.door || {};
+const cross2 = (a, b) => a[0] * b[1] - a[1] * b[0], dot2 = (a, b) => a[0] * b[0] + a[1] * b[1];
+const sub2 = (a, b) => [a[0] - b[0], a[1] - b[1]], add2 = (a, b, k = 1) => [a[0] + b[0] * k, a[1] + b[1] * k];
+const len2 = a => Math.hypot(a[0], a[1]);
+function signedArea(poly) { let a = 0; for (let i = 0; i < poly.length; i++) { const p = poly[i], q = poly[(i + 1) % poly.length]; a += p[0] * q[1] - q[0] * p[1]; } return a / 2; }
+// nearest hit of the ray p + t·d (t in (1e-5, tmax]) with the boundary of a polygon
+function rayPoly(p, d, poly, tmax = Infinity) {
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length], ex = b[0] - a[0], ey = b[1] - a[1];
+    const den = d[0] * ey - d[1] * ex;
+    if (Math.abs(den) < 1e-9) continue;
+    const ax = a[0] - p[0], ay = a[1] - p[1];
+    const t = (ax * ey - ay * ex) / den, s = (ax * d[1] - ay * d[0]) / den;
+    if (t > 1e-5 && t <= tmax && s >= -1e-6 && s <= 1 + 1e-6 && t < best) best = t;
+  }
+  return best;
+}
+function segDist(p, a, b) {
+  const ex = b[0] - a[0], ey = b[1] - a[1], l2 = ex * ex + ey * ey || 1e-12;
+  const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * ex + (p[1] - a[1]) * ey) / l2));
+  return Math.hypot(p[0] - a[0] - ex * t, p[1] - a[1] - ey * t);
+}
+function polyDist(p, poly) { let d = Infinity; for (let i = 0; i < poly.length; i++) d = Math.min(d, segDist(p, poly[i], poly[(i + 1) % poly.length])); return d; }
+function polyBox(poly) { let u0 = Infinity, v0 = Infinity, u1 = -Infinity, v1 = -Infinity; for (const [u, v] of poly) { if (u < u0) u0 = u; if (u > u1) u1 = u; if (v < v0) v0 = v; if (v > v1) v1 = v; } return [u0, v0, u1, v1]; }
+
+// ---------------------------------------------------------------- the plan (geometry only; cached per layout)
+const RP_CACHE = new Map();
+function rpSpace(r, out) {
+  let poly = [];
+  for (const p of r.poly || []) { const q = poly[poly.length - 1]; if (!q || Math.hypot(q[0] - p[0], q[1] - p[1]) > 1e-3) poly.push([+p[0], +p[1]]); }
+  if (poly.length > 2 && Math.hypot(poly[0][0] - poly[poly.length - 1][0], poly[0][1] - poly[poly.length - 1][1]) < 1e-3) poly.pop();
+  if (signedArea(poly) < 0) poly.reverse();
+  const edges = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1e-9, d = [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
+    edges.push({ i, a, b, d, n: [d[1], -d[0]], len: l, ops: [], ivs: [], k0: 0, k1: 0 });
+  }
+  const c = r.c && pointInPoly(r.c, poly) ? [+r.c[0], +r.c[1]] : polyCentroid(poly);
+  return { id: r.id, kind: r.kind, nk: r.nk || NK[r.kind] || 'room.other', name: r.name || r.kind, area: +r.area || polyArea(poly), out: !!out, glazed: !!r.glazed, kitchen: !!r.kitchen, wc: !!r.wc,
+    poly, edges, c, box: polyBox(poly), segs: [] };
+}
+function rpPlan(unit, I) {
+  const hit = RP_CACHE.get(I.key || unit.type);
+  if (hit && hit.I === I) return hit;
+  const W = I.wall || {}, wExt = W.ext || 0.5, wParty = W.party || 0.25, wPart = W.part || 0.12;
+  const outer = I.outer && I.outer.length > 2 ? I.outer : null;
+  const spaces = [];
+  for (const r of I.rooms || []) if (r && r.poly && r.poly.length >= 3) spaces.push(rpSpace(r, false));
+  for (const r of I.outdoor || []) if (r && r.poly && r.poly.length >= 3) spaces.push(rpSpace(r, true));
+  const byId = new Map(spaces.map(s => [s.id, s]));
+  const warn = [];
+  // ---- openings: doors / passages / windows projected onto the edges they lie on
+  // (a door record whose direction is a few degrees off its wall — axis-aligned in a slanted facade — is turned
+  // onto the wall: the leaf and the frame then stand in the opening that is cut)
+  const doors = (I.doors || []).filter(d => d && d.p && d.dir && d.w > 0).map(d => {
+    const o = { ...d, p: [+d.p[0], +d.p[1]], dir: [+d.dir[0], +d.dir[1]], n: d.n ? [+d.n[0], +d.n[1]] : [-d.dir[1], d.dir[0]], t: Math.max(0, +d.t || 0) };
+    let best = null;
+    for (const S of spaces) {
+      if (S.out || (d.rooms && !d.rooms.includes(S.id))) continue;
+      for (const e of S.edges) {
+        const c = Math.abs(cross2(e.d, o.dir)); if (c > 0.21) continue;
+        const rel = sub2(o.p, e.a), dist = dot2(rel, e.n), s = dot2(rel, e.d);
+        if (dist < -0.12 || dist > o.t / 2 + 0.16 || s < -0.05 || s > e.len + 0.05) continue;
+        if (!best || Math.abs(dist - o.t / 2) < best.q) best = { q: Math.abs(dist - o.t / 2), e, c };
+      }
+    }
+    if (best && best.c > 0.012) {
+      const e = best.e, sg = dot2(e.d, o.dir) >= 0 ? 1 : -1;
+      o.dir = [e.d[0] * sg, e.d[1] * sg];
+      const nn = dot2(e.n, o.n) >= 0 ? 1 : -1; o.n = [e.n[0] * nn, e.n[1] * nn];
+      if (d.hinge) { const hs = dot2(sub2(d.hinge, o.p), o.dir) <= 0 ? -1 : 1; o.hinge = add2(o.p, o.dir, hs * o.w / 2); }
+    }
+    return o;
+  });
+  for (const d of doors) {
+    const t = +d.t || 0, half = d.w / 2;
+    let n = 0;
+    // (every room edge the opening lies on — also a third room's that shares the wall line; a passage between two
+    // overlapping polygons lies INSIDE both, hence the symmetric tolerance)
+    for (const S of spaces) {
+      if (S.out) continue;
+      const mine = !d.rooms || d.rooms.includes(S.id);
+      for (const e of S.edges) {
+        // the part of the edge inside the door's span (a door in a curved wall crosses several chords of it)
+        if (Math.abs(cross2(e.d, d.dir)) > 0.45) continue;
+        const sa = dot2(sub2(e.a, d.p), d.dir), sb = dot2(sub2(e.b, d.p), d.dir);
+        if (Math.abs(sb - sa) < 1e-6) continue;
+        let k0 = (-half - sa) / (sb - sa), k1 = (half - sa) / (sb - sa);
+        if (k0 > k1) [k0, k1] = [k1, k0];
+        k0 = Math.max(0, k0); k1 = Math.min(1, k1);
+        if (k1 - k0 < 1e-6) continue;
+        const a0 = k0 * e.len, a1 = k1 * e.len;
+        if (a1 - a0 < 0.05) continue;
+        const pm = add2(e.a, e.d, (a0 + a1) / 2), across = dot2(sub2(pm, d.p), d.n), lim = t / 2 + 0.14;
+        // (the edge is the room face of the door's wall: at most half the wall from its centre line; outward of the room)
+        if (Math.abs(across) > lim) continue;
+        const dist = dot2(sub2(d.p, pm), e.n);
+        if (dist < (mine ? -lim : -0.1)) continue;
+        e.ops.push({ a0, a1, y0: 0, y1: d.type === 'passage' ? 99 : (+d.h || RDOOR[d.type] || 2.05), door: d }); n++;
+      }
+    }
+    if (!n && d.type !== 'passage') warn.push('door ' + d.id + ' lies on no room edge');
+  }
+  for (const w of I.windows || []) {
+    const S = byId.get(w.room); if (!S || !w.pts || w.pts.length < 2) continue;
+    const def = RWIN[w.partition ? 'partition' : w.kind] || [0.85, 2.45];
+    const sill = Number.isFinite(+w.sill) ? +w.sill : def[0], head = Number.isFinite(+w.head) ? +w.head : def[1];
+    let n = 0;
+    for (let k = 0; k + 1 < w.pts.length; k++) {
+      const p = w.pts[k], q = w.pts[k + 1], l = Math.hypot(q[0] - p[0], q[1] - p[1]); if (l < 0.03) continue;
+      const wd = [(q[0] - p[0]) / l, (q[1] - p[1]) / l], mid = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+      for (const e of S.edges) {
+        if (Math.abs(cross2(e.d, wd)) > 0.2) continue;
+        if (Math.abs(dot2(sub2(mid, e.a), e.n)) > 0.09) continue;
+        const s0 = dot2(sub2(p, e.a), e.d), s1 = dot2(sub2(q, e.a), e.d), a0 = Math.max(0, Math.min(s0, s1)), a1 = Math.min(e.len, Math.max(s0, s1));
+        if (a1 - a0 < 0.04) continue;
+        e.ops.push({ a0, a1, y0: sill, y1: head, win: w, t: +w.t || 0 }); n++;
+      }
+    }
+    if (!n) warn.push('window ' + w.id + ' lies on no edge of ' + w.room);
+  }
+  // ---- what lies beyond every edge → intervals {s0, s1, cls, t}
+  let plate = null, others = [], halls = [];
+  try {
+    plate = plateOf(unit.building, unit.floor);
+    others = unitsOn(unit.building, unit.floor).filter(o => o.id !== unit.id && o.poly && o.poly.length > 2).map(o => o.poly);
+    halls = (plate && plate.hall) || [];
+  } catch { /* stand-alone use (tests with stub data) */ }
+  const beyondIsOutside = (p) => {
+    if (!plate || !unit.frame) return false;
+    let q; try { q = unitToLocal(unit, p[0], p[1]); } catch { return false; }
+    if (others.some(poly => pointInPoly(q, poly))) return false;
+    if (halls.some(h => q[0] > h.x0 - 0.4 && q[0] < h.x1 + 0.4 && q[1] > h.z0 - 0.4 && q[1] < h.z1 + 0.4)) return false;
+    const c = plate.core;
+    for (const r of [c, ...((c && c.lifts) || []), ...((c && c.stairs) || [])]) if (r && Number.isFinite(r.x0) && q[0] > r.x0 - 0.3 && q[0] < r.x1 + 0.3 && q[1] > r.z0 - 0.3 && q[1] < r.z1 + 0.3) return false;
+    return true;
+  };
+  const STEP = 0.02;
+  for (const S of spaces) for (const e of S.edges) {
+    const n = Math.max(1, Math.ceil(e.len / STEP)), ds = e.len / n;
+    let cur = null;
+    const runs = [];
+    for (let i = 0; i < n; i++) {
+      // (the ray starts 2 cm INSIDE the room, so a room that touches this edge — a passage — is met at t = 2 cm)
+      const s = (i + 0.5) * ds, p = [e.a[0] + e.d[0] * s - e.n[0] * 0.02, e.a[1] + e.d[1] * s - e.n[1] * 0.02];
+      let g = Infinity, who = null;
+      for (const T of spaces) {
+        if (T === S) continue;
+        if (p[0] < T.box[0] - 1 || p[0] > T.box[2] + 1 || p[1] < T.box[1] - 1 || p[1] > T.box[3] + 1) continue;
+        // (a room that overlaps this edge — two polygons drawn into each other at a wide opening — counts as touching)
+        const t = pointInPoly([p[0] + e.n[0] * 0.04, p[1] + e.n[1] * 0.04], T.poly) ? 0 : Math.max(0, rayPoly(p, e.n, T.poly, 1.0) - 0.02);
+        if (t < g) { g = t; who = T; }
+      }
+      let cls = 'none', key = 'none';
+      if (who) {
+        if (S.out) { cls = who.out ? 'none' : 'skip'; key = cls; }
+        else if (who.out) { cls = 'own'; key = 'own' + Math.round(g * 25); }
+        else if (g < 0.015) { cls = 'touch'; key = 'touch'; }             // the polygons touch: no wall (the data's rule)
+        else { cls = 'part'; key = 'part' + Math.round(g * 50); }
+      }
+      if (cur && cur.key === key) { cur.s1 = (i + 1) * ds; cur.gs.push(g); }
+      else runs.push(cur = { key, cls, s0: i * ds, s1: (i + 1) * ds, gs: [g], to: who });
+    }
+    // swallow slivers (a neighbour's corner seen for a few centimetres)
+    for (let k = runs.length - 1; k >= 0 && runs.length > 1; k--) {
+      const r = runs[k];
+      if (r.s1 - r.s0 >= 0.07) continue;
+      const nb = runs[k - 1] || runs[k + 1];
+      if (runs[k - 1]) nb.s1 = r.s1; else nb.s0 = r.s0;
+      runs.splice(k, 1);
+    }
+    for (const r of runs) {
+      const gs = r.gs.filter(Number.isFinite).sort((x, y) => x - y), g = gs.length ? gs[gs.length >> 1] : 0;
+      const iv = { s0: r.s0, s1: r.s1, cls: r.cls, t: 0, ext: false, to: r.to ? r.to.id : null };
+      const mid = (r.s0 + r.s1) / 2, pm = [e.a[0] + e.d[0] * mid, e.a[1] + e.d[1] * mid];
+      if (S.out) {
+        if (r.cls === 'skip') iv.t = 0;
+        else { iv.cls = S.kind === 'loggia' || S.glazed ? 'side' : 'rail'; iv.t = 0.1; iv.ext = true; }
+      } else if (r.cls === 'touch') iv.t = 0;
+      else if (r.cls === 'part') iv.t = Math.max(0.03, g / 2);
+      else if (r.cls === 'own') { iv.t = Math.max(0.1, g); iv.ext = true; }
+      else {
+        // nothing of this flat beyond: the entrance wall reaches the hall edge (v = 0); else exterior or party wall
+        const wt = e.ops.filter(o => o.t > 0 && o.a1 > r.s0 && o.a0 < r.s1).map(o => o.t)[0];
+        const dr = e.ops.find(o => o.door && o.door.type !== 'passage' && o.door.t > 0 && o.a1 > r.s0 && o.a0 < r.s1);
+        if (e.n[1] < -0.97 && pm[1] > 0.04 && pm[1] < 0.9) { iv.cls = 'hall'; iv.t = pm[1]; }
+        else if (wt) { iv.cls = 'ext'; iv.t = wt; iv.ext = true; }
+        else if (dr) { iv.cls = dr.door.type === 'entrance' ? 'hall' : 'ext'; iv.t = dr.door.t; iv.ext = dr.door.type === 'balcony'; }
+        else if (outer && pointInPoly(add2(pm, e.n, 0.06), outer) && r.s1 - r.s0 < 0.6) { iv.cls = 'inner'; iv.t = wPart / 2; }   // a stub at a junction of partitions
+        else if (beyondIsOutside(add2(pm, e.n, 0.95)) && beyondIsOutside(add2(pm, e.n, 0.6))) { iv.cls = 'ext'; iv.t = wExt; iv.ext = true; }
+        else { iv.cls = 'party'; iv.t = wParty; }
+      }
+      iv.t = Math.min(iv.t, 1.0);
+      e.ivs.push(iv);
+    }
+    e.ops.sort((p, q) => p.a0 - q.a0);
+  }
+  // collinear neighbours on one wall line share the thicker exterior thickness (a window's wall carries on beside it)
+  for (const S of spaces) {
+    if (S.out) continue;
+    for (const e of S.edges) for (const iv of e.ivs) {
+      if (iv.cls !== 'ext' && iv.cls !== 'party') continue;
+      for (const f of S.edges) {
+        if (f === e || Math.abs(cross2(e.d, f.d)) > 0.02 || dot2(e.d, f.d) < 0 || Math.abs(dot2(sub2(f.a, e.a), e.n)) > 0.02) continue;
+        for (const jv of f.ivs) if (jv.cls === 'ext' && jv.t > iv.t) { iv.t = jv.t; iv.cls = 'ext'; iv.ext = true; }
+      }
+    }
+  }
+  // ---- mitres at the polygon corners
+  for (const S of spaces) {
+    const E = S.edges, n = E.length;
+    for (let i = 0; i < n; i++) {
+      const e = E[i], p = E[(i + n - 1) % n];
+      const ie = e.ivs[0], ip = p.ivs[p.ivs.length - 1];
+      const te = ie && ie.s0 < 0.01 ? ie.t : 0, tp = ip && ip.s1 > p.len - 0.01 ? ip.t : 0;
+      e.k0 = 0; p.k1 = 0;
+      if (te <= 0 || tp <= 0) continue;
+      const den = cross2(e.d, p.d);
+      if (Math.abs(den) < 0.08) continue;
+      const diff = [p.n[0] * tp - e.n[0] * te, p.n[1] * tp - e.n[1] * te];
+      const y = cross2(diff, p.d) / den;                                    // along e.d from the corner
+      const M = [e.a[0] + e.n[0] * te + e.d[0] * y, e.a[1] + e.n[1] * te + e.d[1] * y];
+      const x = dot2(sub2(M, [e.a[0] + p.n[0] * tp, e.a[1] + p.n[1] * tp]), p.d);
+      const lim = 2.2 * Math.max(te, tp);
+      if (Math.abs(y) > lim || Math.abs(x) > lim || y > e.len * 0.9 || -x > p.len * 0.9) continue;
+      e.k0 = y; p.k1 = x;
+    }
+  }
+  let u0 = Infinity, v0 = Infinity, u1 = -Infinity, v1 = -Infinity;
+  for (const S of spaces) { u0 = Math.min(u0, S.box[0]); v0 = Math.min(v0, S.box[1]); u1 = Math.max(u1, S.box[2]); v1 = Math.max(v1, S.box[3]); }
+  // ---- balcony doors that do not open onto their outdoor polygon. Up to 1.7 m beside it (the drawn polygon is one
+  // bay of a balcony strip, the door opens onto the next bay): that bay is added as a deck of its own, from the door
+  // to the drawn polygon. Farther (a door to the garden): the door stays shut.
+  const decks = [];
+  for (const d of doors) {
+    if (d.type !== 'balcony') continue;
+    const O = byId.get(d.rooms && d.rooms[1]);
+    const q = add2(d.p, d.n, d.t / 2 + 0.35);
+    if (O && pointInPoly(q, O.poly)) continue;
+    if (O && polyDist(q, O.poly) < 0.3) continue;
+    const dist = O ? polyDist(q, O.poly) : Infinity;
+    let ok = false;
+    if (O && dist <= 1.7) {
+      let s0 = Infinity, s1 = -Infinity, n1 = -Infinity;
+      for (const pt of O.poly) { const r = sub2(pt, d.p), a = dot2(r, d.dir), b = dot2(r, d.n); s0 = Math.min(s0, a); s1 = Math.max(s1, a); n1 = Math.max(n1, b); }
+      const hw = d.w / 2 + 0.3, depth = Math.min(n1, d.t / 2 + 1.5);
+      if (depth > d.t / 2 + 0.6) {
+        const a0 = s0 > hw - 0.05 ? -hw : s1 < -hw + 0.05 ? s1 + 0.06 : Math.min(-hw, s0), a1 = s0 > hw - 0.05 ? s0 - 0.06 : s1 < -hw + 0.05 ? hw : Math.max(hw, s1);
+        const Pt = (a, b) => [d.p[0] + d.dir[0] * a + d.n[0] * b, d.p[1] + d.dir[1] * a + d.n[1] * b];
+        decks.push({ id: 'k-' + d.id, door: d.id, space: O.id, poly: [Pt(a0, d.t / 2), Pt(a1, d.t / 2), Pt(a1, depth), Pt(a0, depth)], d: d.dir, n: d.n, a0, a1, w0: d.t / 2, w1: depth, p: d.p, toHi: s0 > hw - 0.05 });
+        ok = true;
+      }
+    }
+    if (!ok) { d.fixed = true; warn.push('door ' + d.id + ' does not open onto ' + (O ? O.id : 'an outdoor space') + ' (kept shut)'); }
+  }
+  for (const O of spaces) if (O.out) O.detached = !doors.some(d => d.type === 'balcony' && !d.fixed && d.rooms && d.rooms[1] === O.id && !decks.some(k => k.door === d.id));
+  const P = { I, key: I.key || unit.type, doors, decks, spaces, byId, rooms: spaces.filter(s => !s.out), outdoor: spaces.filter(s => s.out), warn, bbox: { u0, v0, u1, v1 }, wExt, wParty };
+  RP_CACHE.set(P.key, P);
+  return P;
+}
+// Solid wall stretches of every space (for furnishing): [{a, b, d, nin, len, wins:[{s0, s1, sill}], cls}] — wall
+// pieces between door openings, joined across collinear edges. Outdoor spaces: every edge counts.
+function rpSegs(P) {
+  for (const S of P.spaces) {
+    const raw = [];
+    for (const e of S.edges) for (const iv of e.ivs) {
+      if (!S.out && !(iv.t > 0)) continue;
+      const cuts = e.ops.filter(o => o.door && o.a1 > iv.s0 + 1e-4 && o.a0 < iv.s1 - 1e-4);
+      let s = iv.s0;
+      const emit = (x0, x1) => {
+        if (x1 - x0 < 0.02) return;
+        const wins = e.ops.filter(o => o.win && o.a1 > x0 && o.a0 < x1).map(o => ({ s0: Math.max(0, o.a0 - x0), s1: Math.min(x1, o.a1) - x0, sill: o.y0 }));
+        raw.push({ a: add2(e.a, e.d, x0), b: add2(e.a, e.d, x1), d: e.d, nin: [-e.n[0], -e.n[1]], len: x1 - x0, wins, cls: iv.cls });
+      };
+      for (const o of cuts) { emit(s, Math.min(o.a0, iv.s1)); s = Math.max(s, o.a1); }
+      emit(s, iv.s1);
+    }
+    const out = [];
+    for (const r of raw) {
+      const l = out[out.length - 1];
+      if (l && Math.abs(cross2(l.d, r.d)) < 0.02 && dot2(l.d, r.d) > 0 && Math.hypot(l.b[0] - r.a[0], l.b[1] - r.a[1]) < 0.03) {
+        for (const w of r.wins) l.wins.push({ s0: w.s0 + l.len, s1: w.s1 + l.len, sill: w.sill });
+        l.b = r.b; l.len = Math.hypot(l.b[0] - l.a[0], l.b[1] - l.a[1]);
+      } else out.push({ ...r, wins: r.wins.slice() });
+    }
+    if (out.length > 1) {
+      const f = out[0], l = out[out.length - 1];
+      if (Math.abs(cross2(l.d, f.d)) < 0.02 && dot2(l.d, f.d) > 0 && Math.hypot(l.b[0] - f.a[0], l.b[1] - f.a[1]) < 0.03) {
+        for (const w of f.wins) l.wins.push({ s0: w.s0 + l.len, s1: w.s1 + l.len, sill: w.sill });
+        l.b = f.b; l.len = Math.hypot(l.b[0] - l.a[0], l.b[1] - l.a[1]); out.shift();
+      }
+    }
+    S.segs = out;
+  }
+}
+
+// ---------------------------------------------------------------- geometry accumulators (one mesh per material)
+function rpAcc() {
+  const map = new Map();
+  const arr = (mat) => { let a = map.get(mat); if (!a) map.set(mat, a = { p: [], n: [] }); return a; };
+  const tri = (mat, a, b, c, n) => {
+    // winding follows the wanted normal
+    const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+    const gx = uy * vz - uz * vy, gy = uz * vx - ux * vz, gz = ux * vy - uy * vx;
+    const A = arr(mat);
+    if (gx * n[0] + gy * n[1] + gz * n[2] >= 0) A.p.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
+    else A.p.push(a[0], a[1], a[2], c[0], c[1], c[2], b[0], b[1], b[2]);
+    A.n.push(n[0], n[1], n[2], n[0], n[1], n[2], n[0], n[1], n[2]);
+  };
+  const quad = (mat, a, b, c, d, n) => { tri(mat, a, b, c, n); tri(mat, a, c, d, n); };
+  // vertical quad over the plan segment p → q between y0 and y1, facing plan direction nn
+  const vquad = (mat, p, q, y0, y1, nn) => quad(mat, [p[0], y0, p[1]], [q[0], y0, q[1]], [q[0], y1, q[1]], [p[0], y1, p[1]], [nn[0], 0, nn[1]]);
+  // horizontal plan quad at height y
+  const hquad = (mat, a, b, c, d, y, up) => quad(mat, [a[0], y, a[1]], [b[0], y, b[1]], [c[0], y, c[1]], [d[0], y, d[1]], [0, up, 0]);
+  // box along the plan direction d: centre c, half-length hl along d, half-width hw across, y0 … y1
+  const obox = (mat, c, d, hl, hw, y0, y1) => {
+    if (hl <= 0 || hw <= 0 || y1 - y0 <= 0) return;
+    const nx = -d[1], ny = d[0];
+    const A = [c[0] - d[0] * hl - nx * hw, c[1] - d[1] * hl - ny * hw], B = [c[0] + d[0] * hl - nx * hw, c[1] + d[1] * hl - ny * hw];
+    const C = [c[0] + d[0] * hl + nx * hw, c[1] + d[1] * hl + ny * hw], D = [c[0] - d[0] * hl + nx * hw, c[1] - d[1] * hl + ny * hw];
+    vquad(mat, A, B, y0, y1, [-nx, -ny]); vquad(mat, D, C, y0, y1, [nx, ny]);
+    vquad(mat, A, D, y0, y1, [-d[0], -d[1]]); vquad(mat, B, C, y0, y1, d);
+    hquad(mat, A, B, C, D, y1, 1); hquad(mat, A, B, C, D, y0, -1);
+  };
+  // box in the frame of an edge: s0 … s1 along d from the point a, w0 … w1 along the normal nn
+  const ebox = (mat, a, d, nn, s0, s1, w0, w1, y0, y1) => {
+    if (s1 - s0 <= 1e-4 || w1 - w0 <= 1e-4 || y1 - y0 <= 1e-4) return;
+    const P = (s, w) => [a[0] + d[0] * s + nn[0] * w, a[1] + d[1] * s + nn[1] * w];
+    const A = P(s0, w0), B = P(s1, w0), C = P(s1, w1), D = P(s0, w1);
+    vquad(mat, A, B, y0, y1, [-nn[0], -nn[1]]); vquad(mat, D, C, y0, y1, nn);
+    vquad(mat, A, D, y0, y1, [-d[0], -d[1]]); vquad(mat, B, C, y0, y1, d);
+    hquad(mat, A, B, C, D, y1, 1); hquad(mat, A, B, C, D, y0, -1);
+  };
+  // triangulated polygon at height y (up = 1 floor, −1 ceiling)
+  const poly = (mat, pts, y, up) => {
+    const c = pts.map(p => new THREE.Vector2(p[0], p[1]));
+    let f = [];
+    try { f = THREE.ShapeUtils.triangulateShape(c, []); } catch { f = []; }
+    if (!f.length) for (let i = 1; i + 1 < pts.length; i++) f.push([0, i, i + 1]);
+    for (const [i, j, k] of f) tri(mat, [pts[i][0], y, pts[i][1]], [pts[j][0], y, pts[j][1]], [pts[k][0], y, pts[k][1]], [0, up, 0]);
+  };
+  const flush = (parent, tmp) => {
+    for (const [mat, A] of map) {
+      if (!A.p.length || !mat) continue;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(A.p, 3));
+      g.setAttribute('normal', new THREE.Float32BufferAttribute(A.n, 3));
+      tmp.push(g);
+      parent.add(new THREE.Mesh(g, mat));
+    }
+    map.clear();
+  };
+  return { tri, quad, vquad, hquad, obox, ebox, poly, flush };
+}
+// collider box along a plan direction (rotated unit box)
+function ocollider(p, c, d, hl, hw, y0, y1, kind = 'solid') {
+  const o = collider(p, -hl, y0, -hw, hl, y1, hw, kind);
+  o.position.set(c[0], (y0 + y1) / 2, c[1]);
+  o.rotation.y = Math.atan2(-d[1], d[0]);
+  return o;
+}
+// polygon collider (walkable floor of a room / an outdoor space)
+function pcollider(p, pts, y, tmp) {
+  if (!COLMAT) { COLMAT = new THREE.MeshBasicMaterial({ visible: false }); COLMAT.name = 'collider'; }
+  const c = pts.map(q => new THREE.Vector2(q[0], q[1]));
+  let f = [];
+  try { f = THREE.ShapeUtils.triangulateShape(c, []); } catch { f = []; }
+  if (!f.length) for (let i = 1; i + 1 < pts.length; i++) f.push([0, i, i + 1]);
+  const pos = [];
+  for (const t of f) for (const i of t) pos.push(pts[i][0], y, pts[i][1]);
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  const o = new THREE.Mesh(g, COLMAT);
+  o.userData.keep = true; o.userData.collider = true; o.userData.floor = true; o.name = 'col-floor';
+  if (tmp) tmp.push(g);
+  p.add(o); return o;
+}
+
+// ---------------------------------------------------------------- shell: walls, openings, floors, ceilings, outdoor
+const rpFloorMat = (m, S) => S.out ? m.floorOut : S.kind === 'bath' ? m.floorBath : S.kind === 'hall' ? (m.floorHall || (m.fam === 'milano' ? m.marble : m.floor)) : m.floor;
+const rpWallMat = (m, S) => S.out ? m.exterior : S.kind === 'bath' ? m.wallBath : m.wall;
+function rpShell(ctx) {
+  const { P, m, A, cut, sg, cg } = ctx, H = cut ? 1.1 : CH;
+  const paris = m.styleId === 'paris', sh = paris ? 0.13 : 0.08, st = paris ? 0.018 : 0.014;
+  for (const S of P.spaces) {
+    const wm = rpWallMat(m, S), capM = S.out ? m.exterior : m.wall;
+    for (const e of S.edges) {
+      const nin = [-e.n[0], -e.n[1]];
+      const Pt = (s, w) => [e.a[0] + e.d[0] * s + e.n[0] * w, e.a[1] + e.d[1] * s + e.n[1] * w];
+      for (const iv of e.ivs) {
+        if (!(iv.t > 0) || iv.cls === 'skip') continue;
+        const rail = iv.cls === 'rail', Hw = rail ? Math.min(0.42, H) : H, t = iv.t;
+        const ops = e.ops.filter(o => o.a1 > iv.s0 + 1e-4 && o.a0 < iv.s1 - 1e-4);
+        const xs = [iv.s0, iv.s1];
+        for (const o of ops) { xs.push(Math.max(iv.s0, Math.min(iv.s1, o.a0)), Math.max(iv.s0, Math.min(iv.s1, o.a1))); }
+        xs.sort((a, b) => a - b);
+        for (let k = 0; k + 1 < xs.length; k++) {
+          const x0 = xs[k], x1 = xs[k + 1];
+          if (x1 - x0 < 0.004) continue;
+          const mid = (x0 + x1) / 2, op = ops.find(o => mid > o.a0 && mid < o.a1) || null;
+          const spans = [];
+          if (!op) spans.push([0, Hw]);
+          else {
+            if (op.y0 > 0.03) spans.push([0, Math.min(op.y0, Hw)]);
+            if (!cut && !rail && op.y1 < Hw - 0.02) spans.push([op.y1, Hw]);
+          }
+          if (op && op.win && !op.built) { op.built = true; }
+          if (!spans.length) continue;
+          const atS = x0 < 0.004, atE = x1 > e.len - 0.004;
+          const sM = atS ? e.k0 : 0, eM = atE ? e.k1 : 0;
+          const a = Pt(x0, 0), b = Pt(x1, 0), a2 = Pt(x0 + sM, t), b2 = Pt(x1 + eM, t);
+          for (const [y0, y1] of spans) {
+            if (y1 - y0 < 0.004) continue;
+            A.vquad(wm, a, b, y0, y1, nin);
+            if (iv.ext) A.vquad(m.exterior, a2, b2, y0, y1, e.n);
+            else if (cut && iv.cls !== 'part' && iv.cls !== 'touch') A.vquad(m.wall, a2, b2, y0, y1, e.n);
+            if (!(atS && sM !== 0)) A.vquad(capM, a, a2, y0, y1, [-e.d[0], -e.d[1]]);
+            if (!(atE && eM !== 0)) A.vquad(capM, b, b2, y0, y1, e.d);
+            if (cut || y1 < H - 0.01) A.hquad(cut && y1 >= H - 0.01 ? m.cutCap : rail ? m.stone : capM, a, b, b2, a2, y1 + (cut && y1 >= H - 0.01 ? 0.001 : 0), 1);
+            if (y0 > 0.01) A.hquad(capM, a, b, b2, a2, y0, -1);
+          }
+          if (spans[0][0] > 0.01) continue;                                         // a lintel only
+          // collider (wall, sill wall, parapet)
+          const c0 = x0 + Math.min(0, sM), c1 = x1 + Math.max(0, eM), top = rail ? 1.3 : Math.min(spans[0][1], 2.2);
+          if (top > 0.06) ocollider(cg, Pt((c0 + c1) / 2, t / 2), e.d, (c1 - c0) / 2, t / 2, 0.02, top);
+          if (rail) {
+            const g = Math.max(0.02, t / 2);
+            A.ebox(m.glass, e.a, e.d, e.n, x0 + 0.01, x1 - 0.01, g - 0.008, g + 0.008, Hw, 1.06);
+            A.ebox(m.frame, e.a, e.d, e.n, x0, x1, g - 0.03, g + 0.03, 1.06, 1.1);
+            for (const x of [x0, x1]) A.ebox(m.frame, e.a, e.d, e.n, x - 0.02, x + 0.02, g - 0.02, g + 0.02, Hw, 1.06);
+          }
+          if (S.out) continue;
+          // skirting + junction shading (floor, wall foot; ceiling and wall head under a full-height piece)
+          const low = spans[0][1] < H - 0.01, len = x1 - x0, pm = Pt(mid, 0);
+          if (S.kind !== 'bath') A.ebox(m.skirting, e.a, e.d, nin, x0, x1, 0, st, 0, Math.min(sh, spans[0][1]));
+          if (len > 0.12 && !ctx.noFx) {
+            const R = [e.d[0] * len, 0, e.d[1] * len];
+            FX.fxQuad(sg, m.ao, 'grad', [pm[0] + nin[0] * 0.16, 0.004, pm[1] + nin[1] * 0.16], R, [e.n[0] * 0.32, 0, e.n[1] * 0.32]);
+            if (spans[0][1] > 0.5) FX.fxQuad(sg, m.aoSoft, 'grad', [pm[0] + nin[0] * 0.016, S.kind === 'bath' ? 0.2 : 0.25, pm[1] + nin[1] * 0.016], R, [0, S.kind === 'bath' ? -0.4 : -0.34, 0]);
+            if (!cut && !low) {
+              FX.fxQuad(sg, m.aoSoft, 'grad', [pm[0] + nin[0] * 0.15, CH - 0.004, pm[1] + nin[1] * 0.15], R, [e.n[0] * 0.3, 0, e.n[1] * 0.3]);
+              FX.fxQuad(sg, m.aoSoft, 'grad', [pm[0] + nin[0] * 0.016, CH - 0.15, pm[1] + nin[1] * 0.016], R, [0, 0.3, 0]);
+            }
+          }
+        }
+        // windows of this stretch
+        for (const o of ops) if (o.win && !o.done) { o.done = true; rpWindow(ctx, S, e, o, t); }
+      }
+      for (const o of e.ops) { delete o.done; delete o.built; }
+    }
+  }
+  // ---- floors, ceilings, walkable regions
+  for (const S of P.spaces) {
+    if (!S.out) {
+      A.poly(rpFloorMat(m, S), S.poly, 0, 1);
+      if (!cut) A.poly(m.ceiling, S.poly, CH, -1);
+      const c = pcollider(cg, S.poly, 0, ctx.colGeos); c.userData.room = S.id;
+    } else {
+      const fy = 0.012;
+      A.poly(m.floorOut, S.poly, fy, 1);
+      A.poly(m.exterior, S.poly, -0.25, -1);
+      for (const e of S.edges) for (const iv of e.ivs) if (iv.cls !== 'skip') A.vquad(m.exterior, add2(e.a, e.d, iv.s0), add2(e.a, e.d, iv.s1), -0.25, fy, e.n);
+      // (the soffit hangs 1.5 cm below the slab above: nothing coplanar with the tower's own geometry)
+      if (!cut && S.kind !== 'terrace') { A.poly(m.exterior, S.poly, CH - 0.015, -1); rpDownlight(ctx, S.c[0], CH - 0.015, S.c[1]); }
+      const c = pcollider(cg, S.poly, fy, ctx.colGeos); c.userData.room = S.id;
+    }
+  }
+  // ---- deck strips between a balcony door and its outdoor polygon (rpPlan)
+  for (const k of P.decks) {
+    const O = P.byId.get(k.space), fy = 0.012, Pt = (a, b) => [k.p[0] + k.d[0] * a + k.n[0] * b, k.p[1] + k.d[1] * a + k.n[1] * b];
+    A.poly(m.floorOut, k.poly, fy, 1); A.poly(m.exterior, k.poly, -0.25, -1);
+    pcollider(cg, k.poly, fy, ctx.colGeos).userData.room = k.space;
+    const glazed = O && (O.glazed || O.kind === 'loggia'), top = cut ? 1.1 : glazed ? 2.6 : 1.08;
+    const side = (a, b0, b1) => {          // closing piece across the strip at a
+      A.ebox(m.frame, Pt(a, 0), k.n, k.d, b0, b1, -0.03, 0.03, 0, 0.1); A.ebox(glazed ? m.glazing : m.glass, Pt(a, 0), k.n, k.d, b0, b1, -0.006, 0.006, 0.1, top);
+      A.ebox(m.frame, Pt(a, 0), k.n, k.d, b0, b1, -0.03, 0.03, top, top + 0.04);
+      ocollider(cg, Pt(a, (b0 + b1) / 2), k.n, (b1 - b0) / 2, 0.05, 0.02, glazed ? 2.2 : 1.3);
+    };
+    // outer edge + the free end
+    A.ebox(m.frame, Pt(0, k.w1), k.d, k.n, k.a0, k.a1, -0.03, 0.03, 0, 0.1); A.ebox(glazed ? m.glazing : m.glass, Pt(0, k.w1), k.d, k.n, k.a0, k.a1, -0.006, 0.006, 0.1, top);
+    A.ebox(m.frame, Pt(0, k.w1), k.d, k.n, k.a0, k.a1, -0.03, 0.03, top, top + 0.04);
+    ocollider(cg, Pt((k.a0 + k.a1) / 2, k.w1), k.d, (k.a1 - k.a0) / 2, 0.05, 0.02, glazed ? 2.2 : 1.3);
+    side(k.a0, k.w0, k.w1); side(k.a1, k.w0, k.w1);
+    A.vquad(m.exterior, Pt(k.a0, k.w1), Pt(k.a1, k.w1), -0.25, fy, k.n);
+    if (!cut && glazed) A.poly(m.exterior, k.poly, CH - 0.015, -1);
+  }
+}
+// One straight piece of glazing in the opening `op` of edge e (wall thickness t): frame, glass, board, collider.
+function rpWindow(ctx, S, e, op, t) {
+  const { m, A, cut, sg, cg } = ctx, H = cut ? 1.1 : CH;
+  const a0 = op.a0, a1 = op.a1, len = a1 - a0;
+  const g = S.out ? t / 2 : clamp(t * 0.62, 0.05, Math.max(0.05, t - 0.07));
+  const board = !S.out && op.y0 >= 0.3;
+  const yb = op.y0 + (board ? 0.025 : 0), yt = Math.min(op.y1, H);
+  const Pt = (s, w) => [e.a[0] + e.d[0] * s + e.n[0] * w, e.a[1] + e.d[1] * s + e.n[1] * w];
+  if (board && op.y0 < H) A.ebox(m.stone, e.a, e.d, e.n, a0, a1, -0.035, g, op.y0, op.y0 + 0.025);
+  if (!board && op.y0 <= 0.03) A.ebox(m.stone, e.a, e.d, e.n, a0, a1, 0, t, 0, 0.012);
+  if (yt - yb > 0.12) {
+    const ft = 0.05, fd = S.out ? 0.06 : 0.07, w0 = g - fd / 2, w1 = g + fd / 2, frm = m.frame;
+    const curved = !!op.win.curved && (op.win.pts || []).length > 3;
+    // on a curve the glazing line lies outside the room polygon: every chord is lengthened to meet its neighbours
+    let x0 = a0, x1 = a1;
+    if (curved) {
+      const E = S.edges, i = E.indexOf(e), pe = E[(i + E.length - 1) % E.length], ne = E[(i + 1) % E.length];
+      const ext = (d0, d1) => { const c = cross2(d0, d1), dt = dot2(d0, d1); return clamp(g * Math.tan(Math.atan2(c, dt) / 2), -0.25, 0.25); };
+      if (a0 < 0.03) x0 = a0 - ext(pe.d, e.d);
+      if (a1 > e.len - 0.03) x1 = a1 + ext(e.d, ne.d);
+    }
+    if (curved) {
+      // segmented glass: a slim post at a joint about every metre of the curve (and at both ends of the glazing)
+      const st = ctx.curveSt.get(op.win) || { acc: 9 }; ctx.curveSt.set(op.win, st);
+      if (st.left == null) { st.left = 0; for (const f of S.edges) for (const o of f.ops) if (o.win === op.win) st.left++; }
+      if (st.acc >= 0.9) { A.ebox(frm, e.a, e.d, e.n, x0 - 0.02, x0 + 0.02, w0, w1, yb, yt); st.acc = 0; }
+      st.acc += len;
+      if (--st.left <= 0) A.ebox(frm, e.a, e.d, e.n, x1 - 0.04, x1, w0, w1, yb, yt);
+    } else {
+      const n = Math.max(1, Math.round(len / 1.2)), pw = len / n;
+      for (let k = 0; k <= n; k++) {
+        const x = a0 + k * pw, x0 = k === 0 ? x : k === n ? x - ft : x - ft / 2;
+        A.ebox(frm, e.a, e.d, e.n, x0, x0 + ft, w0, w1, yb, yt);
+      }
+    }
+    A.ebox(frm, e.a, e.d, e.n, x0, x1, w0, w1, yb, yb + 0.045);
+    if (!cut || yt < H - 0.001) A.ebox(frm, e.a, e.d, e.n, x0, x1, w0, w1, yt - 0.045, yt);
+    if (!cut && !curved && yb < 0.3 && yt > 2.2 && (S.out || op.win.kind === 'panoramic')) A.ebox(frm, e.a, e.d, e.n, a0, a1, w0, w1, 1.06, 1.1);
+    A.ebox(m.glazing, e.a, e.d, e.n, curved ? x0 : a0 + 0.02, curved ? x1 : a1 - 0.02, g - 0.006, g + 0.006, yb + 0.03, yt - (cut ? 0 : 0.03));
+  }
+  ocollider(cg, Pt((a0 + a1) / 2, g), e.d, len / 2, 0.05, Math.max(0.02, Math.min(op.y0, 2.0)), 2.2).name = 'col-glass';
+  if (!cut && !S.out && !ctx.noFx && len > 0.4) {
+    // daylight falling in: brightest at the glass, fading into the room
+    const dl = board ? 1.5 : 2.4, c = Pt((a0 + a1) / 2, -dl / 2), c2 = Pt((a0 + a1) / 2, -0.8);
+    FX.fxQuad(sg, m.daylight, 'grad', [c[0], 0.006, c[1]], [e.d[0] * (len + 0.3), 0, e.d[1] * (len + 0.3)], [e.n[0] * dl, 0, e.n[1] * dl]);
+    FX.fxQuad(sg, m.daylight, 'grad', [c2[0], CH - 0.006, c2[1]], [e.d[0] * len, 0, e.d[1] * len], [e.n[0] * 1.6, 0, e.n[1] * 1.6]);
+  }
+  ctx.wins.push({ S, e, op, t, g, len, mid: Pt((a0 + a1) / 2, 0), nin: [-e.n[0], -e.n[1]] });
+}
+function rpDownlight(ctx, u, y, v) {
+  const { m, sg } = ctx;
+  if (ctx.cut) return;
+  FX.cyl(sg, 0.05, 0.05, 0.004, m.fam === 'nordic' ? m.blackMetal : m.metal, u, y - 0.006, v, 20);
+  FX.disc(sg, 0.036, m.lightEmit, u, y - 0.0065, v, [HALF, 0, 0], 16);
+  FX.bloom(sg, u, y - 0.03, v, 0.22, 0.5);
+}
+
+// ---------------------------------------------------------------- doors
+// Every door / passage of the data → threshold (+ walkable strip through the wall), frame and, for a door with a
+// leaf, a hinged mover. Interior leaves hang on the drawn hinge and swing into the drawn room; they rest OPEN
+// (opts.doors: 'closed' starts them shut — they then open when the camera comes near and close behind it); a tap
+// toggles them. Balcony / terrace doors start closed and are listed in balconyDoors (the walkthrough opens them on
+// approach). The entrance: opening, reveal, frame and the leaf the walkthrough operates (apt.doorLeaf — walk.js hides
+// the hall's copy for a loaded flat); opts.entranceLeaf === false leaves the opening empty.
+function rpDoors(ctx) {
+  const { P, I, m, A, cut, cg, sg, unit } = ctx;
+  for (const d of P.doors) {
+    const t = Math.max(0, +d.t || 0), hw = d.w / 2, dir = d.dir, n = d.n || [-dir[1], dir[0]];
+    const r0 = P.byId.get(d.rooms && d.rooms[0]) || null, r1 = P.byId.get(d.rooms && d.rooms[1]) || null;
+    const Pt = (s, w) => [d.p[0] + dir[0] * s + n[0] * w, d.p[1] + dir[1] * s + n[1] * w];
+    const h = d.type === 'passage' ? null : Math.min(+d.h || RDOOR[d.type] || 2.05, CH - 0.05);
+    const rec = { id: d.id, type: d.type, rooms: (d.rooms || []).slice(), u: d.p[0], v: d.p[1], p: [d.p[0], d.p[1]], dir: [dir[0], dir[1]], n: [n[0], n[1]], w: d.w, t, h,
+      axis: Math.abs(dir[0]) >= Math.abs(dir[1]) ? 'u' : 'v', fixed: !!d.fixed, est: !!d.est, swing: d.swing || null, hinge: d.hinge ? [d.hinge[0], d.hinge[1]] : null, state: d.type === 'passage' ? 'none' : 'closed', open: false, y: 0, level: 0 };
+    ctx.doors.push(rec);
+    // floor through the wall + its walkable strip
+    if (t > 0.015) {
+      const ht = t / 2 + 0.006;
+      const fm = d.type === 'passage' || d.type === 'interior' ? rpFloorMat(m, r1 && !r1.out ? r1 : r0 || r1 || { kind: 'hall' }) : m.stone;
+      A.hquad(fm, Pt(-hw, -ht), Pt(hw, -ht), Pt(hw, ht), Pt(-hw, ht), d.type === 'passage' || d.type === 'interior' ? 0 : 0.004, 1);
+      if (!cut && d.type === 'passage') A.hquad(m.ceiling, Pt(-hw, -ht), Pt(hw, -ht), Pt(hw, ht), Pt(-hw, ht), CH, -1);
+    }
+    if (d.type === 'entrance') ocollider(cg, Pt(0, -0.15), dir, hw + 0.05, t / 2 + 0.3, -0.2, 0, 'floor');
+    else ocollider(cg, d.p, dir, hw, t / 2 + 0.16, -0.2, d.type === 'balcony' ? 0.006 : 0, 'floor');
+    if (d.type === 'passage') { ctx.zones.push({ c: d.p, d: dir, hl: Math.max(0.3, hw - 0.05), hw: Math.min(0.55, 0.25 + d.w * 0.12), kind: 'passage', id: d.id }); continue; }
+    if (d.fixed) {
+      // a glazed door that leads nowhere in this model (see rpPlan): shut for good — frame, leaf and a solid collider
+      const g0 = -t / 2 + clamp(t * 0.62, 0.05, Math.max(0.05, t - 0.07)), hh = cut ? 1.1 : h;
+      for (const sx of [-1, 1]) A.ebox(m.frame, d.p, dir, n, sx < 0 ? -hw : hw - 0.07, sx < 0 ? -hw + 0.07 : hw, g0 - 0.03, g0 + 0.03, 0, hh);
+      A.ebox(m.frame, d.p, dir, n, -hw, hw, g0 - 0.03, g0 + 0.03, 0, 0.1);
+      if (!cut) A.ebox(m.frame, d.p, dir, n, -hw, hw, g0 - 0.03, g0 + 0.03, h - 0.07, h);
+      A.ebox(m.glazing, d.p, dir, n, -hw + 0.07, hw - 0.07, g0 - 0.005, g0 + 0.005, 0.1, hh - (cut ? 0 : 0.07));
+      ocollider(cg, Pt(0, g0), dir, hw, 0.05, 0.02, 2.2).name = 'col-glass';
+      rec.state = 'fixed';
+      continue;
+    }
+    // swing side: +1 = towards rooms[1] (along n)
+    let sgn = d.swing ? (d.swing === (d.rooms && d.rooms[1]) ? 1 : -1) : d.type === 'balcony' ? 1 : d.type === 'entrance' ? 1 : -1;
+    const hingeAt = d.hinge ? dot2(sub2(d.hinge, d.p), dir) : -hw;                  // along dir from the centre (−hw: the data's rule)
+    const hs = hingeAt <= 0 ? -1 : 1;
+    rec.swingSign = sgn;
+    // keep-out zones: the swept quarter and the approach on the other side
+    ctx.zones.push({ c: Pt(0, sgn * (t / 2 + d.w / 2)), d: dir, hl: hw + 0.03, hw: d.w / 2 + 0.02, kind: 'swing', id: d.id, hinge: Pt(hs * hw, sgn * t / 2), r: d.w, type: d.type });
+    if (d.type === 'balcony') for (const sd of [-1, 1]) ctx.zones.push({ c: Pt(0, sd * (t / 2 + 0.3)), d: dir, hl: hw + 0.2, hw: 0.3, core: hw, kind: 'approach', id: d.id, type: 'balcony', fixed: true });
+    else ctx.zones.push({ c: Pt(0, -sgn * (t / 2 + 0.35)), d: dir, hl: hw, hw: 0.35, kind: 'approach', id: d.id, type: d.type });
+    if (cut) { rec.leaf = { d, sgn, hs, hw, t, h, lt: 0.04 }; continue; }
+    // ---- frame: linings in the reveal + architraves on both faces (a glazed door: a slim metal frame at the leaf)
+    const fm = d.type === 'balcony' ? m.frame : m.doorFrame;
+    const lt = d.type === 'balcony' ? 0.05 : d.type === 'entrance' ? 0.06 : 0.04;
+    const g0 = -t / 2 + clamp(t * 0.62, 0.05, Math.max(0.05, t - 0.07));     // plane of a glazed door's frame, along n from the wall centre
+    if (d.type !== 'balcony') {
+      for (const sx of [-1, 1]) A.ebox(fm, d.p, dir, n, sx < 0 ? -hw : hw - 0.015, sx < 0 ? -hw + 0.015 : hw, -t / 2, t / 2, 0, h);
+      A.ebox(fm, d.p, dir, n, -hw, hw, -t / 2, t / 2, h - 0.015, h);
+      for (const f of d.type === 'entrance' ? [1] : [-1, 1]) {
+        const w0 = f > 0 ? t / 2 : -t / 2 - 0.014, w1 = f > 0 ? t / 2 + 0.014 : -t / 2;
+        A.ebox(fm, d.p, dir, n, -hw - 0.065, -hw, w0, w1, 0, h + 0.065);
+        A.ebox(fm, d.p, dir, n, hw, hw + 0.065, w0, w1, 0, h + 0.065);
+        A.ebox(fm, d.p, dir, n, -hw, hw, w0, w1, h, h + 0.065);
+      }
+    } else {
+      for (const sx of [-1, 1]) A.ebox(fm, d.p, dir, n, sx < 0 ? -hw : hw - 0.04, sx < 0 ? -hw + 0.04 : hw, g0 - 0.035, g0 + 0.035, 0, h);
+      A.ebox(fm, d.p, dir, n, -hw, hw, g0 - 0.035, g0 + 0.035, h - 0.04, h);
+    }
+    rec.leaf = { d, sgn, hs, hw, t, h, lt };
+  }
+}
+// How far (radians, ≤ max) a leaf of width w hinged at `hinge` can swing from the closed direction ld towards sw
+// before it meets a placed piece.
+function rpSweep(ctx, hinge, ld, sw, w, max) {
+  let ok = 0;
+  for (let a = 0.12; a <= max + 1e-6; a += 0.087) {
+    const dx = ld[0] * Math.cos(a) + sw[0] * Math.sin(a), dy = ld[1] * Math.cos(a) + sw[1] * Math.sin(a);
+    let hit = false;
+    for (let k = 2; k <= 8 && !hit; k++) {
+      const p = [hinge[0] + dx * w * k / 8, hinge[1] + dy * w * k / 8];
+      for (const q of ctx.occ) { const r = sub2(p, q.c); if (Math.abs(dot2(r, q.d)) < q.hl + 0.03 && Math.abs(cross2(q.d, r)) < q.hw + 0.03) { hit = true; break; } }
+    }
+    if (hit) break;
+    ok = a;
+  }
+  return Math.min(max, ok + 0.05);
+}
+// Second pass (after the drawn fixtures stand): the leaves. A leaf swings as drawn; where a drawn piece stands in its
+// way it swings to the other side if that is free, else it opens as far as it can.
+function rpLeaves(ctx) {
+  const { P, m, sg, cg, unit, cut } = ctx;
+  for (const rec of ctx.doors) {
+    const L = rec.leaf; if (!L) continue;
+    delete rec.leaf;
+    const { d, hw, t, h, lt } = L, dir = d.dir, n = d.n || [-dir[1], dir[0]];
+    let sgn = L.sgn, hs = L.hs;
+    const Pt = (s, w) => [d.p[0] + dir[0] * s + n[0] * w, d.p[1] + dir[1] * s + n[1] * w];
+    let ld = [-hs * dir[0], -hs * dir[1]];
+    const OPEN = d.type === 'balcony' ? 1.5 : d.type === 'entrance' ? 1.62 : 1.56;
+    const free = (sg2) => {
+      const tip = Pt(0, sg2 * (t / 2 + d.w * 0.6));
+      if (!(d.type === 'entrance' && sg2 < 0) && !P.spaces.some(S => pointInPoly(tip, S.poly))) return 0;
+      return rpSweep(ctx, Pt(hs * hw, sg2 * t / 2), ld, [n[0] * sg2, n[1] * sg2], d.w, OPEN);
+    };
+    if ((ctx.sb && ctx.sb.flip && ctx.sb.flip.has(d.id)) || (ctx.flip && ctx.flip.has(d.id))) sgn = -sgn;
+    let ang = free(sgn);
+    if (d.type === 'entrance' && !d.swing) {
+      // The swing of this entrance door is not on the drawing: it is hung to open into the flat. Where the open leaf
+      // would then stand across the only way in (4A04: a 0.95 m entrance hall, a 0.93 m leaf) it is hung on the other
+      // jamb, and where that does not help either it opens outwards, into the common hall (as 311 flats are drawn).
+      const shut = (h2, s2) => {
+        const hp = Pt(h2 * hw, s2 * t / 2), od = [n[0] * s2, n[1] * s2];
+        return rpBlocks(ctx, { c: add2(hp, od, d.w / 2), d: od, hl: d.w / 2, hw: 0.04 });
+      };
+      if (sgn > 0 && shut(hs, 1)) {
+        if (!shut(-hs, 1)) { hs = -hs; ld = [-hs * dir[0], -hs * dir[1]]; ctx.notes.push('entrance door ' + d.id + ': swing not drawn — hung on the other jamb (the open leaf would close the way in)'); }
+        else { sgn = -1; ctx.notes.push('entrance door ' + d.id + ': swing not drawn — opens into the common hall (inwards the open leaf would close the way in)'); }
+        ang = free(sgn);
+      }
+      // … and a leaf that opens inwards rests against the side wall next to its jamb: hung on the far jamb it would
+      // stand free in the entrance hall and, with a wardrobe placed by rule behind it, pocket the visitor between
+      // leaf, wall and wardrobe (4A04: 1.26 m of hall behind the leaf on one jamb, 0.17 m on the other).
+      if (sgn > 0) {
+        const behind = (h2) => { let s = 0; for (; s < 2; s += 0.05) { const q = Pt(h2 * (hw + 0.03 + s), t / 2 + d.w * 0.5); if (!P.rooms.some(S => pointInPoly(q, S.poly))) break; } return s; };
+        const b0 = behind(hs), b1 = behind(-hs);
+        if (b0 > 0.6 && b1 < b0 - 0.3 && !shut(-hs, 1)) {
+          const keep = [hs, ld, ang];
+          hs = -hs; ld = [-hs * dir[0], -hs * dir[1]];
+          const a2 = free(sgn);
+          if (a2 >= OPEN - 0.12) { ang = a2; ctx.notes.push('entrance door ' + d.id + ': swing not drawn — hung on the jamb next to the side wall (the open leaf rests against it)'); }
+          else { hs = keep[0]; ld = keep[1]; ang = keep[2]; }
+        }
+      }
+    }
+    if (ang < OPEN - 0.12) {
+      const other = free(-sgn);
+      if (other > ang + 0.2) { sgn = -sgn; ang = other; ctx.notes.push('door ' + d.id + ' swings to the other side (a drawn piece stands in its way)'); }
+      if (ang < OPEN - 0.12) ctx.notes.push('door ' + d.id + ' opens ' + Math.round(ang * 57.3) + '° only');
+      ang = Math.max(0.5, ang);
+    }
+    rec.swingSign = sgn; rec.openAngle = ang; rec.hingeSide = hs;
+    const z = ctx.zones.find(q => q.kind === 'swing' && q.id === d.id);
+    if (z) { z.c = Pt(0, sgn * (t / 2 + d.w / 2)); z.hinge = Pt(hs * hw, sgn * t / 2); z.angle = ang; z.ld = ld; z.sw = [n[0] * sgn, n[1] * sgn]; }
+    const za = ctx.zones.find(q => q.kind === 'approach' && q.id === d.id && !q.fixed);
+    if (za) za.c = Pt(0, -sgn * (t / 2 + 0.35));
+    if (cut) continue;
+    // plane of the leaf, measured along n from the wall centre
+    const g0 = d.type === 'balcony' ? -t / 2 + clamp(t * 0.62, 0.05, Math.max(0.05, t - 0.07)) : d.type === 'entrance' ? -t / 2 + 0.04 : sgn * Math.max(0, t / 2 - 0.03);
+    const lw = d.w - (d.type === 'balcony' ? 0.09 : 0.04), lh = h - (d.type === 'balcony' ? 0.05 : 0.02);
+    const hx = hs * (hw - (d.type === 'balcony' ? 0.045 : 0.02));
+    const piv = Pt(hx, g0);
+    // local frame of the leaf: +x from the hinge to the latch, +z = lz
+    const lz = [-ld[1], ld[0]], side = dot2(lz, n) * sgn >= 0 ? 1 : -1;
+    const ry = Math.atan2(-ld[1], ld[0]);
+    rec.hingeAt = [piv[0], piv[1]]; rec.leafDir = ld;
+    if (d.type === 'entrance') {
+      if (ctx.opts.entranceLeaf === false) continue;
+      rpEntranceLeaf(ctx, rec, piv, ry, -side * ang, lw, lh, lt);
+      continue;
+    }
+    const r0 = P.byId.get(d.rooms && d.rooms[0]) || null;
+    const lf = new THREE.Group(); lf.position.set(piv[0], 0.008, piv[1]); lf.rotation.y = ry;
+    const bx = (x0, x1, y0, y1, z0, z1, mat) => box(lf, mat, x0, y0, z0, x1, y1, z1);
+    if (d.type === 'balcony') {
+      const stl = 0.07, T = lt, hm = m.fam === 'nordic' ? m.blackMetal : (m.brass || m.metal);
+      bx(0, stl, 0, lh, -T / 2, T / 2, m.frame); bx(lw - stl, lw, 0, lh, -T / 2, T / 2, m.frame);
+      bx(stl, lw - stl, 0, 0.1, -T / 2, T / 2, m.frame); bx(stl, lw - stl, lh - stl, lh, -T / 2, T / 2, m.frame);
+      bx(stl, lw - stl, 0.1, lh - stl, -0.005, 0.005, m.glazing);
+      for (const z2 of [-1, 1]) { bx(lw - stl / 2 - 0.012, lw - stl / 2 + 0.012, 1.0, 1.14, z2 > 0 ? T / 2 : -T / 2 - 0.01, z2 > 0 ? T / 2 + 0.01 : -T / 2, hm); bx(lw - stl / 2 - 0.13, lw - stl / 2 + 0.01, 1.08, 1.1, z2 > 0 ? T / 2 + 0.03 : -T / 2 - 0.05, z2 > 0 ? T / 2 + 0.05 : -T / 2 - 0.03, hm); }
+      lf.userData.mover = { type: 'hinge', axis: 'y', angle: -side * ang, dur: 1000, tag: 'balconyDoor', door: d.id };
+    } else {
+      bx(0, lw, 0, lh, -lt / 2, lt / 2, m.doorLeaf);
+      if (m.styleId === 'paris') for (const z2 of [-lt / 2 - 0.002, lt / 2 + 0.002]) { FX.mouldFrame(lf, m.moulding, lw / 2, 0.16, 0.9, lw - 0.26, z2, 0.024, 0.008); FX.mouldFrame(lf, m.moulding, lw / 2, 1.02, lh - 0.16, lw - 0.26, z2, 0.024, 0.008); }
+      for (const z2 of [-1, 1]) { bx(lw - 0.17, lw - 0.04, 1.01, 1.03, z2 > 0 ? lt / 2 + 0.03 : -lt / 2 - 0.05, z2 > 0 ? lt / 2 + 0.05 : -lt / 2 - 0.03, m.metal); bx(lw - 0.075, lw - 0.055, 1.0, 1.04, z2 > 0 ? lt / 2 : -lt / 2 - 0.03, z2 > 0 ? lt / 2 + 0.03 : -lt / 2, m.metal); }
+      lf.userData.mover = { type: 'hinge', axis: 'y', angle: -side * ang, dur: 900, tag: 'door', idoor: d.id, part: 'door' };
+    }
+    sg.add(lf);
+    rec.collider = ocollider(cg, d.p, dir, hw, Math.max(0.05, t / 2), 0.02, 2.2);
+    rec.collider.name = d.type === 'balcony' ? 'col-balcony-door' : 'col-door';
+    rec.collider.userData[d.type === 'balcony' ? 'balconyDoor' : 'interiorDoor'] = d.id;
+    rec.kind = d.sliding ? 'slide' : 'french';
+    rec.room = r0 ? r0.kind : 'living'; rec.roomName = r0 ? r0.name : '';
+    // compat fields of the fitted-box builder (walk.js): a door along u spans p0 … p1 at v; one along v has p0 = p1 = u
+    // and its extent a0 … a1 along v, out = ±1 the outward direction along u
+    if (rec.axis === 'u') { rec.p0 = d.p[0] - hw * Math.abs(dir[0]); rec.p1 = d.p[0] + hw * Math.abs(dir[0]); rec.a0 = rec.p0; rec.a1 = rec.p1; rec.out = n[1] >= 0 ? 1 : -1; }
+    else { rec.p0 = rec.p1 = d.p[0]; rec.a0 = d.p[1] - hw * Math.abs(dir[1]); rec.a1 = d.p[1] + hw * Math.abs(dir[1]); rec.out = n[0] >= 0 ? 1 : -1; }
+    if (d.type === 'balcony') { rec.side = rpSideOf(unit, d.p, n); ctx.balconyDoors.push(rec); } else ctx.idoors.push(rec);
+  }
+}
+function rpSideOf(unit, p, n) {
+  if (Math.abs(n[0]) > Math.abs(n[1])) return n[0] < 0 ? 'left' : 'right';
+  return n[1] < 0 ? 'back' : 'front';
+}
+function rpEntranceLeaf(ctx, rec, piv, ry, angle, lw, lh, lt) {
+  const { m, unit } = ctx;
+  let leafG = new THREE.BoxGeometry(lw, lh, lt).toNonIndexed();
+  leafG.translate(lw / 2, lh / 2, 0);
+  const hdl = [];
+  for (const side of [1, -1]) {
+    const g1 = new THREE.BoxGeometry(0.02, 0.02, 0.06).toNonIndexed(); g1.translate(lw - 0.08, 1.05, side * (lt / 2 + 0.03)); hdl.push(g1);
+    const g2 = new THREE.BoxGeometry(0.16, 0.022, 0.022).toNonIndexed(); g2.translate(lw - 0.14, 1.05, side * (lt / 2 + 0.035)); hdl.push(g2);
+  }
+  const hg = mergeGeometries(hdl), leafGeo = mergeGeometries([leafG, hg], true);
+  leafG.dispose(); hg.dispose(); hdl.forEach(g => g.dispose());
+  const leaf = new THREE.Mesh(leafGeo, [m.doorLeaf, m.metal]); leaf.name = 'apt-door-leaf';
+  const pivot = new THREE.Group(); pivot.name = 'apt-door-hinge'; pivot.add(leaf); pivot.userData.keep = true;
+  const holder = new THREE.Group(); holder.name = 'apt-door'; holder.position.set(piv[0], 0.01, piv[1]); holder.rotation.y = ry; holder.add(pivot);
+  leaf.userData.solid = true; leaf.userData.dynamic = true; leaf.userData.doorLeaf = true; leaf.userData.unitId = unit.id;
+  leaf.userData.action = { type: 'aptDoor', unitId: unit.id };
+  let anim = null;
+  leaf.userData.toggle = (open) => {
+    const want = open === undefined ? !leaf.userData._open : !!open;
+    if (want === !!leaf.userData._open && !anim) return Promise.resolve();
+    leaf.userData._open = want; leaf.userData.open = want; rec.open = want;
+    const from = pivot.rotation.y, to = want ? angle : 0, t0 = performance.now(), dur = 800;
+    if (anim) anim.cancel = true;
+    const me = anim = { cancel: false };
+    leaf.userData._anim = true;
+    return new Promise(res => {
+      const step = () => {
+        if (me.cancel) return res();
+        const k = Math.min(1, (performance.now() - t0) / dur), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+        pivot.rotation.y = from + (to - from) * e; pivot.updateMatrixWorld(true);
+        if (k < 1) requestAnimationFrame(step); else { anim = null; leaf.userData._anim = false; res(); }
+      };
+      step();
+    });
+  };
+  rec.toggle = leaf.userData.toggle;
+  ctx.door = { leaf, pivot, holder };
+  ctx.root.add(holder);
+}
+
+// ---------------------------------------------------------------- furnishing
+// Oriented rectangles in plan: {c, d (unit, along the length), hl, hw}.
+function rectOverlap(A, B, pad = 0) {
+  const axes = [A.d, [-A.d[1], A.d[0]], B.d, [-B.d[1], B.d[0]]];
+  const rel = [B.c[0] - A.c[0], B.c[1] - A.c[1]];
+  for (const ax of axes) {
+    const ra = Math.abs(dot2(A.d, ax)) * A.hl + Math.abs(cross2(A.d, ax)) * A.hw, rb = Math.abs(dot2(B.d, ax)) * B.hl + Math.abs(cross2(B.d, ax)) * B.hw;
+    if (Math.abs(dot2(rel, ax)) > ra + rb + pad - 1e-9) return false;
+  }
+  return true;
+}
+function rectPts(R, shrink = 0) {
+  const hl = Math.max(0.01, R.hl - shrink), hw = Math.max(0.01, R.hw - shrink), d = R.d, n = [-d[1], d[0]], out = [];
+  for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, -1], [1, 0], [0, 1], [-1, 0], [0, 0]]) out.push([R.c[0] + d[0] * hl * a + n[0] * hw * b, R.c[1] + d[1] * hl * a + n[1] * hw * b]);
+  return out;
+}
+const rectInPoly = (R, poly, tol = 0.03) => rectPts(R, tol).every(p => pointInPoly(p, poly));
+// Is the rectangle free in space S: inside its polygon, clear of the placed pieces, of columns and (unless o.zones
+// === false) of door swings, approaches and passages?
+function rpFree(ctx, S, R, o = {}) {
+  if (o.anyRoom ? !rectPts(R, o.tol ?? 0.03).every(p => ctx.P.rooms.some(T => pointInPoly(p, T.poly))) : !rectInPoly(R, S.poly, o.tol ?? 0.03)) return false;
+  for (const q of ctx.occ) if (q !== o.skip && rectOverlap(R, q, o.pad ?? -0.012)) return false;
+  for (const c of ctx.I.columns || []) if (Math.hypot(c.c[0] - R.c[0], c.c[1] - R.c[1]) < (c.r || 0.25) + Math.max(R.hl, R.hw) && rectOverlap(R, { c: c.c, d: [1, 0], hl: c.r || 0.25, hw: c.r || 0.25 })) return false;
+  if (o.zones !== false) for (const z of ctx.zones) { if (o.passages === false && z.kind === 'passage') continue; if (rectOverlap(R, z, -0.01)) return false; }
+  return true;
+}
+// Place a furniture group; registers its footprint. o.box: {w, d, x?, z?} overrides the piece's solidBox for the
+// footprint (pieces without a collider that still take floor), o.free: no footprint.
+function rpPut(ctx, S, obj, p, ang, y = 0, o = {}) {
+  put(ctx.g, obj, p[0], p[1], ang, y);
+  const sb = o.box || (obj.userData.noSolid ? null : obj.userData.solidBox);
+  if (sb && !o.free) {
+    const xv = [Math.cos(ang), -Math.sin(ang)], fv = [Math.sin(ang), Math.cos(ang)];
+    const c = [p[0] + xv[0] * (sb.x || 0) + fv[0] * (sb.z || 0), p[1] + xv[1] * (sb.x || 0) + fv[1] * (sb.z || 0)];
+    const rec = { c, d: xv, hl: sb.w / 2, hw: sb.d / 2, h: sb.h || 1, tag: o.tag || obj.userData.piece || '', room: S ? S.id : null, y };
+    if (y < 0.5) ctx.occ.push(rec);
+    obj.userData.rpRect = rec;
+  }
+  return obj;
+}
+const angOf = f => Math.atan2(f[0], f[1]);                    // rotation.y of a piece whose front (+z) looks along f
+const xOf = ang => [Math.cos(ang), -Math.sin(ang)];
+// does a footprint stand in front of a window of S (within `depth` of the glass)?
+function rpWinFront(S, R, depth = 0.5) {
+  for (const seg of S.segs) for (const q of seg.wins) {
+    if (q.s1 - q.s0 < 0.05) continue;
+    if (rectOverlap(R, { c: add2(add2(seg.a, seg.d, (q.s0 + q.s1) / 2), seg.nin, depth / 2), d: seg.d, hl: (q.s1 - q.s0) / 2, hw: depth / 2 }, -0.02)) return true;
+  }
+  return false;
+}
+// Free stretch along a wall of S: a w × d footprint with its back on the wall. o: tall (no window behind), h (height
+// of the piece: windows with a lower sill are refused), clear (free depth in front), score(p, seg, s) → higher is better.
+function rpWallSpot(ctx, S, w, d, o = {}) {
+  let best = null;
+  for (const seg of S.segs) {
+    if (seg.len < w - 1e-3) continue;
+    if (o.cls && !o.cls(seg)) continue;
+    const xs = [];
+    for (let s = w / 2; s <= seg.len - w / 2 + 1e-6; s += 0.1) xs.push(s);
+    xs.push(seg.len - w / 2);
+    if (seg.len > w + 0.6) xs.push(seg.len / 2);
+    for (const s of xs) {
+      if (seg.wins.some(q => q.s1 > s - w / 2 + 0.02 && q.s0 < s + w / 2 - 0.02 && (o.tall || q.sill < (o.h ?? 0.8) + 0.02))) continue;
+      const p = add2(seg.a, seg.d, s), c = add2(p, seg.nin, d / 2 + 0.012);
+      const R = { c, d: seg.d, hl: w / 2, hw: d / 2 };
+      if (!rpFree(ctx, S, R, o)) continue;
+      if (o.winFront && rpWinFront(S, R, o.winFront)) continue;
+      if (o.clear) {
+        const Rc = { c: add2(p, seg.nin, d + 0.012 + o.clear / 2), d: seg.d, hl: Math.max(0.1, w / 2 - 0.08), hw: o.clear / 2 };
+        if (!rpFree(ctx, S, Rc, { zones: false, tol: 0.02 })) continue;
+      }
+      const end = Math.min(s - w / 2, seg.len - s - w / 2);
+      const sc = (o.score ? o.score(p, seg, s, c) : 0) + (o.corner ? -end * (o.corner === true ? 1 : o.corner) : 0) + (o.centre ? -Math.abs(s - seg.len / 2) * o.centre : 0);
+      if (!best || sc > best.sc + 1e-9) best = { sc, p, c, seg, s, nin: seg.nin, d: seg.d, ang: angOf(seg.nin) };
+    }
+  }
+  return best;
+}
+// The four sides of a drawn fixture box and how far the room's boundary is beyond each.
+function rpSides(S, f) {
+  const r = (+f.rot || 0) * PI / 180, e1 = [Math.cos(r), Math.sin(r)], e2 = [-Math.sin(r), Math.cos(r)];
+  const s1 = Math.max(0.05, +f.s[0]), s2 = Math.max(0.05, +f.s[1]), c = [+f.c[0], +f.c[1]];
+  const mk = (dir, half, w) => {
+    // (three rays across the side: a notch or an opening beside the middle does not fool the measure)
+    const px = [-dir[1], dir[0]];
+    // (measured to the WALLS — the solid stretches — not to an open edge towards the next room)
+    let g = Infinity;
+    for (const k of [-0.3, 0, 0.3]) { const q = add2(c, px, k * w); g = Math.min(g, raySegs(q, dir, S.segs)); }
+    return { dir, half, w, gap: g - half };
+  };
+  return { c, s1, s2, sides: [mk(e1, s1 / 2, s2), mk([-e1[0], -e1[1]], s1 / 2, s2), mk(e2, s2 / 2, s1), mk([-e2[0], -e2[1]], s2 / 2, s1)] };
+}
+function raySegs(p, d, segs) {
+  let best = Infinity;
+  for (const s of segs) {
+    const ex = s.b[0] - s.a[0], ey = s.b[1] - s.a[1], den = d[0] * ey - d[1] * ex;
+    if (Math.abs(den) < 1e-9) continue;
+    const ax = s.a[0] - p[0], ay = s.a[1] - p[1], t = (ax * ey - ay * ex) / den, k = (ax * d[1] - ay * d[0]) / den;
+    if (t > 1e-6 && k >= -0.02 && k <= 1.02 && t < best) best = t;
+  }
+  return best;
+}
+// Which side is the back. mode: 'long' (the back is a long side), 'short', 'any'.
+function rpBack(S, f, mode = 'any', o = {}) {
+  const B = rpSides(S, f), sq = Math.abs(B.s1 - B.s2) < 0.08;
+  let c = B.sides;
+  if (!sq && mode === 'long') c = c.filter(s => s.w >= Math.max(B.s1, B.s2) - 1e-6);
+  if (!sq && mode === 'short') c = c.filter(s => s.w <= Math.min(B.s1, B.s2) + 1e-6);
+  if (o.filter) { const k = c.filter(o.filter); if (k.length) c = k; }
+  const toC = sub2(S.c, B.c), l = len2(toC) || 1;
+  const score = s => Math.max(-0.05, s.gap) + (s.gap > (o.snap ?? 0.3) + 0.05 ? 1 : 0) + 0.04 * dot2(s.dir, toC) / l;      // near a wall, front towards the room
+  const s = c.slice().sort((p, q) => score(p) - score(q))[0];
+  const lim = o.snap ?? 0.3, front = [-s.dir[0], -s.dir[1]], snap = s.gap < lim ? Math.max(-0.1, s.gap) : 0;
+  return { c: B.c, back: s.dir, front, gap: s.gap, w: s.w, dp: s.half * 2, wall: add2(B.c, s.dir, s.half + snap), ang: angOf(front), atWall: s.gap < lim, B };
+}
+// how far a piece of the given depth can reach along ±x from the wall point without leaving the room
+function rpReach(S, wall, front, xv, depth) {
+  const q = add2(wall, front, Math.min(depth, 0.3));
+  if (!pointInPoly(q, S.poly)) return [0, 0];
+  return [rayPoly(q, [-xv[0], -xv[1]], S.poly) - 0.015, rayPoly(q, xv, S.poly) - 0.015];
+}
+function rpMirror(ctx, S, p, ang, vl) {
+  const { m } = ctx;
+  if (ctx.cut) return;
+  const mw = clamp(vl - 0.1, 0.4, 0.9), mh = m.fam === 'nordic' ? mw : 0.95;
+  rpPut(ctx, S, F.mirror(m, { w: mw, h: mh, cabinet: true }), p, ang, m.fam === 'nordic' ? 1.05 : 1.08, { free: true });
+}
+// table + chairs (+ settings, pendant) as one group, long axis = local x
+function rpDiningSet(ctx, tl, tw, sides = 2, pend = true) {
+  const { m } = ctx, grp = new THREE.Group();
+  put(grp, F.diningTable(m, { len: tl, width: tw }), 0, 0, 0);
+  const nC = Math.max(1, Math.floor(tl / 0.6));
+  for (let i = 0; i < nC; i++) {
+    const cu = -tl / 2 + tl / nC * (i + 0.5);
+    for (const side of sides === 2 ? [-1, 1] : [1]) {
+      put(grp, F.diningChair(m), cu, side * (tw / 2 + 0.12), side < 0 ? 0 : PI);
+      put(grp, F.tableSetting(m, { y: 0.76 }), cu, side * (tw / 2 - 0.2), side < 0 ? PI : 0);
+    }
+  }
+  if (!ctx.cut && pend) {
+    put(grp, F.pendant(m, { kind: 'dining', drop: 0.85, len: Math.min(1.2, Math.max(0.5, tl - 0.3)) }), 0, 0, 0, CH);
+    FX.fxFlat(grp, m.glowFaint, 'rect', 0, 0.762, 0, tl + 0.3, tw + 0.25);
+    FX.fxFlat(grp, m.glowFaint, 'disc', 0, 0.006, 0, tl + 2.2, tw + 2.2);
+  }
+  grp.userData.solidBox = { w: tl + 0.06, d: tw + 0.06, h: 0.8 };
+  grp.userData.piece = 'dining';
+  return grp;
+}
+// Walk-in shower in a w × d box centred on c: the back and the +x side want a wall.
+function rpShower(ctx, S, c, w, d) {
+  const { m } = ctx;
+  let best = null;
+  for (const [bd, hb, hx] of [[[1, 0], w / 2, d / 2], [[-1, 0], w / 2, d / 2], [[0, 1], d / 2, w / 2], [[0, -1], d / 2, w / 2]]) {
+    const f = [-bd[0], -bd[1]], ang = angOf(f), xv = xOf(ang);
+    const gb = rayPoly(c, bd, S.poly) - hb, gx = rayPoly(c, xv, S.poly) - hx;
+    const sc = Math.min(1, Math.abs(gb)) + Math.min(1, Math.abs(gx)) * 0.9;
+    if (!best || sc < best.sc) best = { sc, bd, f, ang, gb, W: hx * 2, D: hb * 2, hb };
+  }
+  const W = clamp(best.W, 0.75, 1.6), D = clamp(best.D, 0.75, 1.1);
+  const wall = add2(c, best.bd, best.hb + (Math.abs(best.gb) < 0.25 ? best.gb : 0));
+  const sh = F.shower(m, { w: W, d: D, h: ctx.cut ? 1.05 : 2.0 });
+  rpPut(ctx, S, sh, wall, best.ang, 0, { box: { w: W, d: D, z: D / 2 }, tag: 'shower' });
+  const gp = sh.userData.glassPanel;
+  if (gp) collider(sh, gp.x - gp.w / 2, 0.02, gp.z - 0.03, gp.x + gp.w / 2, 1.08, gp.z + 0.03).name = 'col-furniture';
+  return sh;
+}
+
+// ---- walkability guard. A coarse grid (10 cm) of the flat: a cell is walkable when it lies in a space (or in a door
+// opening) at least a body's half-width from the walls. rpReach0() counts the targets (both sides of every door, an
+// inner point of every space) reached from the entrance with the placed pieces as obstacles; a rule-based piece that
+// lowers the count is taken out again (rpTry).
+const NAV_R = 0.27, NAV_TIGHT = 0.25;
+function rpNav(P, I, G = 0.1, NAV_R = 0.27) {
+  const key = (G === 0.1 ? 'nav' : 'navFine') + (NAV_R === 0.27 ? '' : NAV_R);
+  if (P[key]) return P[key];
+  const bb = P.bbox, u0 = bb.u0 - 0.2, v0 = Math.min(bb.v0, 0) - 0.4, nx = Math.ceil((bb.u1 + 0.2 - u0) / G), nz = Math.ceil((bb.v1 + 0.2 - v0) / G);
+  const base = new Uint8Array(nx * nz);          // 1 = blocked
+  const strips = P.doors.filter(d => !d.fixed).map(d => ({ p: d.p, dir: d.dir, hw: d.w / 2 - NAV_R + 0.06, ht: (+d.t || 0) / 2 + NAV_R + 0.12 }));
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    const p = [u0 + (i + 0.5) * G, v0 + (j + 0.5) * G];
+    let ok = strips.some(s => { const r = sub2(p, s.p); return Math.abs(dot2(r, s.dir)) < s.hw && Math.abs(cross2(s.dir, r)) < s.ht; });
+    if (!ok) for (const S of P.spaces) {
+      if (p[0] < S.box[0] || p[0] > S.box[2] || p[1] < S.box[1] || p[1] > S.box[3] || !pointInPoly(p, S.poly)) continue;
+      ok = !S.segs.some(sg => segDist(p, sg.a, sg.b) < NAV_R);
+      break;
+    }
+    if (!ok) ok = P.decks.some(k => pointInPoly(p, k.poly) && polyDist(p, k.poly) > 0.2);
+    if (ok) for (const c of I.columns || []) if (Math.hypot(p[0] - c.c[0], p[1] - c.c[1]) < (c.r || 0.25) + NAV_R) ok = false;
+    base[j * nx + i] = ok ? 0 : 1;
+  }
+  const targets = [];
+  for (const d of P.doors) { if (d.fixed) continue; const n = d.n, k = (+d.t || 0) / 2 + 0.45; if (d.type !== 'entrance') targets.push(add2(d.p, n, -k)); targets.push(add2(d.p, n, k)); }
+  // a space counts as reached when any of its walkable cells is
+  const cells = P.spaces.map(S => { const out = []; for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) { if (base[j * nx + i]) continue; const p = [u0 + (i + 0.5) * G, v0 + (j + 0.5) * G]; if (p[0] > S.box[0] && p[0] < S.box[2] && p[1] > S.box[1] && p[1] < S.box[3] && pointInPoly(p, S.poly)) out.push(j * nx + i); } return out; });
+  const ent = P.doors.find(d => d.type === 'entrance');
+  const start = ent ? add2(ent.p, ent.n || [0, 1], (+ent.t || 0) / 2 + 0.3) : P.rooms[0].c;
+  return (P[key] = { G, u0, v0, nx, nz, base, targets, start, cells });
+}
+function rpReach0(ctx, noGhost = false, fine = false) {
+  fine = ctx.navFine === 'tight' ? 'tight' : fine || !!ctx.navFine;   // (a flat whose sofa-bed needed the 5 cm grid keeps it for every later piece)
+  // 'tight': the 5 cm grid with a 0.25 m body (the walkthrough's is 0.24 m) — the last resort of the sofa-bed search
+  const NAV_R = fine === 'tight' ? NAV_TIGHT : 0.27;
+  const N = rpNav(ctx.P, ctx.I, fine ? 0.05 : 0.1, NAV_R), { G, u0, v0, nx, nz } = N, blk = N.base.slice(), W = fine ? 8 : 4;
+  for (const q of ctx.occ) {
+    if (q.wallOnly || (noGhost && q.ghost)) continue;
+    const ext = Math.abs(q.d[0]) * q.hl + Math.abs(q.d[1]) * q.hw + NAV_R, ezt = Math.abs(q.d[1]) * q.hl + Math.abs(q.d[0]) * q.hw + NAV_R;
+    const i0 = Math.max(0, Math.floor((q.c[0] - ext - u0) / G)), i1 = Math.min(nx - 1, Math.floor((q.c[0] + ext - u0) / G));
+    const j0 = Math.max(0, Math.floor((q.c[1] - ezt - v0) / G)), j1 = Math.min(nz - 1, Math.floor((q.c[1] + ezt - v0) / G));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const r = [u0 + (i + 0.5) * G - q.c[0], v0 + (j + 0.5) * G - q.c[1]];
+      const dx = Math.max(0, Math.abs(dot2(r, q.d)) - q.hl), dz = Math.max(0, Math.abs(cross2(q.d, r)) - q.hw);
+      if (dx * dx + dz * dz < NAV_R * NAV_R) blk[j * nx + i] = 1;
+    }
+  }
+  const seen = new Uint8Array(nx * nz), st = [];
+  const cell = p => { const i = Math.floor((p[0] - u0) / G), j = Math.floor((p[1] - v0) / G); return i >= 0 && j >= 0 && i < nx && j < nz ? j * nx + i : -1; };
+  const near = (p, f) => { const c = cell(p); if (c < 0) return false; const i = c % nx, j = (c - i) / nx; for (let a = -W; a <= W; a++) for (let b = -W; b <= W; b++) { const x = i + a, y = j + b; if (x >= 0 && y >= 0 && x < nx && y < nz && f(y * nx + x)) return true; } return false; };
+  near(N.start, k => { if (!blk[k] && !seen[k]) { seen[k] = 1; st.push(k); } return false; });
+  while (st.length) {
+    const k = st.pop(), i = k % nx, j = (k - i) / nx;
+    if (i > 0 && !blk[k - 1] && !seen[k - 1]) { seen[k - 1] = 1; st.push(k - 1); }
+    if (i < nx - 1 && !blk[k + 1] && !seen[k + 1]) { seen[k + 1] = 1; st.push(k + 1); }
+    if (j > 0 && !blk[k - nx] && !seen[k - nx]) { seen[k - nx] = 1; st.push(k - nx); }
+    if (j < nz - 1 && !blk[k + nx] && !seen[k + nx]) { seen[k + nx] = 1; st.push(k + nx); }
+  }
+  let n = 0;
+  for (const t of N.targets) if (near(t, k => seen[k] === 1)) n++;
+  for (const c of N.cells) if (c.some(k => seen[k] === 1)) n += 3;
+  let count = 0; for (let k = 0; k < seen.length; k++) count += seen[k];
+  return { n, seen, blk, count, fine };
+}
+// does state `b` (after a piece was added) lose a target or cut floor off that state `a` could reach?
+function rpWorse(a, b, lim = a.fine ? 160 : 40) {
+  if (b.n < a.n) return true;
+  let cover = 0;
+  for (let k = 0; k < a.seen.length; k++) if (a.seen[k] && b.blk[k]) cover++;
+  return a.count - b.count - cover > lim;                    // floor cut off beyond what the piece covers (0.4 m² of nooks allowed)
+}
+// A piece stays only if everything that could be reached before it can still be reached (o.quiet: no note).
+function rpTry(ctx, S, obj, p, ang, y = 0, o = {}) {
+  const n0 = ctx.occ.length, before = rpReach0(ctx);
+  rpPut(ctx, S, obj, p, ang, y, o);
+  if (ctx.occ.length === n0) return obj;
+  const after = rpReach0(ctx);
+  if (rpWorse(before, after)) { ctx.occ.length = n0; if (obj.parent) obj.parent.remove(obj); if (!o.quiet) ctx.notes.push((o.tag || obj.userData.piece || 'piece') + ' in ' + (S ? S.id : '?') + ' not placed (it would block the way)'); return null; }
+  return obj;
+}
+// does a footprint stand in a door's swing (as drawn) or right in front of a balcony door?
+function rpDoorHit(ctx, R) {
+  return ctx.zones.some(z => ((z.kind === 'swing' && z.type !== 'entrance') || (z.kind === 'approach' && z.type === 'balcony')) && rectOverlap(R, z.core ? { ...z, hl: z.core } : z, -0.04));
+}
+// would a footprint block the way? (no object is made)
+function rpBlocks(ctx, R) {
+  const before = rpReach0(ctx);
+  ctx.occ.push(R); const after = rpReach0(ctx); ctx.occ.pop();
+  return rpWorse(before, after);
+}
+// ---- drawn fixtures → pieces
+function rpFixtures(ctx) {
+  const { P, I, m, cut } = ctx;
+  const fx = (I.fixtures || []).filter(f => f && f.c && f.s && P.byId.get(f.room));
+  const of = (S, kinds) => fx.filter(f => f.room === S.id && kinds.includes(f.kind));
+  ctx.drawn = new Set(fx.map(f => f.kind));
+  // a one-room flat: the sofa of its living room is a sofa-bed (rpSofaBed). The loose pieces drawn in that room
+  // (sofa, bed, table) wait until it stands — it needs free floor in front of it for the opened bed.
+  const T1 = TYPES[ctx.unit.type];
+  if (T1 && T1.rooms === 1 && ctx.opts.sofaBed !== false) {
+    const livs = P.rooms.filter(r => r.kind === 'living').sort((a, b) => b.area - a.area);
+    const S = livs.find(r => fx.some(f => f.room === r.id && f.kind === 'sofa')) || livs[0];
+    if (S) ctx.sb = { S, held: [], done: false, tried: false };
+  }
+  // (an entrance door drawn to open into the flat keeps its swing too; one whose swing is not on the drawing is hung
+  // by rpLeaves after the pieces stand — to the side that is free)
+  const swingBlocked = (R) => ctx.zones.some(z => z.kind === 'swing' && (z.type !== 'entrance' || (P.doors.find(d => d.id === z.id) || {}).swing) && P.rooms.some(T => pointInPoly(z.c, T.poly)) && rectOverlap(R, z, -0.06));
+  // V7: the wardrobe drawn in a hall nearest to the entrance door is THE entrance wardrobe (mirror door, open niche)
+  const entD = P.doors.find(d => d.type === 'entrance');
+  ctx.entryW = entD ? fx.filter(f => f.kind === 'wardrobe' && P.byId.get(f.room).kind === 'hall').sort((a, b) => Math.hypot(a.c[0] - entD.p[0], a.c[1] - entD.p[1]) - Math.hypot(b.c[0] - entD.p[0], b.c[1] - entD.p[1]))[0] || null : null;
+  const bedHeld = [], wardHeld = [];
+  ctx.swingBlocked = swingBlocked; ctx.entD = entD;
+  // ---- kitchens: runs + hobs + sinks that touch form one line (or an island when they stand free)
+  for (const S of P.spaces) {
+    const ks = of(S, ['kitchen-run', 'hob', 'sink']).filter(f => !f.sub);
+    const used = new Set();
+    for (const seed of ks) {
+      if (used.has(seed)) continue;
+      const cl = [seed]; used.add(seed);
+      for (let i = 0; i < cl.length; i++) for (const g of ks) {
+        if (used.has(g)) continue;
+        const a = cl[i];
+        if (Math.abs(a.c[0] - g.c[0]) < (a.s[0] + g.s[0]) / 2 + 0.3 && Math.abs(a.c[1] - g.c[1]) < (a.s[1] + g.s[1]) / 2 + 0.3) { cl.push(g); used.add(g); }
+      }
+      let u0 = Infinity, v0 = Infinity, u1 = -Infinity, v1 = -Infinity;
+      for (const f of cl) { u0 = Math.min(u0, f.c[0] - f.s[0] / 2); u1 = Math.max(u1, f.c[0] + f.s[0] / 2); v0 = Math.min(v0, f.c[1] - f.s[1] / 2); v1 = Math.max(v1, f.c[1] + f.s[1] / 2); }
+      const box = { kind: 'kitchen-run', room: S.id, c: [(u0 + u1) / 2, (v0 + v1) / 2], s: [u1 - u0, v1 - v0], rot: 0 };
+      const hob = cl.find(f => f.kind === 'hob') || null, sink = cl.find(f => f.kind === 'sink') || null;
+      (ctx.kitPlan ||= []).push({ S, box, hob, sink, cl });
+    }
+  }
+  // fridges standing at the end of a line join it as its tall column
+  const joined = new Set();
+  for (const k of ctx.kitPlan || []) {
+    const B = rpBack(k.S, k.box, 'long');
+    k.B = B; k.xv = xOf(B.ang);
+    k.island = !B.atWall && B.gap > 0.45;
+    if (k.island) continue;
+    k.x0 = -B.w / 2; k.x1 = B.w / 2;                             // extent along xv about the box centre
+    for (const f of of(k.S, ['fridge'])) {
+      if (joined.has(f)) continue;
+      const rel = sub2(f.c, B.c), ax = dot2(rel, k.xv), off = dot2(rel, B.back), fw = Math.abs(dot2(k.xv, [1, 0])) > 0.7 ? f.s[0] : f.s[1];
+      if (Math.abs(off) > 0.2) continue;
+      if (Math.abs(ax - (k.x1 + fw / 2)) < 0.15) { k.tall = 'right'; k.x1 = ax + fw / 2; joined.add(f); }
+      else if (Math.abs(ax - (k.x0 - fw / 2)) < 0.15) { k.tall = 'left'; k.x0 = ax - fw / 2; joined.add(f); }
+      // (drawn inside the run's box: the column stands at the nearer end)
+      else if (ax > k.x0 - 0.1 && ax < k.x1 + 0.1) { k.tall = ax > (k.x0 + k.x1) / 2 ? 'right' : 'left'; k.x0 = Math.min(k.x0, ax - fw / 2); k.x1 = Math.max(k.x1, ax + fw / 2); joined.add(f); }
+    }
+    // a washing machine drawn in the line is the run's integrated one
+    for (const f of of(k.S, ['washing-machine'])) {
+      if (joined.has(f)) continue;
+      const rel = sub2(f.c, B.c), ax = dot2(rel, k.xv), off = dot2(rel, B.back);
+      if (Math.abs(off) < 0.2 && ax > k.x0 - 0.45 && ax < k.x1 + 0.45) { k.washer = true; k.x0 = Math.min(k.x0, ax - 0.3); k.x1 = Math.max(k.x1, ax + 0.3); joined.add(f); }
+    }
+  }
+  // ---- the kitchens first (fixed installations; the loose furniture then makes way). While a short run grows along
+  // its wall the drawn boxes of everything else count as taken.
+  const inKit = new Set((ctx.kitPlan || []).flatMap(k => k.cl));
+  const resv = fx.filter(f => !inKit.has(f) && !joined.has(f) && ['fridge', 'washing-machine', 'wardrobe', 'toilet', 'basin', 'bathtub', 'shower', 'sofa', 'bed'].includes(f.kind)).map(f => { const r = (+f.rot || 0) * PI / 180; return { c: [+f.c[0], +f.c[1]], d: [Math.cos(r), Math.sin(r)], hl: f.s[0] / 2, hw: f.s[1] / 2, resv: true }; });
+  ctx.occ.push(...resv);
+  for (const k of (ctx.kitPlan || []).slice().sort((a, b) => (a.island ? 1 : 0) - (b.island ? 1 : 0))) { try { rpKitchen(ctx, k); } catch (err) { ctx.notes.push('kitchen: ' + (err && err.message)); } }
+  ctx.occ = ctx.occ.filter(q => !q.resv);
+  // a fixed appliance as drawn; where that shuts a way or a door, moved along its wall; a washing machine may drop out
+  const nudge = (S, B, w, dp, make, must) => {
+    const xv = xOf(B.ang);
+    for (const off of [0, 0.15, -0.15, 0.3, -0.3, 0.5, -0.5]) {
+      const p = add2(add2(B.wall, xv, off), B.front, dp / 2), R = { c: p, d: xv, hl: w / 2, hw: dp / 2 };
+      if (off && !rpFree(ctx, S, R, { zones: false, tol: 0.01 })) continue;
+      if (rpDoorHit(ctx, R) || rpBlocks(ctx, R)) continue;
+      return make(add2(B.wall, xv, off), p);
+    }
+    if (must) return make(B.wall, add2(B.wall, B.front, dp / 2));
+    ctx.notes.push((must === false ? 'washing machine' : 'piece') + ' in ' + S.id + ' left out (it would block a door or the way)');
+    return null;
+  };
+  // ---- everything else, as drawn
+  let seed = 1;
+  for (const f of fx) {
+    const S = P.byId.get(f.room);
+    if (ctx.sb && S === ctx.sb.S && (f.kind === 'sofa' || f.kind === 'bed' || (f.kind === 'table' && !f.sub))) { ctx.sb.held.push(f); continue; }
+    try {
+      switch (f.kind) {
+        case 'kitchen-run': case 'hob': case 'sink': if (!f.sub) break;   // (handled as lines)
+        // falls through
+        case 'table': rpTable(ctx, S, f); break;
+        case 'toilet': { const B = rpBack(S, f, 'short', { snap: 0.5 }); nudge(S, B, 0.4, 0.6, (w) => rpPut(ctx, S, F.toilet(m), w, B.ang), true); break; }
+        case 'basin': {
+          // (a hand basin shallower than the kit's 0.5 m vanity is squeezed to the drawn depth)
+          const B = rpBack(S, f, 'long', { snap: 0.5 }), vl = clamp(B.w, 0.45, 1.4), dp = clamp(B.dp, 0.34, 0.5), van = F.vanity(m, { len: vl });
+          van.scale.z = dp / 0.5;
+          nudge(S, B, vl, dp, (w) => { rpPut(ctx, S, van, w, B.ang, 0, { box: { w: vl, d: dp, z: dp / 2 } }); if (B.atWall) rpMirror(ctx, S, w, B.ang, vl); return van; }, true);
+          break;
+        }
+        case 'bathtub': {
+          // (squeezed to the drawn width where the plan's tub is slimmer than the kit's 0.78 m)
+          // … and slimmer / shorter still where it would stand in the way of the door
+          const B = rpBack(S, f, 'long', { snap: 0.5 }), len0 = clamp(B.w, 1.5, 1.8), k0 = clamp(B.dp / 0.78, 0.86, 1), xv = xOf(B.ang);
+          let pick = null;
+          for (const [len, kz] of [[len0, k0], [len0, Math.min(k0, 0.88)], [len0, 0.82], [1.5, 0.82]]) for (const off of len < B.w - 0.05 ? [0, (B.w - len) / 2, -(B.w - len) / 2] : [0]) {
+            const w = add2(B.wall, xv, off), q = { len, kz, w };
+            if (!pick) pick = q;
+            if (!rpBlocks(ctx, { c: add2(w, B.front, 0.39 * kz), d: xv, hl: len / 2, hw: 0.39 * kz })) { pick = q; break; }
+            pick = q;
+          }
+          const tub = F.bathtub(m, { len: pick.len, cut });
+          tub.scale.z = pick.kz;
+          rpPut(ctx, S, tub, pick.w, B.ang, 0, { box: { w: pick.len, d: 0.78 * pick.kz, z: 0.39 * pick.kz }, tag: 'bathtub' });
+          break;
+        }
+        case 'shower': rpShower(ctx, S, [f.c[0], f.c[1]], f.s[0], f.s[1]); break;
+        case 'washing-machine': {
+          if (joined.has(f)) break;
+          const B = rpBack(S, f, 'any', { snap: 0.45 });
+          const wm = nudge(S, B, 0.6, 0.6, (w, p) => rpPut(ctx, S, F.washer(m, {}), p, B.ang), false);
+          if (wm) { ctx.laundry = 'drawn'; rpWasherCab(ctx, S, wm, B); }
+          break;
+        }
+        case 'fridge': {
+          if (joined.has(f)) break;
+          const B = rpBack(S, f, 'any');
+          nudge(S, B, 0.6, 0.62, (w, p) => rpPut(ctx, S, F.fridge(m, { h: cut ? 1.05 : Math.min(2.3, CH - 0.1) }), p, B.ang), true); ctx.fridge = true;
+          break;
+        }
+        case 'wardrobe': if (S.kind === 'bedroom') wardHeld.push([S, f]); else rpDrawnWardrobe(ctx, S, f, seed++); break;      // (bedrooms: after the bed)
+        case 'sofa': rpSofa(ctx, S, rpBack(S, f, 'long')); break;
+        case 'bed': if (S.kind === 'bedroom') bedHeld.push([S, f]); else rpBed(ctx, S, f, seed++); break;     // (bedrooms: after everything else that is drawn)
+        default: break;
+      }
+    } catch (err) { ctx.notes.push('fixture ' + f.kind + ' in ' + f.room + ': ' + (err && err.message)); }
+  }
+  // V7: every bedroom gets a double bed (the largest of 1.8 / 1.6 / 1.4 m that fits) and its bridge unit
+  // The wardrobes drawn in a bedroom are placed after its bed. The bed is first looked for with their drawn boxes kept
+  // free (the architect's arrangement); where no double bed then fits with every way open, the bed comes first and
+  // the wardrobes give way (shorter, shallower or left out — a wardrobe is then placed by rule on another wall).
+  for (const S of P.rooms.filter(r => r.kind === 'bedroom')) {
+    const bf = bedHeld.filter(q => q[0] === S).map(q => q[1]), wf = wardHeld.filter(q => q[0] === S).map(q => q[1]);
+    if (!bf.length && !wf.length) continue;
+    const tB = performance.now();
+    try {
+      if (bf.length) {
+        const boxOf = f => { const r = (+f.rot || 0) * PI / 180; return { c: [+f.c[0], +f.c[1]], d: [Math.cos(r), Math.sin(r)], hl: f.s[0] / 2, hw: f.s[1] / 2, resv: true, h: 2 }; };
+        // (the result of the search is kept with the layout's plan: a flat is built again for every style, floor
+        // and visit — the pieces stand the same way each time)
+        const memo = (P.bedPicks ||= new Map()), hit = memo.get(S.id);
+        let pick = null, passA = false;
+        if (hit && rpFree(ctx, S, hit.pick.R, { zones: false, tol: 0.03 })) { pick = hit.pick; passA = hit.passA; if (passA) ctx.occ.push(...wf.map(boxOf)); }
+        else {
+          if (wf.length) { ctx.occ.push(...wf.map(boxOf)); pick = rpDoubleFind(ctx, S, bf[0], BED_TIER_A); passA = !!pick; if (!pick) ctx.occ = ctx.occ.filter(q => !q.resv); }
+          if (!pick) pick = rpDoubleFind(ctx, S, bf[0], 99, true);
+          if (pick) memo.set(S.id, { pick, passA });
+        }
+        if (pick && wf.length && !passA) ctx.notes.push('bed in ' + S.id + ': the drawn wardrobe gives way to the double bed');
+        rpDoublePlace(ctx, S, pick, bf[0], seed++);
+        ctx.occ = ctx.occ.filter(q => !q.resv);
+      }
+      for (const f of wf) rpDrawnWardrobe(ctx, S, f, seed++);
+    } catch (err) { ctx.occ = ctx.occ.filter(q => !q.resv); ctx.notes.push('bedroom ' + S.id + ': ' + (err && err.message)); }
+    ctx.msBeds = (ctx.msBeds || 0) + performance.now() - tB;
+  }
+  // (a flat with no drawn kitchen: the kitchen line is placed by rule first — rpRules — and the sofa-bed after it)
+  if (ctx.sb && (ctx.kitPlan || []).length) rpSofaBed(ctx);
+}
+// ---- the sofa-bed of a one-room flat (furniture.js sofaBed: opens into a double bed about 1.6 × 2.0 m).
+// It stands where the plan draws the sofa when the bed can open there, else along another wall of the living room,
+// else (a room that cannot hold both) in the place of the drawn bed. The floor the opened bed takes is kept free:
+// inside the room, clear of every piece, door swing, door approach and passage, and every room and outdoor space must
+// stay reachable with the bed OPEN. That floor then stays in ctx.occ as a ghost footprint, so that nothing placed
+// later (coffee table, TV unit, dining set, plant, standing points, camera views) stands on it.
+// The variants, best first: the pull-out 1.6 m wide (bed at right angles to the wall, 1.04 m of floor in front), the
+// "book" 1.58 m (bed along the wall, 0.62 m in front — for narrow rooms), the pull-out 1.4 m wide, the book 1.4 m
+// (0.44 m in front). L: planned length (the
+// widest style's, so that a flat is furnished alike in every style).
+const SB_KINDS = [{ kind: 'pull', wb: 1.6, L: 1.96, bonus: 0.6 }, { kind: 'book', wb: 1.6, L: 1.96, bonus: 0.4 }, { kind: 'pull', wb: 1.4, L: 1.76, bonus: 0.15 }, { kind: 'book', wb: 1.4, L: 1.96, bonus: 0 }];
+function rpSofaBed(ctx) { const t0 = performance.now(); try { return rpSofaBed0(ctx); } finally { ctx.msSb = (ctx.msSb || 0) + performance.now() - t0; } }
+function rpSofaBed0(ctx) {
+  const sb = ctx.sb; if (!sb || sb.tried) return; sb.tried = true;
+  const { P, m, cut } = ctx, S = sb.S;
+  const sofas = sb.held.filter(f => f.kind === 'sofa'), beds = sb.held.filter(f => f.kind === 'bed'), tables = sb.held.filter(f => f.kind === 'table');
+  const boxOf = f => { const r = (+f.rot || 0) * PI / 180; return { c: [+f.c[0], +f.c[1]], d: [Math.cos(r), Math.sin(r)], hl: f.s[0] / 2, hw: f.s[1] / 2 }; };
+  const groups = tables.filter(f => Math.min(+f.s[0], +f.s[1]) >= 1.8);        // a sitting group drawn as one box (sofa + table)
+  const dps = P.doors.filter(d => d.rooms && d.rooms.includes(S.id)).map(d => d.p);
+  const fd = p => Math.min(3, ...dps.map(q => Math.hypot(q[0] - p[0], q[1] - p[1])));
+  const open2 = P.rooms.filter(r => r !== S && (r.kind === 'kitchen' || r.kind === 'living'));
+  const aisles = ctx.kitchens.map(k => ({ c: add2(k.p, k.front, 0.31 + 0.36), d: xOf(k.ang), hl: k.len / 2, hw: 0.36 }));
+  const search = (keepBeds) => {
+    const n0 = ctx.occ.length;
+    if (keepBeds) for (const f of beds) ctx.occ.push({ ...boxOf(f), tmp: true });
+    const cands = [], st = { keepBeds, tried: 0, sofa: 0, bed: 0, zone: 0, aisle: 0, way: 0 }, dbg = ctx.opts.sbDebug ? (st.dbg = []) : null;
+    let KD = SB_KINDS[0], L = 0, D = 0, EXT = 0, EW = 0;
+    const add = (p, f, sc, seg) => {
+      const xv = xOf(angOf(f));
+      st.tried++; sc += KD.bonus;
+      // the wall behind: a window there costs (a low sill much more), and the back stands off it for the curtain
+      const sg = seg || S.segs.find(q => dot2(q.nin, f) > 0.95 && Math.abs(dot2(sub2(p, q.a), q.nin)) < 0.1 && dot2(sub2(p, q.a), q.d) > -0.05 && dot2(sub2(p, q.a), q.d) < q.len + 0.05);
+      if (sg) { const s = dot2(sub2(p, sg.a), sg.d), ws = sg.wins.filter(q => q.s1 > s - L / 2 + 0.05 && q.s0 < s + L / 2 - 0.05); if (ws.length) { p = add2(p, f, 0.2); sc -= ws.some(q => q.sill < 0.8) ? 1.6 : 0.5; } }
+      else sc -= 0.4;                                                              // free-standing (drawn away from the walls)
+      const Rc = { c: add2(p, f, D / 2 + 0.012), d: xv, hl: L / 2, hw: D / 2 }, Ro = { c: add2(p, f, D + 0.012 + EXT / 2), d: xv, hl: EW / 2, hw: EXT / 2 };
+      const no = (r) => { st[r === 'bedwall' ? 'bed' : r]++; if (dbg && dbg.length < 400) dbg.push({ p, f, k: KD.kind + KD.wb, r }); };
+      if (!rpFree(ctx, S, Rc, { tol: 0.02, zones: false })) return no('sofa');
+      // the opened bed may reach through a wide opening into the next room (a kitchen niche), never through a wall
+      const inS = rectInPoly(Ro, S.poly, 0.02);
+      if (!inS && (!rectPts(Ro, 0.02).every(q => pointInPoly(q, S.poly) || open2.some(T => pointInPoly(q, T.poly))) || rpHitsWalls(P, Ro))) return no('bedwall');
+      if (!rpFree(ctx, S, Ro, { tol: 0.02, zones: false, anyRoom: true })) return no('bed');
+      const flips = [];
+      const z1 = rpSbZones(ctx, Rc, Ro, flips, false), z2 = z1 === null ? null : rpSbZones(ctx, Ro, Rc, flips, true);
+      if (z2 === null) return no('zone');
+      if (aisles.some(a => rectOverlap(Rc, a, -0.02))) return no('aisle');
+      sc -= z1 + z2 + (inS ? 0 : 0.6);
+      // room to walk past the foot and along a side of the opened bed
+      const ray = (o, d2) => P.rooms.some(T => pointInPoly(o, T.poly)) ? Math.min(...P.rooms.filter(T => pointInPoly(o, T.poly)).map(T => rayPoly(o, d2, T.poly))) : 0;
+      const foot = ray(Ro.c, f) - EXT / 2, sideA = ray(Ro.c, xv) - EW / 2, sideB = ray(Ro.c, [-xv[0], -xv[1]]) - EW / 2;
+      sc += (foot >= 0.6 ? 0.6 : 0) + (foot >= 1.0 ? 0.3 : 0) + (Math.max(sideA, sideB) >= 0.55 ? 0.5 : 0) + (Math.min(sideA, sideB) >= 0.55 ? 0.2 : 0);
+      for (const t of tables) { const B = boxOf(t); if (rectOverlap(Ro, B, -0.05) || rectOverlap(Rc, B, -0.05)) sc -= 0.8; }
+      if (aisles.some(a => rectOverlap(Ro, a, -0.02))) sc -= 0.8;
+      cands.push({ p, f, xv, Rc, Ro, sc, KD, flips });
+    };
+    const offs = [0]; for (let o = 0.1; o <= 1.21; o += 0.1) offs.push(o, -o);
+    for (KD of SB_KINDS) {
+    const Z = FX.sofaBedSize(m, KD.wb, KD.kind); L = KD.L; D = Z.D; EXT = Z.ext; EW = KD.kind === 'book' ? Z.extW : KD.wb + 0.06;
+    // (where the plan draws the piece: slid along its wall, and a step off it where the wall has a jog)
+    const drawn = (B, sc) => { const xv = xOf(B.ang); for (const fo of [0, 0.1, 0.2]) for (const o of offs) add(add2(add2(B.wall, xv, o), B.front, fo), B.front, sc - Math.abs(o) * 0.6 - fo * 2); };
+    for (const f of sofas) drawn(rpBack(S, f, 'long'), 3);
+    for (const f of groups) { const B = rpBack(S, f, 'any'); if (B.atWall) drawn(B, 2.5); }
+    if (!keepBeds) for (const f of beds) { const B = rpBack(S, f, Math.min(+f.s[0], +f.s[1]) >= 1.45 ? 'long' : 'short'); if (B.atWall) drawn(B, 2); }
+    for (const seg of S.segs) {
+      if (seg.len < L + 0.02) continue;
+      const xs = []; for (let s = L / 2 + 0.01; s <= seg.len - L / 2 - 0.01 + 1e-6; s += 0.1) xs.push(s);
+      xs.push(seg.len - L / 2 - 0.01, seg.len / 2);
+      for (const s of xs) { const p = add2(seg.a, seg.d, s); add(p, seg.nin, Math.min(2, fd(p)) * 0.2 - Math.abs(s - seg.len / 2) * 0.1, seg); }
+    }
+    }
+    cands.sort((a, b) => b.sc - a.sc);
+    let best = null, before = null, beforeF = null, beforeT = null, fineTries = 0;
+    // (second pass, only when no position passes: a 0.25 m body on the 5 cm grid — 4B01, 0.55 m between the washing
+    // machine and the opened bed)
+    for (const tiers of [[false, true], ['tight']]) {
+    if (best) break;
+    for (const c of cands) {
+      // the sofa must cut nothing off; with the bed OPEN every room, outdoor space and door must still be reached
+      // (floor left behind the opened bed may be out of reach: the walkthrough moves a visitor standing there)
+      // (10 cm grid first; a way it cannot resolve — a 0.6 … 0.7 m gap — is checked again on a 5 cm grid)
+      let okWay = false;
+      for (const fine of tiers) {
+        const b0 = fine === 'tight' ? (beforeT = beforeT || rpReach0(ctx, false, 'tight')) : fine ? (beforeF = beforeF || rpReach0(ctx, false, true)) : (before = before || rpReach0(ctx));
+        ctx.occ.push(c.Rc); const a1 = rpReach0(ctx, false, fine); ctx.occ.push(c.Ro); const a2 = rpReach0(ctx, false, fine); ctx.occ.length -= 2;
+        if (!rpWorse(b0, a1, fine ? 160 : 40) && a2.n >= b0.n) { okWay = true; c.fine = fine; break; }
+        if (fine || ++fineTries > 60) break;
+      }
+      if (!okWay) { if (tiers[0] === false) { st.way++; if (dbg) dbg.push({ p: c.p, f: c.f, k: c.KD.kind + c.KD.wb, r: 'way' }); } continue; }
+      best = c; break;
+    }
+    }
+    st.ok = cands.length;
+    (sb.stats ||= []).push(st);
+    ctx.occ.length = n0;
+    return best;
+  };
+  let seed = 41;
+  const place = (best, keep) => {
+    const wb = best.KD.wb, kind = best.KD.kind;
+    const obj = F.sofaBed(m, { kind, wb, static: cut, t: ctx.opts.sofaBed === 'open' ? 1 : 0 }), K = obj.userData.sofaBed, ang = angOf(best.f);
+    const pc = add2(best.p, best.f, K.D / 2 + 0.012);
+    rpPut(ctx, S, obj, pc, ang, 0, { tag: 'sofaBed' });
+    const Ro = { c: add2(best.p, best.f, K.D + 0.012 + K.ext / 2), d: best.xv, hl: K.extW / 2, hw: K.ext / 2, h: 0.55, tag: 'sofaBed-open', room: S.id, y: 0, ghost: true };
+    ctx.occ.push(Ro);
+    (S.has ||= {}).sofa = { p: pc, f: best.f, ang, len: K.L, xv: best.xv, wall: true, bed: true };
+    ctx.sofaBed = { obj, K, S, p: best.p, f: best.f, xv: best.xv, ang, pc, Rc: obj.userData.rpRect, Ro, wb, kind, keptBed: keep && beds.length > 0, replacedBed: !keep && beds.length > 0, from: sofas.length ? 'sofa' : beds.length ? 'bed' : 'rule' };
+    if (kind === 'pull' && wb < 1.6) ctx.notes.push('sofa-bed in ' + S.id + ': 1.4 m wide (no wall takes a 1.6 m one with the bed open)');
+    if (kind === 'book') ctx.notes.push('sofa-bed in ' + S.id + ': opens along the wall' + (wb < 1.6 ? ', 1.4 m wide' : '') + ' (the room is too narrow for the pull-out)');
+    sb.flip = best.flips.length ? new Set(best.flips) : null;
+    if (best.flips.length) ctx.notes.push('sofa-bed in ' + S.id + ': door ' + best.flips.join(', ') + ' swings to its other side (the opened bed takes its drawn swing)');
+    for (const f of beds) {
+      if (!keep) { ctx.notes.push('drawn bed in ' + S.id + ' replaced by the sofa-bed (the room cannot hold both with the bed open)'); continue; }
+      try { rpBed(ctx, S, f, seed++); } catch (err) { ctx.notes.push('fixture bed in ' + f.room + ': ' + (err && err.message)); }
+    }
+  };
+  let done = false;
+  for (const keep of beds.length ? [true, false] : [false]) {
+    const best = search(keep); if (!best) continue;
+    // (with the drawn bed kept: undone if the bed, as it really stands, shuts a way)
+    if (best.fine) ctx.navFine = best.fine;
+    if (best.fine === 'tight') ctx.notes.push('sofa-bed in ' + S.id + ': a tight way past the opened bed (0.5 m)');
+    const snap = { occ: ctx.occ.length, kids: ctx.g.children.length, notes: ctx.notes.length, busy: ctx.busy.length, has: S.has ? { ...S.has } : null }, before = rpReach0(ctx);
+    place(best, keep);
+    if (keep && (rpWorse(before, rpReach0(ctx, true)) || rpReach0(ctx).n < before.n)) {
+      ctx.occ.length = snap.occ; ctx.notes.length = snap.notes; ctx.busy.length = snap.busy; S.has = snap.has; ctx.sofaBed = null; sb.flip = null;
+      for (const o of ctx.g.children.slice(snap.kids)) ctx.g.remove(o);
+      continue;
+    }
+    done = true; break;
+  }
+  if (!done) {
+    // no wall of the room lets the bed open: the pieces as drawn, a plain sofa (listed in notes/V5-sofa.md)
+    ctx.notes.push('sofa-bed: no position in ' + S.id + ' where the bed can open — furnished as drawn');
+    sb.fail = true;
+    for (const f of sb.held) { try { if (f.kind === 'sofa') rpSofa(ctx, S, rpBack(S, f, 'long')); else if (f.kind === 'bed') rpBed(ctx, S, f, seed++); else rpTable(ctx, S, f); } catch (err) { ctx.notes.push('fixture ' + f.kind + ' in ' + f.room + ': ' + (err && err.message)); } }
+    return;
+  }
+  sb.done = true;
+  for (const f of tables) { try { rpTable(ctx, S, f); } catch (err) { ctx.notes.push('fixture table in ' + f.room + ': ' + (err && err.message)); } }
+}
+// does a plan rectangle cross a solid wall stretch of any room?
+function rpHitsWalls(P, R) {
+  const n = [-R.d[1], R.d[0]], hl = R.hl - 0.03, hw = R.hw - 0.03;
+  for (const S of P.rooms) for (const sg of S.segs) {
+    const a = sub2(sg.a, R.c), b = sub2(sg.b, R.c);
+    const ax = dot2(a, R.d), ay = dot2(a, n), dx = dot2(b, R.d) - ax, dy = dot2(b, n) - ay;
+    // Liang–Barsky: the segment against the box
+    let t0 = 0, t1 = 1, ok = true;
+    for (const [pp, qq] of [[-dx, ax + hl], [dx, hl - ax], [-dy, ay + hw], [dy, hw - ay]]) {
+      if (Math.abs(pp) < 1e-12) { if (qq < 0) { ok = false; break; } continue; }
+      const r = qq / pp;
+      if (pp < 0) { if (r > t1) { ok = false; break; } if (r > t0) t0 = r; } else { if (r < t0) { ok = false; break; } if (r < t1) t1 = r; }
+    }
+    if (ok && t1 - t0 > 1e-6) return true;
+  }
+  return false;
+}
+// The door zones against a footprint of the sofa-bed, as the leaf really sweeps: null = it stands in a swing (the
+// quarter circle of the leaf), across a passage (less than 0.75 m of its line left clear) or in front of a balcony
+// door; else a penalty for standing close to a door (its approach side, a passage).
+function rpSbZones(ctx, R, other, flips, isBed) {
+  let pen = 0;
+  // an interior or balcony door whose drawn swing the piece takes may swing to its other side (a balcony door then
+  // opens onto the balcony) — if the leaves are not hung yet (rpLeaves) and that side is free
+  const canFlip = (z) => {
+    if (!flips || ctx.leavesDone || (z.type !== 'interior' && z.type !== 'balcony')) return false;
+    if (flips.includes(z.id)) return true;
+    const rec = ctx.doors.find(q => q.id === z.id), L = rec && rec.leaf; if (!L || L.noFlip) return false;
+    const d = L.d, n = d.n || [-d.dir[1], d.dir[0]], sg = -L.sgn, t = L.t;
+    const tip = [d.p[0] + n[0] * sg * (t / 2 + d.w * 0.6), d.p[1] + n[1] * sg * (t / 2 + d.w * 0.6)];
+    if (!ctx.P.spaces.some(S => pointInPoly(tip, S.poly))) return false;
+    const hp = [d.p[0] + d.dir[0] * L.hs * L.hw + n[0] * sg * t / 2, d.p[1] + d.dir[1] * L.hs * L.hw + n[1] * sg * t / 2];
+    if (rpSweep(ctx, hp, [-L.hs * d.dir[0], -L.hs * d.dir[1]], [n[0] * sg, n[1] * sg], d.w, 1.56) < 1.44) return false;
+    // … and the leaf, open on that side, must not close a way
+    const od = [n[0] * sg, n[1] * sg];
+    if (rpBlocks(ctx, { c: add2(hp, od, d.w / 2), d: od, hl: d.w / 2, hw: 0.03 })) return false;
+    flips.push(z.id); return true;
+  };
+  const inR = (Q, x, y, pad = 0) => { const r = [x - Q.c[0], y - Q.c[1]]; return Math.abs(dot2(r, Q.d)) < Q.hl + pad && Math.abs(cross2(Q.d, r)) < Q.hw + pad; };
+  for (const z of ctx.zones) {
+    if (!rectOverlap(R, z, 0.02)) continue;
+    const n = [-z.d[1], z.d[0]];
+    if (z.kind === 'swing') {
+      if (!z.hinge) return null;
+      const r = z.r + 0.03;
+      for (let a = -r; a <= r; a += 0.05) for (let b = -r; b <= r; b += 0.05) {
+        if (a * a + b * b > r * r) continue;
+        const x = z.hinge[0] + z.d[0] * a + n[0] * b, y = z.hinge[1] + z.d[1] * a + n[1] * b;
+        if (!inR(z, x, y, 0.02)) continue;
+        if (inR(R, x, y, 0.02)) { if (canFlip(z)) { pen += z.type === 'balcony' ? 1.5 : 1.2; a = b = 99; } else return null; }
+      }
+      pen += 0.3;
+    } else if (z.kind === 'passage') {
+      let run = 0, best = 0;
+      for (let a = -z.hl - 0.05; a <= z.hl + 0.05; a += 0.03) {
+        const x = z.c[0] + z.d[0] * a, y = z.c[1] + z.d[1] * a;
+        if (inR(R, x, y, 0.02) || (other && inR(other, x, y, 0.02)) || ctx.occ.some(q => !q.wallOnly && inR(q, x, y))) run = 0; else { run += 0.03; best = Math.max(best, run); }
+      }
+      if (best < Math.min(0.75, z.hl * 2 - 0.02)) return null;
+      pen += 0.4;
+    } else if (z.kind === 'approach' && z.type === 'balcony') {
+      const core = z.core ?? z.hl;
+      if (rectOverlap(R, { ...z, hl: core }, -0.03)) {
+        // the sofa never stands in front of a balcony door; the OPENED bed may cover a corner of that front if at
+        // least 0.6 m of the door's width stays clear
+        if (!isBed) return null;
+        let run = 0, best = 0;
+        for (let a = -core; a <= core + 1e-6; a += 0.03) {
+          let cov = false;
+          for (let b = -z.hw; b <= z.hw + 1e-6 && !cov; b += 0.1) cov = inR(R, z.c[0] + z.d[0] * a + n[0] * b, z.c[1] + z.d[1] * a + n[1] * b, 0.02);
+          if (cov) run = 0; else { run += 0.03; best = Math.max(best, run); }
+        }
+        if (best < 0.6) return null;
+        pen += 0.9;
+      }
+      pen += 0.2;
+    } else pen += 0.7;
+  }
+  return pen;
+}
+function rpSofa(ctx, S, B) {
+  const { m } = ctx, xv = xOf(B.ang), [rn, rp] = rpReach(S, B.wall, B.front, xv, 0.5);
+  const a0 = Math.max(-B.w / 2, -rn), a1 = Math.min(B.w / 2, rp), len = clamp(Math.floor((a1 - a0) * 20) / 20, 1.5, 2.9);
+  const dp = clamp(B.dp, 0.86, 0.98);
+  for (const l2 of [len, Math.max(1.5, len - 0.5), 1.5]) for (const off of l2 < a1 - a0 - 0.1 ? [0, (a1 - a0 - l2) / 2, -(a1 - a0 - l2) / 2] : [0]) {
+    const p = add2(add2(B.wall, xv, (a0 + a1) / 2 + off), B.front, dp / 2 + 0.01), R = { c: p, d: xv, hl: l2 / 2, hw: dp / 2 };
+    if (rpDoorHit(ctx, R) || rpBlocks(ctx, R)) continue;
+    rpPut(ctx, S, F.sofa(m, { len: l2, depth: dp }), p, B.ang);
+    (S.has ||= {}).sofa = { p, f: B.front, ang: B.ang, len: l2, xv, wall: B.atWall };
+    return;
+  }
+  ctx.notes.push('sofa in ' + S.id + ' left out (it would block the way)');
+}
+function rpBed(ctx, S, f, seed) {
+  const { m, cut } = ctx;
+  // The drawn box of a double bed takes in its nightstands: the head is on a LONG side; a single bed's on a short one.
+  // Beds are drawn shorter than the kit's 2.05 m: the piece is squeezed to the drawn length (not below 80 %).
+  const dbl = Math.min(+f.s[0], +f.s[1]) >= 1.45;
+  const B = rpBack(S, f, dbl ? 'long' : 'short'), xv = xOf(B.ang);
+  const bw0 = B.w >= 1.75 ? 1.6 : B.w >= 1.5 ? 1.4 : B.w >= 1.25 ? 1.2 : 0.9;
+  const kz = clamp(B.dp / 2.12, 0.8, 1), Lb = 2.15 * kz;
+  // V7: a bed drawn smaller than a double (under 1.4 m wide or under 1.9 m long) in the living room of a flat whose
+  // sofa opens into a double bed is left out — the sofa-bed is that room's double bed
+  if (ctx.sb && S.kind !== 'bedroom' && (bw0 < 1.4 || kz < 0.88)) { ctx.notes.push('drawn bed in ' + S.id + ' left out (smaller than a double bed: the sofa-bed is the double bed of this room)'); return; }
+  // as drawn; where that shuts a way: a narrower bed, pushed to either side of the drawn box
+  let pick = null;
+  const cands = [];
+  for (const k2 of kz > 0.83 ? [kz, 0.8] : [kz]) for (const bw of [bw0, 1.4, 1.2, 0.9]) {
+    if (bw > bw0) continue;
+    const sl = Math.max(0, (B.w - bw - 0.2) / 2), L2 = 2.15 * k2;
+    for (const off of sl > 0.05 ? [0, sl, -sl] : [0]) cands.push({ bw, kz: k2, Lb: L2, p: add2(add2(B.wall, xv, off), B.front, L2 / 2 + 0.01) });
+  }
+  const rectOf = q => ({ c: q.p, d: xv, hl: q.bw / 2 + 0.1, hw: q.Lb / 2 });
+  // 1. clear of the door swings and of every way; 2. of every way (the door then swings to its other side); 3. narrowest
+  pick = cands.find(q => !rpDoorHit(ctx, rectOf(q)) && !rpBlocks(ctx, rectOf(q))) || cands.find(q => !rpBlocks(ctx, rectOf(q)));
+  if (!pick) { pick = cands[cands.length - 3] || cands[cands.length - 1]; ctx.notes.push('bed in ' + S.id + ': no size keeps every way open (narrowest kept)'); }
+  const { bw, p } = pick;
+  const bedO = F.bed(m, { w: bw }); bedO.scale.z = pick.kz;
+  const bed = rpPut(ctx, S, bedO, p, B.ang, 0, { box: { w: bw + 0.2, d: pick.Lb }, tag: 'bed' });
+  const wallP = add2(p, B.front, -(pick.Lb / 2 + 0.01));
+  (S.has ||= {}).bed = { p, f: B.front, ang: B.ang, bw, xv, wall: wallP, atWall: B.atWall };
+  rpBedSet(ctx, S, S.has.bed, seed);
+  return bed;
+}
+// nightstands, pendant, rug and the dressed head wall of a placed bed
+function rpBedSet(ctx, S, b, seed = 1) {
+  const { m, cut } = ctx;
+  for (const side of [-1, 1]) {
+    const c = add2(add2(b.wall, b.xv, side * (b.bw / 2 + 0.1 + 0.26)), b.f, 0.215);
+    if (!rpFree(ctx, S, { c, d: b.xv, hl: 0.24, hw: 0.2 })) continue;
+    const ns = rpTry(ctx, S, F.nightstand(m, { seed: seed + side }), c, b.ang, 0, { quiet: true });
+    if (ns && b.atWall) halo(ctx, ns, -0.07, -0.197, 0.8);
+  }
+  if (!cut) rpPut(ctx, S, F.pendant(m, { kind: 'bed', drop: 0.45 }), b.p, b.ang, CH, { free: true });
+  const rc = add2(b.p, b.f, 0.35), R = { c: rc, d: b.xv, hl: Math.min(1.2, b.bw / 2 + 0.6), hw: 1.0 };
+  if (rectInPoly(R, S.poly, 0.02)) rpPut(ctx, S, F.rug(m, { w: R.hl * 2, d: 2.0 }), rc, b.ang, 0, { free: true });
+  if (cut || !b.atWall) return;
+  // head wall: only on a plain straight stretch
+  const seg = S.segs.find(s => Math.abs(dot2(sub2(b.wall, s.a), s.nin)) < 0.06 && dot2(s.nin, b.f) > 0.95 && dot2(sub2(b.wall, s.a), s.d) > 0 && dot2(sub2(b.wall, s.a), s.d) < s.len);
+  if (!seg) return;
+  const s = dot2(sub2(b.wall, seg.a), seg.d), free = (h) => !seg.wins.some(q => q.s1 > s - h && q.s0 < s + h);
+  const half = Math.min(b.bw / 2 + 0.6, s - 0.02, seg.len - s - 0.02);
+  const wp = add2(seg.a, seg.d, s);
+  if (half >= b.bw / 2 - 0.05 && free(half)) { featureWallBed(ctx, ctx.g, wp[0], wp[1], b.ang, half * 2); artOn(ctx, ctx.g, wp[0], wp[1], b.ang, Math.min(1.2, b.bw), 0.7, seed, 1.55); }
+}
+// A wardrobe drawn on the plan
+function rpDrawnWardrobe(ctx, S, f, seed) {
+  const { P, m, cut } = ctx, swingBlocked = ctx.swingBlocked, entD = ctx.entD;
+  {
+          // V7: fitted, floor to ceiling, where the plan draws it. In a hall: 0.6 m deep, shallower (0.45 / 0.38 m)
+          // where less than 0.9 m of passage would remain in front; where it would shut a way or stand in a door's
+          // swing: shorter from either end.
+          const B = rpBack(S, f, 'long'), xv = xOf(B.ang), hall = S.kind === 'hall', dress = S.kind === 'dressing';
+          const D0 = dress ? clamp(Math.round(B.dp * 100) / 100, 0.4, 0.5) : B.dp > 0.7 ? 0.6 : clamp(Math.round(B.dp * 100) / 100, 0.5, 0.6);
+          const bedroom = S.kind === 'bedroom';
+          const depths = hall ? [0.6, D0, 0.45, 0.38].filter((d, i, a) => a.indexOf(d) === i) : bedroom ? [D0, 0.45].filter((d, i, a) => d <= D0 && a.indexOf(d) === i) : [D0];
+          let pick = null, fall = null;
+          const [rn0, rp0] = rpReach(S, B.wall, B.front, xv, 0.38);
+          const A0 = Math.max(-B.w / 2, -rn0), A1 = Math.min(B.w / 2, rp0), len0 = Math.floor((A1 - A0) * 100) / 100;
+          const lens = len0 < 0.5 ? [] : [[A0, A1], [A0, A0 + len0 * 0.7], [A1 - len0 * 0.7, A1], [A0, A0 + len0 * 0.45], [A1 - len0 * 0.45, A1]];
+          for (const [c0, c1] of lens) {
+            for (const D of depths) {
+              const [rn, rp] = rpReach(S, B.wall, B.front, xv, D), b0 = Math.max(c0, -rn), b1 = Math.min(c1, rp);
+              const l2 = Math.floor((b1 - b0) * 100) / 100; if (l2 < 0.5) continue;
+              const p = add2(add2(B.wall, xv, (b0 + b1) / 2), B.front, D / 2 + 0.004), R = { c: p, d: xv, hl: l2 / 2, hw: D / 2 };
+              // (a bedroom: clear of the bed, its towers and the floor beside it, 0.6 m to stand in front)
+              if (bedroom && (ctx.occ.some(o => rectOverlap(R, o, -0.012)) || ctx.zones.some(z => z.kind === 'bedside' && rectOverlap(R, z, -0.01)) || !rpFree(ctx, S, { c: add2(p, B.front, D / 2 + 0.3), d: xv, hl: Math.max(0.1, l2 / 2 - 0.06), hw: 0.3 }, { zones: false, tol: 0.012 }))) continue;
+              if (swingBlocked(R) || rpBlocks(ctx, R)) continue;
+              const q = { p, l2, D, b0, b1, R };
+              // (a hall: 0.9 m of passage in front of it)
+              q.pass = !hall || rpFree(ctx, S, { c: add2(p, B.front, D / 2 + 0.45), d: xv, hl: Math.max(0.1, l2 / 2 - 0.06), hw: 0.45 }, { zones: false, tol: 0.012, anyRoom: true });
+              if (!fall || (q.D === D0 && fall.D > D0 && q.l2 >= fall.l2 - 0.01)) fall = q;      // (as drawn, if nothing keeps 0.9 m)
+              if (q.pass) { pick = q; break; }
+            }
+            if (pick) break;
+          }
+          pick = pick || fall;
+          if (!pick) { ctx.notes.push('wardrobe in ' + S.id + ' left out (it would block a door or the way)'); return; }
+          const { p, l2, D } = pick, entry = f === ctx.entryW, ceil = cut ? 0 : CH - ctx.tallH;
+          let obj;
+          if (dress) obj = F.dressing(m, { len: l2, h: ctx.tallH, d: D, seed });
+          else if (hall) {
+            // the open niche (bench, shoe shelf, hooks) at the end nearer to the entrance door
+            const eS = entD ? dot2(sub2(entD.p, p), xv) >= 0 ? 1 : -1 : 1;
+            obj = F.hallWardrobe(m, { len: l2, h: ctx.tallH, d: D, ceil, seed, sliding: D >= 0.5 && l2 >= 1.5, niche: entry && l2 >= 1.9 ? 0.62 : 0, nicheSide: eS, mirror: entry ? undefined : false });
+          } else obj = F.wardrobe(m, { len: l2, h: ctx.tallH, d: D, kind: 'bed', sliding: l2 > 1.9, fitted: true, mirror: l2 > 1.9 ? 1 : -1, ceil, seed });
+          rpPut(ctx, S, obj, p, B.ang, 0, { tag: dress ? 'dressing' : 'wardrobe' });
+          (S.has ||= {}).wardrobe = { len: l2, d: D, drawn: true, p };
+          if (bedroom && (l2 < len0 - 0.05 || D < D0 - 0.01)) ctx.notes.push('wardrobe in ' + S.id + ': ' + l2.toFixed(2) + ' × ' + D.toFixed(2) + ' m (drawn ' + len0.toFixed(2) + ' × ' + D0.toFixed(2) + ': the double bed needs the room)');
+          if (hall) { (ctx.hallW ||= []).push({ room: S.id, len: l2, d: D, drawn: true, entry, niche: !!obj.userData.hasNiche, mirror: !!obj.userData.hasMirror, pass: pick.pass, p }); if (!pick.pass) ctx.notes.push('wardrobe in ' + S.id + ': less than 0.9 m of passage in front of it (as drawn)'); if (l2 < len0 - 0.05) ctx.notes.push('wardrobe in ' + S.id + ': shorter than drawn (' + l2.toFixed(2) + ' of ' + len0.toFixed(2) + ' m: door / way)'); if (D < D0 - 0.01) ctx.notes.push('wardrobe in ' + S.id + ': ' + D.toFixed(2) + ' m deep (0.9 m of passage kept)'); }
+          return;
+        }
+}
+// ================================================================ V7-furnish: double beds, bridge units, fitted joinery
+// (notes/V7-furnish.md)
+const BED_D = 2.22, BED_SIZES = [1.8, 1.6, 1.4], Y_BRIDGE = 1.95;
+const inRect = (Q, p, pad = 0) => { const r = sub2(p, Q.c); return Math.abs(dot2(r, Q.d)) < Q.hl + pad && Math.abs(cross2(Q.d, r)) < Q.hw + pad; };
+// collider of a piece that hangs on the wall / stands on another piece (furniture.js userData.box3)
+function rpHiCol(obj) {
+  const b = obj.userData.box3; if (!b) return null;
+  const zc = b.zc ?? 0, c = collider(obj, -b.w / 2, b.y0 || 0, zc - b.d / 2, b.w / 2, b.h, zc + b.d / 2);
+  c.name = 'col-furniture-high'; return c;
+}
+// One long side of a bed (w wide, dep long, head at wallP on a wall running along d, inward normal nin; sd = −1 / +1
+// along d): g = the width of free floor beside it (0.5 / 0.4 / 0.3 m strips, measured beyond the first 0.45 m where a
+// tower or a bedside table stands); open = at least `need`; closed = it lies against a wall (a slanted one too).
+function rpBedSide(ctx, S, wallP, d, nin, w, sd, need = 0.5, dep = BED_D) {
+  const e = [d[0] * sd, d[1] * sd];
+  let g = 0, strip = null;
+  for (const x of [need, 0.4, 0.3]) {
+    if (x > need) continue;
+    const st = { c: add2(add2(wallP, e, w / 2 + x / 2), nin, 0.45 + (dep - 0.45) / 2), d, hl: x / 2, hw: (dep - 0.45) / 2 };
+    if (rpFree(ctx, S, st, { zones: false, tol: 0.01 })) { g = x; strip = st; break; }
+  }
+  if (g >= need) return { open: true, closed: false, g, strip };
+  let lo = Infinity, hi = 0;
+  for (const t of [0.3, dep / 2, dep - 0.2]) {
+    const q = add2(add2(wallP, e, w / 2 - 0.03), nin, t);
+    let gi = pointInPoly(q, S.poly) ? rayPoly(q, e, S.poly) - 0.03 : 0;
+    for (let a = 0.03; a < Math.min(gi, 0.5); a += 0.03) if (ctx.occ.some(o => !o.wallOnly && inRect(o, add2(q, e, a)))) { gi = 9; break; }     // (a piece, not a wall)
+    lo = Math.min(lo, gi); hi = Math.max(hi, gi);
+  }
+  return { open: false, closed: lo <= 0.06 && hi <= 0.3, g: Math.min(hi, 9), semi: g >= 0.3, wallGap: lo };
+}
+// The double bed of a bedroom. Sizes 1.8 / 1.6 / 1.4 × 2.0 m, the head on a solid wall stretch (a stretch never
+// spans a door), the footprint clear of every piece, door swing, door approach, passage and balcony-door front;
+// each long side is against a wall or has free floor, at least one has 0.5 m (the 1.8 m bed: both; a slit under
+// 0.3 m beside a bed is refused); no way may be shut. Where the plan draws a bed its head wall and position win
+// unless another wall takes a bed two sizes larger. What gives way when nothing fits, in this order (BED_TIERS):
+// the head under a window with a normal sill · a 1.9 m long mattress · both · the head under a low window ·
+// 0.4 m beside the bed · the tightest body (0.5 m of passage, as the sofa-bed of 4B01).
+// The door zones against a bed's footprint: not in the quarter circle a leaf sweeps, not within 0.5 m in front of a
+// door opening (0.6 m of a balcony door's, on its full width), not across a passage. (That every door is still
+// reached is the walk test's part.)
+// may a balcony door whose drawn swing a bed takes open outwards instead (the leaves are hung after the drawn pieces)?
+function rpCanFlip(ctx, z, interior) {
+  if (ctx.leavesDone || (z.type !== 'balcony' && !(interior && z.type === 'interior'))) return false;
+  const rec = ctx.doors.find(q => q.id === z.id), L = rec && rec.leaf; if (!L || L.noFlip) return false;
+  const d = L.d, n = d.n || [-d.dir[1], d.dir[0]], sg = -L.sgn, t = L.t;
+  const tip = [d.p[0] + n[0] * sg * (t / 2 + d.w * 0.6), d.p[1] + n[1] * sg * (t / 2 + d.w * 0.6)];
+  if (!ctx.P.spaces.some(S => pointInPoly(tip, S.poly)) && !ctx.P.decks.some(k => pointInPoly(tip, k.poly))) return false;
+  const hp = [d.p[0] + d.dir[0] * L.hs * L.hw + n[0] * sg * t / 2, d.p[1] + d.dir[1] * L.hs * L.hw + n[1] * sg * t / 2];
+  if (rpSweep(ctx, hp, [-L.hs * d.dir[0], -L.hs * d.dir[1]], [n[0] * sg, n[1] * sg], d.w, 1.56) < 1.44) return false;
+  // … an interior leaf, open on that side, must not close a way nor meet another door's swing
+  if (z.type === 'interior') {
+    const od = [n[0] * sg, n[1] * sg], Rl = { c: add2(hp, od, d.w / 2), d: od, hl: d.w / 2, hw: 0.03 };
+    if (rpBlocks(ctx, Rl)) return false;
+    const Rz = { c: [d.p[0] + n[0] * sg * (t / 2 + d.w / 2), d.p[1] + n[1] * sg * (t / 2 + d.w / 2)], d: d.dir, hl: d.w / 2, hw: d.w / 2 };
+    if (ctx.zones.some(q => q !== z && (q.kind === 'swing' || q.kind === 'passage') && rectOverlap(Rz, q, -0.05))) return false;
+  }
+  return true;
+}
+function rpBedZones(ctx, R, why, flips, flipI) {
+  for (const z of ctx.zones) {
+    if (z.kind === 'bedside' || !rectOverlap(R, z, 0.0)) continue;
+    const n = [-z.d[1], z.d[0]];
+    if (z.kind === 'swing') {
+      if (!z.hinge) { if (why) why[z.kind + ':' + z.id] = (why[z.kind + ':' + z.id] || 0) + 1; return false; }
+      const r = z.r + 0.02;
+      for (let a = -r; a <= r; a += 0.04) for (let b = -r; b <= r; b += 0.04) {
+        if (a * a + b * b > r * r) continue;
+        const p = [z.hinge[0] + z.d[0] * a + n[0] * b, z.hinge[1] + z.d[1] * a + n[1] * b];
+        if (inRect(z, p, 0.02) && inRect(R, p, 0.01)) { if (flips && (flips.includes(z.id) || rpCanFlip(ctx, z, flipI))) { if (!flips.includes(z.id)) flips.push(z.id); a = b = 99; continue; } if (why) why[z.kind + ':' + z.id] = (why[z.kind + ':' + z.id] || 0) + 1; return false; }
+      }
+    } else if (z.kind === 'approach') {
+      if (z.type === 'balcony') { if (rectOverlap(R, { ...z, hl: z.core ?? z.hl }, -0.02)) { if (why) why[z.kind + ':' + z.id] = (why[z.kind + ':' + z.id] || 0) + 1; return false; } continue; }
+      // the 0.5 m nearest to the opening (the zone is 0.7 m deep; its far 0.2 m may be covered)
+      const dr = ctx.P.doors.find(d => d.id === z.id), toDoor = dr ? (dot2(sub2(dr.p, z.c), n) >= 0 ? 1 : -1) : 0;
+      const core = toDoor ? { ...z, c: add2(z.c, n, toDoor * 0.1), hw: z.hw - 0.1 } : z;
+      if (rectOverlap(R, core, -0.02)) { if (why) why[z.kind + ':' + z.id] = (why[z.kind + ':' + z.id] || 0) + 1; return false; }
+    } else if (rectOverlap(R, z, -0.01)) { if (why) why[z.kind + ':' + z.id] = (why[z.kind + ':' + z.id] || 0) + 1; return false; }
+  }
+  return true;
+}
+// (compact: the same mattress on a frame with a thin wall-hung headboard and the duvet tucked in at the foot —
+// 2.13 m from the wall instead of 2.22)
+const BED_TIERS = [{ L: 2.0, win: 0, need: 0.5 }, { L: 2.0, win: 1, need: 0.5 }, { L: 2.0, win: 0, need: 0.5, compact: true }, { L: 2.0, win: 1, need: 0.5, compact: true },
+  { L: 1.9, win: 0, need: 0.5, compact: true, flipI: true }, { L: 1.9, win: 1, need: 0.5, compact: true, flipI: true }, { L: 2.0, win: 2, need: 0.5, flipI: true }, { L: 1.9, win: 2, need: 0.4, compact: true, flipI: true }, { L: 1.9, win: 2, need: 0.4, compact: true, tight: true, flipI: true }];
+const BED_TIER_A = 5;                 // (the last tier tried with the drawn wardrobes kept in their place)
+// has a walker any floor inside the plan rectangle R in the reach result `res`?
+function rpSeenIn(ctx, res, R, fine) {
+  const N = rpNav(ctx.P, ctx.I, fine ? 0.05 : 0.1, fine === 'tight' ? NAV_TIGHT : 0.27), { G, u0, v0, nx, nz } = N;
+  const ext = Math.abs(R.d[0]) * R.hl + Math.abs(R.d[1]) * R.hw, ezt = Math.abs(R.d[1]) * R.hl + Math.abs(R.d[0]) * R.hw;
+  const i0 = Math.max(0, Math.floor((R.c[0] - ext - u0) / G)), i1 = Math.min(nx - 1, Math.floor((R.c[0] + ext - u0) / G)), j0 = Math.max(0, Math.floor((R.c[1] - ezt - v0) / G)), j1 = Math.min(nz - 1, Math.floor((R.c[1] + ezt - v0) / G));
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (res.seen[j * nx + i] && inRect(R, [u0 + (i + 0.5) * G, v0 + (j + 0.5) * G], 0.03)) return true;
+  return false;
+}
+function rpDoubleFind(ctx, S, f, maxTier = 99, needW = false) {
+  const { P } = ctx;
+  const dps = P.doors.filter(d => d.rooms && d.rooms.includes(S.id) && d.type !== 'balcony').map(d => d.p);
+  const fd = p => Math.min(3, ...dps.map(q => Math.hypot(q[0] - p[0], q[1] - p[1])));
+  let B = null;
+  if (f) { try { B = rpBack(S, f, Math.min(+f.s[0], +f.s[1]) >= 1.45 ? 'long' : 'short'); } catch { B = null; } }
+  const stats = [];
+  const collect = (T, st) => {
+    const out = [], dep = T.L + (T.compact ? 0.13 : 0.22);
+    for (const seg of S.segs) for (const bw of BED_SIZES) {
+      const w = bw + 0.1; if (seg.len < w + 0.02) { st.short++; continue; }
+      const xs = []; for (let x = w / 2 + 0.012; x <= seg.len - w / 2 - 0.012 + 1e-6; x += 0.05) xs.push(x);
+      xs.push(seg.len - w / 2 - 0.012);
+      for (const x of xs) {
+        st.tried++;
+        const ws = seg.wins.filter(q => q.s1 > x - w / 2 + 0.03 && q.s0 < x + w / 2 - 0.03), win = ws.length ? (ws.some(q => q.sill < 0.8) ? 2 : 1) : 0;
+        if (win > T.win) { st.win++; continue; }
+        const wallP = add2(seg.a, seg.d, x), R = { c: add2(wallP, seg.nin, dep / 2 + 0.006), d: seg.d, hl: w / 2, hw: dep / 2 };
+        if (!rpFree(ctx, S, R, { tol: 0.03, zones: false })) { st.taken++; if (!rectInPoly(R, S.poly, 0.03)) st.out++; else st.occ++; continue; }
+        const flips = [];
+        if (!rpBedZones(ctx, R, st.why, flips, !!T.flipI)) { st.taken++; st.zone++; continue; }
+        const sides = [rpBedSide(ctx, S, wallP, seg.d, seg.nin, w, -1, T.need, dep), rpBedSide(ctx, S, wallP, seg.d, seg.nin, w, 1, T.need, dep)];
+        const nOpen = (sides[0].open ? 1 : 0) + (sides[1].open ? 1 : 0);
+        if (!nOpen || (bw > 1.7 && nOpen < 2)) { st.sides++; continue; }
+        // (the other side: against a wall, or usable floor; a slit beside the bed costs)
+        const slit = sides.some(q => !q.open && !q.closed && !q.semi);
+        let sc = bw * 5 + (nOpen === 2 ? 0.6 : slit ? -0.9 : sides.some(q => q.semi) ? -0.2 : 0) + Math.min(2, fd(R.c)) * 0.15 - Math.abs(x - seg.len / 2) * (nOpen === 2 ? 0.2 : 0) - flips.reduce((a, id) => a + ((ctx.doors.find(q => q.id === id) || {}).type === 'balcony' ? 1.2 : 2.5), 0);
+        let drawn = false;
+        if (B && dot2(seg.nin, B.front) > 0.95 && Math.abs(dot2(sub2(B.wall, wallP), seg.nin)) < 0.35) { const off = Math.abs(dot2(sub2(B.c, wallP), seg.d)); if (off < 1.2) { drawn = true; sc += 1.6 - off * 0.5; } }
+        // foot: room to walk past it, or it stands against the far wall
+        const foot = rayPoly(add2(wallP, seg.nin, dep - 0.05), seg.nin, S.poly) - 0.05;
+        sc += foot >= 0.55 ? 0.3 : foot > 0.15 ? -0.3 : 0;
+        out.push({ seg, x, bw, w, win, wallP, R, sides, nOpen, sc, drawn, foot, dep, L: T.L, tight: !!T.tight, compact: !!T.compact, flips });
+      }
+    }
+    return out.sort((a, b) => b.sc - a.sc);
+  };
+  // With the bed in place a wardrobe must still find a wall (needW; not asked when the plan's own wardrobes stand):
+  // per tier the best pair (bed, wardrobe) wins — a narrower bed with a proper wardrobe beats a wider bed with none
+  // or with a 0.38 m one. Where no bed of a tier leaves room for a wardrobe the later tiers (compact frame, 1.9 m)
+  // are asked; if none does, the largest bed stands without one.
+  const wardScore = (c) => {
+    const n0 = ctx.occ.length, z0 = ctx.zones.length;
+    ctx.occ.push({ ...c.R, tag: 'bed' });
+    // (its towers: 0.45 × 0.42 on every open side)
+    for (const [k, sd] of [[0, -1], [1, 1]]) if (c.sides[k].open) { const T = { c: add2(add2(c.wallP, c.seg.d, sd * (c.w / 2 + 0.015 + 0.225)), c.seg.nin, 0.216), d: c.seg.d, hl: 0.225, hw: 0.21 }; if (rpFree(ctx, S, T, { tol: 0.008 })) ctx.occ.push(T); }
+    const zs = c.sides.filter(q => q.open && q.strip).map(q => ({ ...q.strip, kind: 'bedside', id: S.id }));
+    ctx.zones.push(...zs);
+    let w = rpBedroomWardrobe(ctx, S, { dry: true }), given = false;
+    if (!w && zs.length === 2) { ctx.zones.length = z0; ctx.zones.push(zs.slice().sort((a, b) => b.hl - a.hl)[0]); w = rpBedroomWardrobe(ctx, S, { dry: true }); given = !!w; }
+    ctx.occ.length = n0; ctx.zones.length = z0;
+    c.ward = w ? { D: w.D, len: w.len, given } : null;
+    return !w ? -4 : (w.D >= 0.6 ? 3 : w.D >= 0.45 ? 2 : 1.2) + Math.min(2.4, w.len) * 0.5 - (w.len < 0.8 ? 1 : 0) - (given ? 0.5 : 0);
+  };
+  let keep = null;
+  for (let tier = 0; tier < BED_TIERS.length && tier <= maxTier; tier++) {
+    const T = BED_TIERS[tier], st = { tier, why: {}, short: 0, tried: 0, win: 0, taken: 0, out: 0, occ: 0, zone: 0, sides: 0, way: 0 };
+    stats.push(st);
+    const fine = T.tight ? 'tight' : T.compact ? true : false;
+    let before = null, n = 0, best = null;
+    const failed = [], got = {};
+    for (const c of collect(T, st)) {
+      // (a neighbour of a position that shuts a way shuts it too: 0.2 m steps there)
+      if (failed.some(q => q.seg === c.seg && q.bw === c.bw && Math.abs(q.x - c.x) < 0.16) || failed.filter(q => q.seg === c.seg && q.bw === c.bw).length >= 4) continue;
+      if (needW && (got[c.bw] || 0) >= 3) continue;                       // (three positions per width are compared)
+      if (needW && (best && best.ward && best.bw > c.bw + 0.3 && best.ward.D >= 0.6)) break;
+      if (++n > 70) break;
+      before = before || rpReach0(ctx, false, fine);
+      ctx.occ.push(c.R); const after = rpReach0(ctx, false, fine); ctx.occ.pop();
+      // every door and room still reached, and the bed itself from an open side (floor left behind it — a pocket
+      // between its foot and a curved wall — may be out of reach)
+      let cover = 0; for (let k = 0; k < before.seen.length; k++) if (before.seen[k] && after.blk[k]) cover++;
+      const pocket = (before.count - after.count - cover) * (after.fine ? 0.0025 : 0.01);            // m² of floor no longer reached
+      if (after.n < before.n || pocket > 1.2 || !c.sides.some(q => q.open && q.strip && rpSeenIn(ctx, after, q.strip, after.fine))) { st.way++; failed.push(c); continue; }
+      c.tier = tier; c.stats = stats;
+      if (!needW) return c;
+      got[c.bw] = (got[c.bw] || 0) + 1;
+      c.total = c.sc + wardScore(c);
+      if (!best || c.total > best.total + 1e-9) best = c;
+      // (the first — best placed — bed of the widest size with a full wardrobe: nothing later beats it)
+      if (c.ward && c.ward.D >= 0.6 && c.ward.len >= 1.2 && !c.ward.given && c === best && n === 1) break;
+    }
+    if (best && best.ward) return best;
+    if (best && !keep) keep = best;
+    if (keep && tier >= BED_TIER_A) break;                                  // (no bed leaves room for a wardrobe: the largest stands)
+  }
+  if (keep) return keep;
+  if (ctx.opts.bedDebug || maxTier >= 99) ctx.notes.push('bed in ' + S.id + ': search ' + JSON.stringify(stats.filter((q, i) => !i || i === stats.length - 1).map(q => ({ tier: q.tier, tried: q.tried, win: q.win, out: q.out, occ: q.occ, zone: q.zone, sides: q.sides, way: q.way, why: q.why }))));
+  return null;
+}
+function rpDoublePlace(ctx, S, pick, f, seed = 1) {
+  const { m } = ctx;
+  if (!pick) {
+    ctx.notes.push('bed in ' + S.id + ': NO double bed fits — placed as drawn');
+    (ctx.beds ||= []).push({ room: S.id, bw: 0, fail: true });
+    if (f) rpBed(ctx, S, f, seed);
+    return null;
+  }
+  const { seg, bw, wallP, sides, tier, dep } = pick, ang = angOf(seg.nin), xv = xOf(ang);
+  const bedO = F.bed(m, { w: bw, len: pick.L, slim: true, flat: pick.compact, tuck: pick.compact });
+  // (the piece: headboard 0.07 behind the frame, the duvet 0.07 beyond its foot; a wall panel of the bridge unit
+  // behind the head — none in the tightest tier)
+  // the model's origin is its frame centre; behind it the headboard (0.07; the compact one 0.015) and, for the
+  // standard bed, the wall panel of the bridge unit (0.02)
+  const org = 0.012 + (pick.compact ? 0.015 : 0.09) + (pick.L + 0.05) / 2, cF = 0.012 + (dep - 0.02) / 2;
+  bedO.userData.solidBox = { w: bw + 0.1, d: dep - 0.02, h: 0.6, z: cF - org };
+  const pc = add2(wallP, seg.nin, cF);
+  rpPut(ctx, S, bedO, add2(wallP, seg.nin, org), ang, 0, { tag: 'bed' });
+  if (pick.tight) ctx.navFine = 'tight'; else if (pick.compact && !ctx.navFine) ctx.navFine = true;
+  if (pick.flips && pick.flips.length) {
+    ctx.flip = ctx.flip || new Set();
+    for (const id of pick.flips) {
+      ctx.flip.add(id);
+      const dr = ctx.doors.find(q => q.id === id), L = dr && dr.leaf; if (!L) continue;
+      L.noFlip = true;
+      // the keep-out zones follow the leaf at once (the leaves themselves are hung by rpLeaves)
+      const d = L.d, n = d.n || [-d.dir[1], d.dir[0]], sg = -L.sgn, t = L.t;
+      const z = ctx.zones.find(q => q.kind === 'swing' && q.id === id); if (z) { z.c = [d.p[0] + n[0] * sg * (t / 2 + d.w / 2), d.p[1] + n[1] * sg * (t / 2 + d.w / 2)]; z.hinge = [d.p[0] + d.dir[0] * L.hs * L.hw + n[0] * sg * t / 2, d.p[1] + d.dir[1] * L.hs * L.hw + n[1] * sg * t / 2]; }
+      const za = ctx.zones.find(q => q.kind === 'approach' && q.id === id && !q.fixed); if (za) za.c = [d.p[0] - n[0] * sg * (t / 2 + 0.35), d.p[1] - n[1] * sg * (t / 2 + 0.35)];
+      ctx.notes.push('bed in ' + S.id + ': ' + (dr.type === 'balcony' ? 'balcony door ' + id + ' opens outwards' : 'door ' + id + ' swings to its other side') + ' (the bed takes its drawn swing)');
+    }
+  }
+  const rec = { room: S.id, bw, len: pick.L, drawn: pick.drawn, underWindow: pick.win, tier, compact: !!pick.compact, open: [sides[0].open, sides[1].open], foot: +pick.foot.toFixed(2), dep, wall: [+wallP[0].toFixed(3), +wallP[1].toFixed(3)], front: seg.nin, d: seg.d, towers: [0, 0], row: 0, tables: 0, wardrobe: null };
+  (ctx.beds ||= []).push(rec);
+  const b = (S.has ||= {}).bed = { p: pc, f: seg.nin, ang, bw, xv, wall: wallP, atWall: true, double: true, seg, s: pick.x, sides, win: pick.win, rec, tight: pick.tight, compact: pick.compact, dep };
+  if (bw < 1.6) ctx.notes.push('bed in ' + S.id + ': 1.4 m wide (the room takes no wider double bed with 0.5 m beside it)');
+  if (pick.L < 2) ctx.notes.push('bed in ' + S.id + ': mattress ' + bw + ' × 1.9 m (a 2.0 m one would shut a way)');
+  if (pick.win) ctx.notes.push('bed in ' + S.id + ': head under a window (no other wall takes a double bed)');
+  if (BED_TIERS[tier].need < 0.5 && !sides.some(q => q.g >= 0.5)) ctx.notes.push('bed in ' + S.id + ': 0.4 m beside it');
+  if (pick.compact) ctx.notes.push('bed in ' + S.id + ': compact frame (thin headboard) — the standard one would shut a way');
+  if (pick.tight) ctx.notes.push('bed in ' + S.id + ': a tight way past it (0.5 m)');
+  if (f && !pick.drawn) ctx.notes.push('bed in ' + S.id + ': not on the drawn wall (a double bed does not fit there)');
+  rpBedDress(ctx, S, b, seed);
+  // the floor beside the bed stays free of what is placed later
+  for (const q of sides) if (q.open && q.strip) ctx.zones.push({ ...q.strip, kind: 'bedside', id: S.id });
+  return b;
+}
+function rpDouble(ctx, S, f, seed = 1) { return rpDoublePlace(ctx, S, rpDoubleFind(ctx, S, f, 99, true), f, seed); }
+// Bridge unit over a double bed: a tower on every open side (0.45 / 0.36 m wide, 0.42 deep, with a bedside niche),
+// a row of wall cabinets over the head between them (underside 1.95 m, 0.38 deep, LED line, wall panel behind the
+// head); no tower where a window, the end of the wall or a slanted side wall is in the way — then a bedside table;
+// the row alone hangs on brackets; no row under a window.
+function rpBedDress(ctx, S, b, seed = 1) {
+  const { m, cut } = ctx, seg = b.seg, w = b.bw + 0.1, H = ctx.tallH, ceil = cut ? 0 : CH - H, rec = b.rec;
+  const spanOK = (a0, a1) => a0 >= -0.005 && a1 <= seg.len + 0.005, winIn = (a0, a1) => seg.wins.some(q => q.s1 > a0 + 0.02 && q.s0 < a1 - 0.02);
+  const at = (x, dep) => add2(add2(seg.a, seg.d, x), seg.nin, dep);
+  const lx = dot2(seg.d, b.xv) >= 0 ? 1 : -1;                      // seg.d in the bed's local x
+  const tw = [0, 0];
+  if (!b.win) for (const [k, sd] of [[0, -1], [1, 1]]) {
+    if (!b.sides[k].open) continue;
+    for (const W of [0.45, 0.36]) {
+      const a0 = sd < 0 ? b.s - w / 2 - 0.015 - W : b.s + w / 2 + 0.015, a1 = a0 + W;
+      if (!spanOK(a0, a1) || winIn(a0 - 0.05, a1 + 0.05)) continue;
+      const c = at((a0 + a1) / 2, 0.21 + 0.006);
+      if (!rpFree(ctx, S, { c, d: seg.d, hl: W / 2, hw: 0.21 }, { tol: 0.008 }) || rpWinFront(S, { c, d: seg.d, hl: W / 2, hw: 0.21 }, 0.5)) continue;
+      const t = F.tower(m, { w: W, h: H, d: 0.42, yB: Y_BRIDGE, side: sd * lx, seed: seed + k, ceil });
+      if (rpTry(ctx, S, t, c, b.ang, 0, { tag: 'tower', quiet: true })) { tw[k] = W; break; }
+    }
+  }
+  // the row over the head
+  let a0 = b.s - w / 2 - 0.015, a1 = b.s + w / 2 + 0.015;
+  if (b.sides[0].closed) a0 = Math.max(0.005, b.s - w / 2 - b.sides[0].g + 0.004);
+  if (b.sides[1].closed) a1 = Math.min(seg.len - 0.005, b.s + w / 2 + b.sides[1].g - 0.004);
+  let row = false;
+  if (!cut && !b.win && spanOK(a0, a1) && !winIn(a0, a1)) {
+    const len = a1 - a0, oh = F.overhead(m, { len, d: 0.38, hh: H - Y_BRIDGE, ceil, brackets: !tw[0] && !tw[1], panel: b.compact ? 0 : Y_BRIDGE, panelW: len });
+    oh.userData.box3.zc = 0.19;
+    rpPut(ctx, S, oh, at((a0 + a1) / 2, 0.003), b.ang, Y_BRIDGE, { free: true }); rpHiCol(oh);
+    row = true; rec.row = +len.toFixed(2);
+  }
+  rec.towers = tw;
+  if (!row && !cut) ctx.notes.push('bed in ' + S.id + ': no cabinets over the head (' + (b.win ? 'window' : 'window / end of the wall') + ')');
+  else if (!tw[0] && !tw[1] && !cut) ctx.notes.push('bed in ' + S.id + ': cabinet row over the head without side towers (no room beside the bed / window)');
+  // bedside tables where no tower stands
+  for (const [k, sd] of [[0, -1], [1, 1]]) {
+    if (tw[k] || !b.sides[k].open) continue;
+    const c = at(b.s + sd * (w / 2 + 0.03 + 0.24), 0.215);
+    if (!rpFree(ctx, S, { c, d: seg.d, hl: 0.24, hw: 0.2 })) continue;
+    const ns = rpTry(ctx, S, F.nightstand(m, { seed: seed + sd }), c, b.ang, 0, { quiet: true });
+    if (ns) { rec.tables++; halo(ctx, ns, -0.07, -0.197, 0.8); }
+  }
+  if (!cut && !row) rpPut(ctx, S, F.pendant(m, { kind: 'bed', drop: 0.45 }), add2(b.p, b.f, 0.15), b.ang, CH, { free: true });     // (under a bridge unit its LED line is the reading light)
+  const rc = add2(b.p, b.f, 0.4), R = { c: rc, d: b.xv, hl: Math.min(1.25, b.bw / 2 + 0.45), hw: 1.0 };
+  if (rectInPoly(R, S.poly, 0.02) && !ctx.occ.some(q => q.tag !== 'bed' && rectOverlap(R, q, -0.02))) rpPut(ctx, S, F.rug(m, { w: R.hl * 2, d: 2.0 }), rc, b.ang, 0, { free: true });
+  if (!row && !cut && !b.win) {
+    const half = Math.min(b.bw / 2 + 0.6, b.s - 0.02, seg.len - b.s - 0.02), wp = at(b.s, 0);
+    if (half >= b.bw / 2 - 0.05 && !winIn(b.s - half, b.s + half)) { featureWallBed(ctx, ctx.g, wp[0], wp[1], b.ang, half * 2); artOn(ctx, ctx.g, wp[0], wp[1], b.ang, Math.min(1.2, b.bw), 0.7, seed, 1.55); }
+  }
+}
+// The wardrobe of a bedroom (or of a living room that sleeps) by rule: full height, on a plain wall stretch, never in
+// front of a window; 0.6 m deep with 0.7 m free in front, then 0.6 free, then 0.45 / 0.38 m deep, as long as the wall
+// allows (2.4 … 0.8 m; 0.6 m as the last resort). o.dry: only find the place (→ { D, len, sp }) — the bed search
+// asks whether a bed position leaves room for a wardrobe.
+const WARD_TIERS = [[0.6, 0.7, [2.4, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0]], [0.6, 0.6, [1.6, 1.2, 1.0, 0.8]], [0.45, 0.6, [2.0, 1.6, 1.2, 1.0, 0.8]], [0.38, 0.6, [2.0, 1.6, 1.2, 1.0, 0.8]], [0.6, 0.6, [0.6]], [0.45, 0.55, [0.6]]];
+function rpBedroomWardrobe(ctx, S, o = {}) {
+  const { m, cut, P } = ctx;
+  const dps = P.doors.filter(d => d.rooms && d.rooms.includes(S.id)).map(d => d.p), ws = ctx.wins.filter(w => w.S === S).map(w => w.mid);
+  const fd = p => Math.min(3, ...dps.map(q => Math.hypot(q[0] - p[0], q[1] - p[1]))), wd = p => ws.length ? Math.min(...ws.map(q => Math.hypot(q[0] - p[0], q[1] - p[1]))) : 3;
+  for (const [D, clear, lens] of WARD_TIERS) for (const len of lens) {
+    const sp = rpWallSpot(ctx, S, len, D, { tall: true, winFront: 0.5, clear, corner: 0.8, score: (p) => Math.min(2, wd(p)) * 0.4 - fd(p) * 0.15 });
+    if (!sp) continue;
+    const c = add2(sp.p, sp.nin, D / 2 + 0.012), slide = len > 1.9 && D >= 0.5;
+    if (o.dry) { if (rpBlocks(ctx, { c, d: sp.d, hl: len / 2, hw: D / 2 + (slide ? 0.015 : 0) })) continue; return { D, len, sp }; }
+    const wr = F.wardrobe(m, { len, h: ctx.tallH, d: D, kind: 'bed', sliding: slide, fitted: true, mirror: slide ? 1 : -1, ceil: cut ? 0 : CH - ctx.tallH, seed: o.seed || 1 });
+    if (rpTry(ctx, S, wr, c, sp.ang, 0, { tag: 'wardrobe', quiet: true })) { (S.has ||= {}).wardrobe = { len, d: D, p: sp.p }; return { D, len, sp }; }
+  }
+  return null;
+}
+// A cupboard over a washing machine that stands in a niche (a wall behind it and a wall or a piece close on a side)
+function rpWasherCab(ctx, S, wm, B) {
+  const { m, cut } = ctx;
+  if (cut || !B.atWall) return;
+  const r = wm.userData.rpRect; if (!r) return;
+  const xv = xOf(B.ang), back = [-B.front[0], -B.front[1]];
+  if (raySegs(r.c, back, S.segs) > 0.42) return;
+  const g = [raySegs(r.c, xv, S.segs), raySegs(r.c, [-xv[0], -xv[1]], S.segs)];
+  if (Math.min(g[0], g[1]) > 0.3 + 0.16) return;                       // free-standing along its wall: left as it is
+  const seg = S.segs.find(q => dot2(q.nin, B.front) > 0.95 && Math.abs(dot2(sub2(r.c, q.a), q.nin) - 0.3) < 0.15 && dot2(sub2(r.c, q.a), q.d) > 0 && dot2(sub2(r.c, q.a), q.d) < q.len);
+  if (!seg) return;
+  const sx = dot2(sub2(r.c, seg.a), seg.d);
+  if (seg.wins.some(q => q.s1 > sx - 0.32 && q.s0 < sx + 0.32)) return;
+  // nothing hung on the wall there (a mirror) and no piece reaching into the cupboard's place
+  const R = { c: r.c, d: xv, hl: 0.318, hw: 0.3 };
+  if (ctx.occ.some(q => q !== r && rectOverlap(R, q, -0.012))) return;
+  const cab = F.washerCab(m, { h: ctx.tallH, ceil: CH - ctx.tallH });
+  rpPut(ctx, S, cab, r.c, B.ang, 0, { free: true }); rpHiCol(cab);
+  (ctx.extras ||= []).push({ kind: 'washer-cupboard', room: S.id });
+}
+// The entrance wardrobe where the plan draws none in a hall (or the drawn one had to be left out): on a free wall of
+// the entrance hall, then of another hall / corridor — 0.6 m deep with 0.9 m of passage in front, else 0.45 / 0.38 m
+// deep — and, if no hall has a place, on the nearest wall of the room the hall opens into.
+function rpEntranceWardrobe(ctx) {
+  const { P, m, cut } = ctx;
+  if ((ctx.hallW || []).length) { ctx.hallWardrobe = true; return; }
+  const ent = P.doors.find(d => d.type === 'entrance'), E = ent ? P.byId.get(ent.rooms[1]) : P.rooms[0];
+  if (!E) return;
+  const ep = ent ? ent.p : E.c, de = p => Math.hypot(p[0] - ep[0], p[1] - ep[1]);
+  // rooms by steps from the entrance room
+  const dist = new Map([[E.id, 0]]), q = [E];
+  while (q.length) { const A = q.shift(); for (const d of P.doors) { if (!d.rooms || !d.rooms.includes(A.id) || d.type === 'balcony' || d.type === 'entrance') continue; const T = P.byId.get(d.rooms[0] === A.id ? d.rooms[1] : d.rooms[0]); if (T && !T.out && !dist.has(T.id)) { dist.set(T.id, dist.get(A.id) + 1); q.push(T); } } }
+  const halls = P.rooms.filter(r => r.kind === 'hall' && dist.has(r.id)).sort((a, b) => dist.get(a.id) - dist.get(b.id));
+  if (E.kind !== 'hall' && !halls.includes(E)) halls.unshift(E);
+  const ceil = cut ? 0 : CH - ctx.tallH;
+  let seed = 61;
+  const tryIn = (S, depths, lens, clear, adjoining) => {
+    for (const [D, minLen] of depths) for (const len of lens) {
+      if (len < minLen) continue;
+      const sp = rpWallSpot(ctx, S, len, D, { tall: true, winFront: 0.5, clear, corner: 0.4, score: (p) => -de(p) * 0.25 });
+      if (!sp) continue;
+      const eS = dot2(sub2(ep, sp.p), xOf(sp.ang)) >= 0 ? 1 : -1;
+      const obj = F.hallWardrobe(m, { len, h: ctx.tallH, d: D, ceil, seed: seed++, sliding: D >= 0.5 && len >= 1.5, niche: len >= 1.9 ? 0.62 : 0, nicheSide: eS });
+      if (!rpTry(ctx, S, obj, add2(sp.p, sp.nin, D / 2 + 0.012), sp.ang, 0, { tag: 'wardrobe', quiet: true })) continue;
+      (S.has ||= {}).wardrobe = { len, d: D, p: sp.p };
+      (ctx.hallW ||= []).push({ room: S.id, len, d: D, drawn: false, entry: true, niche: !!obj.userData.hasNiche, mirror: !!obj.userData.hasMirror, pass: true, adjoining: !!adjoining, p: sp.p });
+      ctx.hallWardrobe = true;
+      if (D < 0.6) ctx.notes.push('entrance wardrobe in ' + S.id + ': ' + D.toFixed(2) + ' m deep (the hall is narrow: 0.9 m of passage kept)');
+      if (adjoining) ctx.notes.push('entrance wardrobe: no place in the hall — on the nearest wall of ' + S.id + ' (' + S.kind + ')');
+      return true;
+    }
+    return false;
+  };
+  const lens = [2.4, 2.0, 1.8, 1.5, 1.2, 1.0, 0.8, 0.6];
+  for (const S of halls) if (tryIn(S, [[0.6, 0.8], [0.45, 0.8], [0.38, 0.8], [0.6, 0.6], [0.45, 0.6], [0.38, 0.6]], lens, 0.9)) return;
+  // no hall has a place: the room next to the entrance hall
+  const next = P.rooms.filter(r => r.kind !== 'bath' && r.kind !== 'hall' && dist.has(r.id)).sort((a, b) => dist.get(a.id) - dist.get(b.id) || de(a.c) - de(b.c));
+  for (const S of next.slice(0, 2)) if (tryIn(S, [[0.6, 0.8], [0.45, 0.8], [0.38, 0.6]], [1.8, 1.5, 1.2, 1.0, 0.8, 0.6], 0.8, true)) return;
+  ctx.notes.push('entrance wardrobe: NO place found (hall and adjoining rooms)');
+}
+// A tall pantry cabinet at a free end of the kitchen run (one per flat): flush with the run, a wall behind it, no
+// window, 0.8 m free in front, clear of every door zone and passage.
+function rpPantry(ctx) {
+  const { m, cut } = ctx;
+  for (const k of ctx.kitchens) {
+    const S = k.S, xv = xOf(k.ang);
+    if (S.kind !== 'kitchen' && !(S.kind === 'living' && S.area >= 14)) continue;
+    const wallC = add2(k.p, k.front, -0.31);
+    const seg = S.segs.find(q => dot2(q.nin, k.front) > 0.95 && Math.abs(dot2(sub2(wallC, q.a), q.nin)) < 0.1 && dot2(sub2(wallC, q.a), q.d) > -0.1 && dot2(sub2(wallC, q.a), q.d) < q.len + 0.1);
+    if (!seg) continue;
+    for (const W of [0.6, 0.45]) for (const e of [1, -1]) {
+      const c = add2(k.p, xv, e * (k.len / 2 + W / 2 + 0.004)), sx = dot2(sub2(c, seg.a), seg.d);
+      if (sx - W / 2 < -0.01 || sx + W / 2 > seg.len + 0.01 || seg.wins.some(q => q.s1 > sx - W / 2 - 0.05 && q.s0 < sx + W / 2 + 0.05)) continue;
+      const R = { c, d: xv, hl: W / 2, hw: 0.3 };
+      if (!rpFree(ctx, S, R, { tol: 0.012 }) || rpDoorHit(ctx, R) || rpWinFront(S, R, 0.5)) continue;
+      if (!rpFree(ctx, S, { c: add2(c, k.front, 0.3 + 0.4), d: xv, hl: W / 2 - 0.05, hw: 0.4 }, { zones: false, tol: 0.012, anyRoom: true })) continue;
+      const pn = F.pantry(m, { w: W, h: cut ? 1.05 : Math.min(2.3, CH - 0.1), side: -e });
+      if (!rpTry(ctx, S, pn, c, k.ang, 0, { tag: 'pantry', quiet: true })) continue;
+      (ctx.extras ||= []).push({ kind: 'pantry', room: S.id, w: W });
+      return;
+    }
+  }
+}
+function rpTable(ctx, S, f) {
+  const { m } = ctx;
+  const B0 = rpSides(S, f), L = Math.max(B0.s1, B0.s2), W = Math.min(B0.s1, B0.s2);
+  const r = (+f.rot || 0) * PI / 180, along = B0.s1 >= B0.s2 ? [Math.cos(r), Math.sin(r)] : [-Math.sin(r), Math.cos(r)];
+  const ang = Math.atan2(-along[1], along[0]);                 // local x along the long axis
+  const c = B0.c;
+  if (f.sub === 'bar-counter') {
+    // a counter with stools: on the open side of the drawn box (the kitchen run takes the wall side), stools towards
+    // the room; it leaves a way into the kitchen at one end
+    const B = rpBack(S, f, 'any');
+    const liv = ctx.P.rooms.filter(r => r.kind === 'living').sort((a, b) => b.area - a.area)[0];
+    if (liv && liv !== S) {
+      const d = sub2(liv.c, c), ax = Math.abs(d[0]) >= Math.abs(d[1]) ? [Math.sign(d[0]), 0] : [0, Math.sign(d[1])];
+      B.front = ax; B.ang = angOf(ax); B.w = ax[0] ? +f.s[1] : +f.s[0]; B.dp = ax[0] ? +f.s[0] : +f.s[1];
+    }
+    const xv = xOf(B.ang);
+    for (const len of [clamp(B.w - 0.85, 1.4, 2.2), 1.4]) {
+      const isl = F.island(m, { len, depth: 0.7 }), sb = isl.userData.solidBox, sl = Math.max(0, (B.w - len) / 2);
+      for (const off of sl > 0.1 ? [sl, -sl, 0] : [0]) for (const back of [B.dp / 2 - 0.35 - 0.3, B.dp / 2 - 0.35 - 0.6, 0]) {
+        const p = add2(add2(c, xv, off), B.front, back), R = { c: add2(p, B.front, sb.z || 0), d: xv, hl: sb.w / 2, hw: sb.d / 2 };
+        if (!rpFree(ctx, S, R, { zones: false, tol: 0, anyRoom: true })) continue;
+        if (ctx.occ.some(q => rectOverlap({ ...R, hw: R.hw + 0.55 }, q, -0.02) && Math.abs(dot2(q.d, xv)) > 0.9 && q.tag === 'kitchen')) continue;   // a working aisle behind it
+        if (rpDoorHit(ctx, R) || rpBlocks(ctx, R)) continue;
+        rpPut(ctx, S, isl, p, B.ang); ctx.island = { u: +p[0].toFixed(2), v: +p[1].toFixed(2), len, depth: 0.7, level: 0 };
+        return;
+      }
+    }
+    ctx.notes.push('bar counter in ' + S.id + ' left out (door / way)');
+    return;
+  }
+  if (L <= 0.85) { rpTry(ctx, S, F.sideTable(m), c, ang, 0, { quiet: true }); return; }
+  if (W >= 1.8 && !(S.has && S.has.sofa)) {
+    // a box this big is a sitting group (sofa + round table drawn as one): the sofa on the side that has a wall,
+    // a small table set in the rest of the box
+    const B = rpBack(S, f, 'any');
+    if (B.atWall) {
+      rpSofa(ctx, S, { ...B, dp: 0.9 });
+      const so = S.has && S.has.sofa;
+      const rest = B.dp - 0.95, tc = add2(B.wall, B.front, 0.95 + rest / 2);
+      if (so && rest >= 0.8) {
+        const R = { c: tc, d: xOf(B.ang), hl: 0.38, hw: 0.38 };
+        if (rpFree(ctx, S, R, { passages: false, tol: 0 }) && !rpBlocks(ctx, R)) { rpPut(ctx, S, rpDiningSet(ctx, 0.7, 0.7, 2), tc, B.ang + HALF, 0, { tag: 'table' }); S.has.table = true; ctx.diningAt = { u: tc[0], v: tc[1] }; }
+      }
+      if (so) return;
+    }
+  }
+  let tl, tw, sides = 2;
+  if (W < 0.85) { tl = clamp(L, 0.9, 2.2); tw = clamp(W, 0.6, 0.8); const B = rpBack(S, f, 'long'); if (B.atWall) sides = 1; }
+  else if (L < 1.15) { tl = 0.7; tw = 0.7; }
+  else if (L <= 1.6) { tl = 0.9; tw = 0.85; }
+  else { tl = clamp(L - 0.5, 1.2, 2.2); tw = 0.9; }
+  let a = ang;
+  if (sides === 1) { const B = rpBack(S, f, 'long'); a = B.ang + PI; }            // chairs (local +z side) towards the room
+  // as drawn; where the set would shut a way or stand in a door: smaller, then shifted inside the drawn box
+  const xv = xOf(a), zv = [Math.sin(a), Math.cos(a)];
+  for (const [l2, w2] of [[tl, tw], [Math.min(tl, 1.2), 0.8], [0.9, 0.8], [0.7, 0.7]]) {
+    if (l2 > tl + 1e-6) continue;
+    const sx = Math.max(0, (L - l2) / 2 - 0.05), sz = Math.max(0, (W - w2) / 2 - 0.05);
+    for (const [ox, oz] of [[0, 0], [sx, 0], [-sx, 0], [0, sz], [0, -sz], [sx, sz], [-sx, sz], [sx, -sz], [-sx, -sz]]) {
+      if ((ox && sx < 0.1) || (oz && sz < 0.1)) continue;
+      const p = add2(add2(c, xv, ox), zv, oz), R = { c: p, d: xv, hl: l2 / 2 + 0.03, hw: w2 / 2 + 0.03 };
+      if (!rpFree(ctx, S, R, { passages: false, tol: 0.0, pad: -0.05 }) || rpBlocks(ctx, R)) continue;
+      rpPut(ctx, S, rpDiningSet(ctx, l2, w2, sides), p, a, 0, { tag: 'table' });
+      (S.has ||= {}).table = true; ctx.diningAt = { u: p[0], v: p[1] };
+      return;
+    }
+  }
+  ctx.notes.push('table in ' + S.id + ' left out (no room)');
+}
+function rpKitchen(ctx, k) {
+  const { m, cut } = ctx, S = k.S, B = k.B;
+  if (k.island) {
+    // parallel to the run it belongs to, stools towards the room
+    const run = ctx.kitchens.filter(q => q.S === S || true).sort((p, q) => Math.hypot(p.p[0] - B.c[0], p.p[1] - B.c[1]) - Math.hypot(q.p[0] - B.c[0], q.p[1] - B.c[1]))[0];
+    if (run) { B.ang = run.ang; B.front = run.front; k.xv = xOf(run.ang); }
+    // as drawn; where that stands in front of a door or shuts a way: shorter, moved along / off its line
+    for (const len of [clamp(Math.max(B.w, 1.6), 1.4, 2.4), 1.4]) {
+      const isl = F.island(m, { len, depth: 0.86 }), sb = isl.userData.solidBox;
+      for (const [ox, oz] of [[0, 0], [0.4, 0], [-0.4, 0], [0.8, 0], [-0.8, 0], [0, -0.3], [0.4, -0.3], [-0.4, -0.3], [0, 0.3]]) {
+        const p = add2(add2(B.c, k.xv, ox), B.front, oz), R = { c: add2(p, B.front, sb.z || 0), d: k.xv, hl: sb.w / 2, hw: sb.d / 2 };
+        if (!rpFree(ctx, S, R, { zones: false, anyRoom: true }) || rpDoorHit(ctx, R) || rpBlocks(ctx, R)) continue;
+        rpPut(ctx, S, isl, p, B.ang); ctx.island = { u: +p[0].toFixed(2), v: +p[1].toFixed(2), len, depth: 0.86, level: 0 };
+        return;
+      }
+    }
+    ctx.notes.push('kitchen island in ' + S.id + ' left out (door / way)');
+    return;
+  }
+  const xv = k.xv, wall = B.wall;                                  // wall point under the box centre
+  let x0 = k.x0, x1 = k.x1;
+  // a short drawn run grows along its wall as far as the room, other pieces and door zones allow (at most 3.2 m)
+  const okAt = (a0, a1) => rpFree(ctx, S, { c: add2(add2(wall, xv, (a0 + a1) / 2), B.front, 0.32), d: xv, hl: (a1 - a0) / 2, hw: 0.3 }, { passages: false, tol: 0.02 });
+  const [rn, rp] = rpReach(S, wall, B.front, xv, 0.6);
+  x0 = Math.max(x0, -rn); x1 = Math.min(x1, rp);
+  while (!okAt(x0, x1) && x1 - x0 > 0.7) { if (dot2(sub2(S.c, wall), xv) > (x0 + x1) / 2) x0 += 0.05; else x1 -= 0.05; }
+  const want = S.kind === 'kitchen' ? 2.4 : 2.1;
+  for (let it = 0; it < 80 && x1 - x0 < want; it++) {
+    let grown = false;
+    if (x1 + 0.05 <= rp && okAt(x0, x1 + 0.05)) { x1 += 0.05; grown = true; }
+    if (x1 - x0 < want && x0 - 0.05 >= -rn && okAt(x0 - 0.05, x1)) { x0 -= 0.05; grown = true; }
+    if (!grown) break;
+  }
+  // … and gives way where it would shut a passage
+  for (let it = 0; it < 30 && x1 - x0 > 1.2 && rpBlocks(ctx, { c: add2(add2(wall, xv, (x0 + x1) / 2), B.front, 0.31), d: xv, hl: (x1 - x0) / 2, hw: 0.31 }); it++) {
+    if (dot2(sub2(S.c, wall), xv) > (x0 + x1) / 2) x1 -= 0.1; else x0 += 0.1;
+  }
+  const len = Math.floor((x1 - x0) * 100) / 100;
+  if (len < 0.6) { ctx.notes.push('kitchen run in ' + S.id + ' left out (no room)' + (ctx.opts.debug ? ' ' + JSON.stringify({ wall, xv, front: B.front, gap: B.gap, w: B.w, rn, rp, x0, x1, k0: k.x0, k1: k.x1, ok: okAt(k.x0, k.x1), occ: ctx.occ.length }) : '')); return; }
+  const p = add2(add2(wall, xv, (x0 + x1) / 2), B.front, 0.31);
+  // the hob end as drawn
+  const ref = k.hob || k.sink, rx = ref ? dot2(sub2(ref.c, p), xv) : 0;
+  // a window behind the run: no wall units, no hood
+  const seg = S.segs.find(s => Math.abs(dot2(sub2(wall, s.a), s.nin)) < 0.08 && dot2(s.nin, B.front) > 0.95);
+  let win = false;
+  if (seg) { const s = dot2(sub2(add2(wall, xv, (x0 + x1) / 2), seg.a), seg.d); win = seg.wins.some(q => q.s1 > s - len / 2 && q.s0 < s + len / 2); }
+  const tall = cut ? 'none' : (k.tall || 'none');
+  // an L-shaped kitchen is drawn as two lines: each leg carries what is drawn on it (the other gets drawers only)
+  const legs = (ctx.kitPlan || []).filter(q => q.S === S && !q.island), lone = legs.length < 2;
+  const anyHob = legs.some(q => q.hob), anySink = legs.some(q => q.sink), longest = legs.slice().sort((p, q) => (q.x1 - q.x0) - (p.x1 - p.x0))[0] === k;
+  const noHob = !lone && (anyHob ? !k.hob : !longest), noSink = !lone && (anySink ? !k.sink : !longest);
+  // (the regular plan has the sink towards −x and the hob towards +x; the compact one starts with what it carries at −x)
+  const compactPath = noHob || noSink || len - (tall === 'none' ? 0 : 0.6) < 1.65;
+  const flip = !ref ? false : compactPath ? rx > 0 : k.hob ? rx < 0 : rx > 0;
+  const kr = F.kitchenRun(m, len, { tall, ovenColumn: false, ceiling: CH, washer: (k.washer || (!ctx.laundry && !ctx.drawn.has('washing-machine'))) && len >= 2.7 && lone, uppers: !cut && !win && B.atWall, hood: !cut && !win && B.atWall && !noHob, cut, flip,
+    compact: true, plain: noHob && noSink, noHob, noSink });
+  rpPut(ctx, S, kr, p, B.ang, 0, { tag: 'kitchen' });
+  if (kr.userData.hasWasher || k.washer) ctx.laundry = 'kitchen';
+  if (k.tall && !cut) ctx.fridge = true;
+  ctx.kitchens.push({ S, p, ang: B.ang, len, front: B.front });
+}
+
+// ---- rule-based furnishing of what the plan does not draw (by room kind, along free wall stretches)
+function rpRules(ctx) {
+  const { P, I, m, cut } = ctx;
+  const doorPts = S => P.doors.filter(d => d.rooms && d.rooms.includes(S.id)).map(d => d.p);
+  const farFromDoors = (S, k = 1) => { const ps = doorPts(S); return (p) => k * Math.min(3, ...ps.map(q => Math.hypot(q[0] - p[0], q[1] - p[1]))); };
+  const winDist = (S) => { const ws = ctx.wins.filter(w => w.S === S).map(w => w.mid); return (p) => ws.length ? Math.min(...ws.map(q => Math.hypot(q[0] - p[0], q[1] - p[1]))) : 3; };
+  const has = (S, k) => !!(S.has && S.has[k]);
+  const hasBedroom = P.rooms.some(r => r.kind === 'bedroom');
+  // ---- kitchen (a flat with no drawn kitchen at all)
+  if (!(ctx.kitPlan || []).length) {
+    const S = P.rooms.find(r => r.kind === 'kitchen') || P.rooms.find(r => r.kind === 'living' && r.kitchen) || P.rooms.find(r => r.kind === 'living');
+    if (S) {
+      const wd = winDist(S), fd = farFromDoors(S, 0.2);
+      for (const len of [3.0, 2.7, 2.4, 2.1, 1.8, 1.5, 1.2]) {
+        const sp = rpWallSpot(ctx, S, len, 0.62, { tall: true, clear: 0.8, passages: S.kind !== 'kitchen', corner: 0.6, score: (p) => (S.kind === 'kitchen' ? 0 : Math.min(2.5, wd(p)) * 0.5) + fd(p) });
+        if (!sp) continue;
+        const endL = sp.s - len / 2, endR = sp.seg.len - sp.s - len / 2;
+        const tall = cut || ctx.fridge || len < 2.4 ? 'none' : endL <= endR ? 'left' : 'right';
+        const kr = F.kitchenRun(m, len, { tall, ovenColumn: false, ceiling: CH, washer: !ctx.laundry && len >= 2.7, uppers: !cut, hood: !cut, cut, compact: true });
+        if (!rpTry(ctx, S, kr, add2(sp.p, sp.nin, 0.31 + 0.012), sp.ang, 0, { tag: 'kitchen' })) continue;
+        if (kr.userData.hasWasher) ctx.laundry = 'kitchen';
+        if (tall !== 'none') ctx.fridge = true;
+        ctx.kitchens.push({ S, p: sp.c, ang: sp.ang, len, front: sp.nin });
+        break;
+      }
+      if (!ctx.fridge && ctx.kitchens.length) {
+        const kp = ctx.kitchens[0].p, sp = rpWallSpot(ctx, S, 0.6, 0.62, { tall: true, clear: 0.6, score: (p) => -Math.hypot(p[0] - kp[0], p[1] - kp[1]) });
+        if (sp && rpTry(ctx, S, F.fridge(m, { h: cut ? 1.05 : Math.min(2.3, CH - 0.1) }), add2(sp.p, sp.nin, 0.322), sp.ang)) ctx.fridge = true;
+      }
+    }
+  }
+  if (ctx.sb && !ctx.sb.tried) rpSofaBed(ctx);
+  try { rpEntranceWardrobe(ctx); } catch (err) { ctx.notes.push('entrance wardrobe: ' + (err && err.message)); }
+  let seed = 11;
+  const order = { bath: 0, kitchen: 1, hall: 2, dressing: 3, bedroom: 4, living: 5 };
+  for (const S of P.rooms.slice().sort((a, b) => (order[a.kind] ?? 9) - (order[b.kind] ?? 9))) {
+    const mine = (I.fixtures || []).filter(f => f.room === S.id).map(f => f.kind);
+    const fd = farFromDoors(S), wd = winDist(S);
+    try {
+      if (S.kind === 'bath') {
+        if (!mine.includes('toilet')) { const sp = rpWallSpot(ctx, S, 0.5, 0.66, { tall: true, clear: 0.4, score: (p) => fd(p) * 0.3, corner: 0.3 }); if (sp) rpTry(ctx, S, F.toilet(m), sp.p, sp.ang); }
+        if (!mine.includes('basin')) for (const vl of S.wc ? [0.6, 0.5] : [1.0, 0.8, 0.6, 0.5]) {
+          const sp = rpWallSpot(ctx, S, vl, 0.5, { tall: true, clear: 0.45, score: (p) => -fd(p) * 0.2 });
+          if (sp && rpTry(ctx, S, F.vanity(m, { len: vl }), sp.p, sp.ang)) { rpMirror(ctx, S, sp.p, sp.ang, vl); break; }
+        }
+        if (!S.wc && !mine.includes('bathtub') && !mine.includes('shower')) {
+          let done = false;
+          if (S.area >= 3.4 && m.styleId !== 'milano') { const sp = rpWallSpot(ctx, S, 1.72, 0.8, { tall: true, clear: 0.45, corner: 2, score: (p) => fd(p) * 0.4 }); if (sp && rpTry(ctx, S, F.bathtub(m, { len: 1.7, cut }), sp.p, sp.ang)) done = true; }
+          if (!done) for (const w of [1.0, 0.9, 0.8]) { const sp = rpWallSpot(ctx, S, w, 0.9, { tall: true, clear: 0.3, corner: 3, score: (p) => fd(p) * 0.4 }); if (sp) { rpShower(ctx, S, sp.c, w, 0.9); break; } }
+        }
+        ctx.lightSpots.push({ u: S.c[0], v: S.c[1], y: 0, k: 0.55, pri: 2 });
+      } else if (S.kind === 'hall') {
+        // (the entrance wardrobe: rpEntranceWardrobe; a wall mirror only where no wardrobe door of this hall is one)
+        if (!cut && !(ctx.hallW || []).some(q => q.room === S.id && q.mirror)) { const sp = rpWallSpot(ctx, S, 0.7, 0.08, { tall: true, passages: false, score: (p) => -fd(p) * 0.1 }); if (sp) rpTry(ctx, S, F.mirror(m, { w: 0.6, h: 0.9 }), sp.p, sp.ang, 1.15, { free: true }); }
+        ctx.lightSpots.push({ u: S.c[0], v: S.c[1], y: 0, k: 0.6, pri: 3 });
+      } else if (S.kind === 'dressing') {
+        // V7: the open fit-out (shelving, rails, drawers) on every wall that leaves 0.6 m to stand in
+        let runs = has(S, 'wardrobe') ? 1 : 0;
+        for (let n = 0; n < 3 && runs < 3; n++) { let done = false; for (const D of [0.45, 0.36]) { for (const len of [2.4, 2.0, 1.6, 1.3, 1.0, 0.8, 0.6]) {
+          const sp = rpWallSpot(ctx, S, len, D, { tall: true, winFront: 0.5, clear: 0.6, corner: 0.5 });
+          if (sp && rpTry(ctx, S, F.dressing(m, { len, h: ctx.tallH, d: D, seed: seed++ }), add2(sp.p, sp.nin, D / 2 + 0.012), sp.ang, 0, { tag: 'dressing', quiet: true })) { done = true; runs++; break; }
+        } if (done) break; } if (!done) break; }
+        (ctx.extras ||= []).push({ kind: 'dressing', room: S.id, runs });
+        if (!runs) ctx.notes.push('dressing room ' + S.id + ': no wall takes shelving with 0.6 m left to stand in');
+        ctx.lightSpots.push({ u: S.c[0], v: S.c[1], y: 0, k: 0.3, pri: 6 });
+      } else if (S.kind === 'kitchen') {
+        ctx.lightSpots.push({ u: S.c[0], v: S.c[1], y: 0, k: 0.7, pri: 2 });
+      } else if (S.kind === 'bedroom' || S.kind === 'living') {
+        const sleeps = S.kind === 'bedroom' || (!hasBedroom && !S.kitchen && S === P.rooms.find(r => r.kind === 'living'));
+        // bed
+        if (S.kind === 'bedroom' && !has(S, 'bed')) rpDouble(ctx, S, null, seed++);
+        if (sleeps && !has(S, 'bed') && !(S.has && S.has.sofa && S.has.sofa.bed)) {
+          for (const [bw, ns] of [[1.6, 1], [1.6, 0], [1.4, 0], [0.9, 0]]) {
+            if (S.kind === 'living' && bw < 1.4) break;
+            const w = bw + 0.2 + ns * 1.1;
+            const sp = rpWallSpot(ctx, S, w, 2.17, { tall: true, clear: 0.55, centre: 0.25, score: (p, seg) => fd(p) * 0.5 + Math.min(1.2, wd(p)) * 0.3 });
+            if (!sp) continue;
+            const b = { p: add2(sp.p, sp.nin, 1.085 + 0.012), f: sp.nin, ang: sp.ang, bw, xv: xOf(sp.ang), wall: sp.p, atWall: true };
+            if (!rpTry(ctx, S, F.bed(m, { w: bw }), b.p, b.ang)) continue;
+            (S.has ||= {}).bed = b; rpBedSet(ctx, S, b, seed++);
+            break;
+          }
+        }
+        // wardrobe
+        if (S.kind === 'living') rpLounge(ctx, S, fd, wd, seed++);
+        // V7: a fitted wardrobe in every bedroom (0.6 m deep, as long as the free wall allows; 0.45 m deep where
+        // only that fits); a living room that sleeps gets one when the hall's is short
+        const hallLen = Math.max(0, ...(ctx.hallW || []).map(q => q.len));
+        if (sleeps && !has(S, 'wardrobe') && !(S.kind === 'living' && (S.area < 14 || hallLen >= 1.2))) {
+          let done = !!rpBedroomWardrobe(ctx, S, { seed: seed++ });
+          // (a small bedroom: the wardrobe may close the narrower side of a bed that is open on both)
+          if (!done && S.kind === 'bedroom') {
+            const zs = ctx.zones.filter(z => z.kind === 'bedside' && z.id === S.id);
+            if (zs.length === 2) { const z = zs.sort((a, b) => a.hl - b.hl)[0]; ctx.zones.splice(ctx.zones.indexOf(z), 1); done = !!rpBedroomWardrobe(ctx, S, { seed: seed++ }); if (done) { ctx.notes.push('bedroom ' + S.id + ': the wardrobe stands beside the bed (one side of the bed stays open)'); if (S.has.bed && S.has.bed.rec) S.has.bed.rec.sideGiven = true; } else ctx.zones.push(z); }
+          }
+          if (!done && S.kind === 'bedroom') {
+            // (a bedroom with its own dressing room, or a flat with one off the hall: that is its wardrobe)
+            const own = P.doors.filter(d => d.rooms && d.rooms.includes(S.id)).map(d => P.byId.get(d.rooms[0] === S.id ? d.rooms[1] : d.rooms[0])).find(T => T && T.kind === 'dressing');
+            const dr = own || P.rooms.find(T => T.kind === 'dressing');
+            if (dr) { S.has.wardrobe = { len: 0, d: 0, dressing: dr.id, own: !!own }; ctx.notes.push('bedroom ' + S.id + ': no free wall for a wardrobe beside the double bed — ' + (own ? 'its own dressing room ' : 'the dressing room ') + dr.id + ' is its wardrobe'); }
+            else ctx.notes.push('bedroom ' + S.id + ': NO wardrobe (no free wall for one beside the double bed)');
+          }
+          else if (done && S.kind === 'bedroom' && S.has.wardrobe.d < 0.6) ctx.notes.push('bedroom ' + S.id + ': wardrobe ' + S.has.wardrobe.d + ' m deep (no wall takes a 0.6 m one)');
+        }
+        if (S.kind === 'bedroom' && S.has && S.has.bed && S.has.bed.rec) S.has.bed.rec.wardrobe = has(S, 'wardrobe') ? { len: S.has.wardrobe.len, d: S.has.wardrobe.d, drawn: !!S.has.wardrobe.drawn, dressing: S.has.wardrobe.dressing || null } : null;
+        if (S.kind !== 'living') {
+          // a desk by the window, the TV facing the bed in the largest bedroom
+          const b = S.has && S.has.bed;
+          if (b && !cut && S === ctx.master) {
+            const D = rayPoly(b.p, b.f, S.poly), W = add2(b.p, b.f, D);
+            const seg = S.segs.find(s => Math.abs(dot2(sub2(W, s.a), s.nin)) < 0.06 && dot2(s.nin, b.f) < -0.9 && dot2(sub2(W, s.a), s.d) > 0.6 && dot2(sub2(W, s.a), s.d) < s.len - 0.6);
+            const s = seg ? dot2(sub2(W, seg.a), seg.d) : 0;
+            if (seg && D > 1.9 && D < 4.6 && !seg.wins.some(q => q.s1 > s - 0.65 && q.s0 < s + 0.65) && rpFree(ctx, S, { c: add2(W, seg.nin, 0.1), d: seg.d, hl: 0.6, hw: 0.08 }, { passages: false })) {
+              rpTry(ctx, S, F.tv(m, { w: 1.1, live: true, glowZ: -0.02 }), add2(W, seg.nin, 0.035), angOf(seg.nin), 1.05, { free: true }); ctx.tvRooms.push('bedroom');
+            }
+          }
+          if (S.area >= 10.5) {
+            const sp = rpWallSpot(ctx, S, 1.0, 0.6, { h: 0.76, clear: 0.6, score: (p) => -wd(p) });
+            if (sp && rpTry(ctx, S, F.desk(m, { len: 1.0 }), add2(sp.p, sp.nin, 0.312), sp.ang, 0, { quiet: true })) {
+              // V7: a desk niche — two lit shelves over it where the wall behind is plain
+              if (!cut && !sp.seg.wins.some(q => q.s1 > sp.s - 0.55 && q.s0 < sp.s + 0.55)) { const ws = F.wallShelves(m, { len: 1.0, seed }); ws.userData.box3.zc = 0.11; rpPut(ctx, S, ws, add2(sp.p, sp.nin, 0.004), sp.ang, 1.28, { free: true }); rpHiCol(ws); (ctx.extras ||= []).push({ kind: 'desk-shelves', room: S.id }); }
+            }
+          }
+          // … and a slim lit bookcase in a large bedroom
+          if (S.area >= 12.5) { const sp = rpWallSpot(ctx, S, 0.5, 0.32, { tall: true, winFront: 0.5, clear: 0.7, corner: 1.2, score: (p) => fd(p) * 0.1 }); if (sp && rpTry(ctx, S, F.shelfTower(m, { w: 0.5, h: ctx.tallH, ceil: cut ? 0 : CH - ctx.tallH, seed }), add2(sp.p, sp.nin, 0.16 + 0.012), sp.ang, 0, { tag: 'shelves', quiet: true })) (ctx.extras ||= []).push({ kind: 'bookcase', room: S.id }); }
+          ctx.lightSpots.push({ u: S.c[0], v: S.c[1], y: 0, k: 0.7, pri: 1 });
+        }
+      }
+    } catch (err) { ctx.notes.push('furnish ' + S.id + ': ' + (err && err.message)); }
+  }
+  try { rpPantry(ctx); } catch (err) { ctx.notes.push('pantry: ' + (err && err.message)); }
+  // a flat with no washing machine drawn: in its largest bathroom that has the room for it
+  if (!ctx.laundry && !ctx.drawn.has('washing-machine')) for (const S of P.rooms.filter(r => r.kind === 'bath' && !r.wc).sort((a, b) => b.area - a.area)) {
+    const sp = rpWallSpot(ctx, S, 0.62, 0.6, { tall: true, clear: 0.5, corner: 1 });
+    if (sp && rpTry(ctx, S, F.washer(m, {}), add2(sp.p, sp.nin, 0.31), sp.ang, 0, { quiet: true })) { ctx.laundry = 'bath'; break; }
+  }
+  // a flat that still has no washing machine: a laundry cupboard in the hall
+  if (!ctx.laundry && !ctx.drawn.has('washing-machine') && !cut) for (const S of P.rooms.filter(r => r.kind === 'hall')) {
+    const sp = rpWallSpot(ctx, S, 0.68, 0.64, { tall: true, clear: 0.7, corner: 1 });
+    if (sp) { rpTry(ctx, S, F.laundryTower(m, { h: ctx.tallH, cabinet: true }), add2(sp.p, sp.nin, 0.332), sp.ang); ctx.laundry = 'hall'; break; }
+  }
+  // ---- outdoor spaces
+  for (const S of P.outdoor) {
+    try {
+      const fd = farFromDoors(S);
+      const fy = 0.012;
+      let sp = S.area >= 3.2 ? rpWallSpot(ctx, S, 1.62, 0.72, { score: (p) => fd(p), corner: 0.5 }) : null;
+      if (sp) rpTry(ctx, S, F.outdoorTable(m), add2(sp.p, sp.nin, 0.37), sp.ang, fy);
+      else { sp = rpWallSpot(ctx, S, 0.74, 0.74, { score: (p) => fd(p), corner: 1 }); if (sp) rpTry(ctx, S, F.outdoorChair(m), add2(sp.p, sp.nin, 0.38), sp.ang, fy, { box: { w: 0.72, d: 0.72 } }); }
+      if (S.kind === 'terrace' && S.area > 7) {
+        sp = rpWallSpot(ctx, S, 2.0, 0.8, { score: (p) => fd(p) * 0.5, corner: 0.5 });
+        if (sp) rpTry(ctx, S, F.outdoorLounge(m, { w: 2.0 }), add2(sp.p, sp.nin, 0.42), sp.ang, fy);
+        sp = rpWallSpot(ctx, S, 1.2, 0.38, { cls: s => s.cls === 'rail', score: (p) => fd(p) * 0.3 });
+        if (sp) rpTry(ctx, S, F.planter(m, { len: 1.2 }), add2(sp.p, sp.nin, 0.2), sp.ang, fy);
+      }
+      sp = rpWallSpot(ctx, S, 0.5, 0.5, { corner: 2, score: (p) => fd(p) * 0.2 });
+      if (sp) rpTry(ctx, S, F.plant(m, S.kind === 'terrace' ? { kind: 'olive', h: 1.6, seed: 9 } : { kind: 'snake', h: 0.8, seed: 21 }), add2(sp.p, sp.nin, 0.27), sp.ang, fy, { box: { w: 0.45, d: 0.45 } });
+    } catch (err) { ctx.notes.push('furnish ' + S.id + ': ' + (err && err.message)); }
+  }
+}
+// Living room: sofa (as drawn or along a free wall), coffee table, rug, TV opposite, floor lamp, dining set, plant.
+const hasBedroomK = P => P.rooms.some(r => r.kind === 'bedroom');
+function rpLounge(ctx, S, fd, wd, seed) {
+  const { P, I, m, cut } = ctx;
+  let so = S.has && S.has.sofa;
+  const bed = S.has && S.has.bed;
+  if (!so && !(bed && S.area < 15)) {
+    for (const len of [2.3, 2.0, 1.7]) {
+      // against a plain wall, with a wall to take the TV 2.4 – 5.5 m in front of it
+      const sp = rpWallSpot(ctx, S, len, 1.0, { h: 0.8, clear: 0.8, centre: 0.15, score: (p, seg, s, c) => {
+        const D = rayPoly(c, seg.nin, S.poly);
+        return (D > 2.2 && D < 5.6 ? 1.2 : 0) + Math.min(2, fd(p)) * 0.3 + (seg.wins.length ? -0.6 : 0);
+      } });
+      if (!sp) continue;
+      const p = add2(sp.p, sp.nin, 0.5 + 0.012);
+      if (!rpTry(ctx, S, F.sofa(m, { len }), p, sp.ang)) continue;
+      so = (S.has ||= {}).sofa = { p, f: sp.nin, ang: sp.ang, len, xv: xOf(sp.ang), wall: true };
+      break;
+    }
+  }
+  if (so) {
+    // coffee table + rug
+    const tc = add2(so.p, so.f, 0.49 + 0.75);
+    const ct = F.coffeeTable(m), sb = ct.userData.solidBox || { w: 1.1, d: 0.7 };
+    if (!so.bed && !(S.has && S.has.table && I.fixtures.some(f => f.room === S.id && f.kind === 'table' && Math.hypot(f.c[0] - tc[0], f.c[1] - tc[1]) < 1.3)) && rpFree(ctx, S, { c: tc, d: so.xv, hl: sb.w / 2 + 0.05, hw: sb.d / 2 + 0.3 }, { passages: false })) rpTry(ctx, S, ct, tc, so.ang);
+    // a sofa-bed keeps the floor in front of it free: a small table beside an arm instead of the coffee table
+    if (so.bed) for (const sd of [-1, 1]) {
+      const c = add2(add2(so.p, so.xv, sd * (so.len / 2 + 0.27)), so.f, 0.1);
+      if (rpFree(ctx, S, { c, d: so.xv, hl: 0.23, hw: 0.23 }) && rpTry(ctx, S, F.sideTable(m, { lamp: false }), c, so.ang, 0, { quiet: true })) { so.sideAt = sd; break; }
+    }
+    const rc = add2(so.p, so.f, 0.95), R = { c: rc, d: so.xv, hl: Math.min(1.5, so.len / 2 + 0.3), hw: 1.0 };
+    if (rectInPoly(R, S.poly, 0.02)) rpTry(ctx, S, F.rug(m, { w: R.hl * 2, d: 2.0 }), rc, so.ang, 0, { free: true });
+    // TV wall opposite
+    const D = rayPoly(so.p, so.f, S.poly), W = add2(so.p, so.f, D);
+    const seg = S.segs.find(s => Math.abs(dot2(sub2(W, s.a), s.nin)) < 0.06 && dot2(s.nin, so.f) < -0.9 && dot2(sub2(W, s.a), s.d) > 0 && dot2(sub2(W, s.a), s.d) < s.len);
+    if (seg && D > 2.2 && D < 6.2) {
+      const s0 = dot2(sub2(W, seg.a), seg.d);
+      let tvDone = false;
+      for (const tl of [2.0, 1.6, 1.2]) {
+        const s = clamp(s0, tl / 2 + 0.02, seg.len - tl / 2 - 0.02);
+        if (seg.len < tl + 0.04 || Math.abs(s - s0) > 0.9 || seg.wins.some(q => q.s1 > s - tl / 2 && q.s0 < s + tl / 2)) continue;
+        const wp = add2(seg.a, seg.d, s), a = angOf(seg.nin);
+        if (!rpFree(ctx, S, { c: add2(wp, seg.nin, 0.23), d: seg.d, hl: tl / 2, hw: 0.21 })) continue;
+        rpTry(ctx, S, F.tvUnit(m, { len: tl }), add2(wp, seg.nin, 0.222), a);
+        // V7: a slim lit shelf tower at an end of the media unit (rooms from 14 m²; a plain wall behind, clear of every way)
+        if (S.area >= 14) for (const e of [1, -1]) {
+          const sx = s + e * (tl / 2 + 0.06 + 0.25);
+          if (sx < 0.27 || sx > seg.len - 0.27 || seg.wins.some(q => q.s1 > sx - 0.3 && q.s0 < sx + 0.3)) continue;
+          const c = add2(add2(seg.a, seg.d, sx), seg.nin, 0.16 + 0.012);
+          if (!rpFree(ctx, S, { c, d: seg.d, hl: 0.25, hw: 0.16 }, { tol: 0.012 }) || rpWinFront(S, { c, d: seg.d, hl: 0.25, hw: 0.16 }, 0.5)) continue;
+          if (rpTry(ctx, S, F.shelfTower(m, { w: 0.5, h: ctx.tallH, ceil: cut ? 0 : CH - ctx.tallH, seed, side: -e }), c, a, 0, { tag: 'shelves', quiet: true })) { (ctx.extras ||= []).push({ kind: 'media-shelves', room: S.id }); break; }
+        }
+        if (!cut) {
+          rpTry(ctx, S, F.tv(m, { w: Math.min(1.45, tl - 0.1), live: true, glowZ: m.fam === 'riviera' ? -0.012 : -0.043 }), add2(wp, seg.nin, 0.1), a, 1.0, { free: true }); ctx.tvRooms.push('living');
+          const fwl = Math.min(3.2, 2 * Math.min(s, seg.len - s) - 0.04);
+          if (fwl >= tl + 0.3 && !seg.wins.some(q => q.s1 > s - fwl / 2 && q.s0 < s + fwl / 2)) featureWall(ctx, ctx.g, wp[0], wp[1], a, fwl);
+        }
+        tvDone = true;
+        break;
+      }
+      // (the opened sofa-bed reaches the wall unit's place: the TV alone, on the wall)
+      if (!tvDone && so.bed && !cut && s0 > 0.7 && s0 < seg.len - 0.7 && !seg.wins.some(q => q.s1 > s0 - 0.7 && q.s0 < s0 + 0.7)) {
+        const wp = add2(seg.a, seg.d, s0);
+        if (rpFree(ctx, S, { c: add2(wp, seg.nin, 0.06), d: seg.d, hl: 0.62, hw: 0.05 }, { passages: false })) { rpTry(ctx, S, F.tv(m, { w: 1.2, live: true, glowZ: -0.02 }), add2(wp, seg.nin, 0.035), angOf(seg.nin), 1.05, { free: true }); ctx.tvRooms.push('living'); }
+      }
+    }
+    // floor lamp at an end of the sofa
+    for (const sd of [1, -1]) {
+      if (so.sideAt === sd) continue;
+      const c = add2(add2(so.p, so.xv, sd * (so.len / 2 + 0.26)), so.f, -0.2);
+      if (rpFree(ctx, S, { c, d: so.xv, hl: 0.2, hw: 0.2 })) { rpTry(ctx, S, F.floorLamp(m), c, so.ang); break; }
+    }
+    // V7: a studio (no bedroom): wall cabinets over the sofa-bed — underside at 1.95 m, 0.35 m deep, so the opened
+    // bed keeps its headroom — on a plain wall stretch behind it
+    let ohDone = false;
+    if (!cut && so.wall && so.bed && !hasBedroomK(P)) {
+      const seg2 = S.segs.find(s => Math.abs(dot2(sub2(so.p, s.a), s.nin) - 0.52) < 0.1 && dot2(s.nin, so.f) > 0.95 && dot2(sub2(so.p, s.a), s.d) > 0 && dot2(sub2(so.p, s.a), s.d) < s.len);
+      if (seg2) {
+        const s = dot2(sub2(so.p, seg2.a), seg2.d);
+        for (const len of [Math.min(2.4, so.len + 0.4), so.len, 1.5]) {
+          const s2 = clamp(s, len / 2 + 0.02, seg2.len - len / 2 - 0.02);
+          if (seg2.len < len + 0.04 || Math.abs(s2 - s) > 0.35 || seg2.wins.some(q => q.s1 > s2 - len / 2 - 0.05 && q.s0 < s2 + len / 2 + 0.05)) continue;
+          const wp = add2(seg2.a, seg2.d, s2);
+          // (nothing tall stands under it: a wardrobe, a fridge)
+          if (ctx.occ.some(q => (q.h || 0) > 1.7 && rectOverlap({ c: add2(wp, seg2.nin, 0.19), d: seg2.d, hl: len / 2, hw: 0.18 }, q, -0.01))) continue;
+          const oh = F.overhead(m, { len, d: 0.35, hh: ctx.tallH - Y_BRIDGE, ceil: CH - ctx.tallH, brackets: true });
+          oh.userData.box3.zc = 0.175;
+          rpPut(ctx, S, oh, add2(wp, seg2.nin, 0.003), so.ang, Y_BRIDGE, { free: true }); rpHiCol(oh);
+          ctx.overSofa = { room: S.id, len: +len.toFixed(2), y: Y_BRIDGE, d: 0.35 }; ohDone = true;
+          if (s > 0.7 && s < seg2.len - 0.7) artOn(ctx, ctx.g, add2(seg2.a, seg2.d, s)[0], add2(seg2.a, seg2.d, s)[1], so.ang, 1.1, 0.55, 0, 1.47);
+          break;
+        }
+      }
+      if (!ohDone) ctx.notes.push('sofa-bed in ' + S.id + ': no wall cabinets over it (window behind / short wall)');
+    } else if (!cut && so.bed && !hasBedroomK(P)) ctx.notes.push('sofa-bed in ' + S.id + ': no wall cabinets over it (it does not stand against a wall)');
+    if (!cut && so.wall && !bed && !ohDone) {
+      const seg2 = S.segs.find(s => Math.abs(dot2(sub2(add2(so.p, so.f, -0.5), s.a), s.nin)) < 0.1 && dot2(s.nin, so.f) > 0.95);
+      if (seg2) { const s = dot2(sub2(so.p, seg2.a), seg2.d); if (s > 0.7 && s < seg2.len - 0.7 && !seg2.wins.some(q => q.s1 > s - 0.7 && q.s0 < s + 0.7)) { const wp = add2(seg2.a, seg2.d, s); artOn(ctx, ctx.g, wp[0], wp[1], so.ang, 1.2, 0.8, 0, 1.75); } }
+    }
+    ctx.lightSpots.push({ u: so.p[0] + so.f[0] * 1.0, v: so.p[1] + so.f[1] * 1.0, y: 0, k: 1.0, pri: 0 });
+  } else ctx.lightSpots.push({ u: S.c[0], v: S.c[1], y: 0, k: 1.0, pri: 0 });
+  // dining set where the plan draws no table: the largest free rectangle
+  if (!ctx.diningAt && !ctx.island && (S.kitchen || !P.rooms.some(r => r.kind === 'living' && r.kitchen))) {
+    const fr = rpFreeRect(ctx, S);
+    if (fr) {
+      const w = fr[2] - fr[0], d = fr[3] - fr[1], along = w >= d, L = Math.max(w, d), Wd = Math.min(w, d);
+      let tl = 0, tw = 0.85;
+      if (L >= 2.5 && Wd >= 2.3) tl = clamp(L - 1.3, 1.2, 1.8); else if (L >= 2.0 && Wd >= 2.0) { tl = 0.9; } else if (L >= 1.7 && Wd >= 1.6) { tl = 0.7; tw = 0.7; }
+      if (tl) {
+        const c = [(fr[0] + fr[2]) / 2, (fr[1] + fr[3]) / 2];
+        if (rpTry(ctx, S, rpDiningSet(ctx, tl, tw, 2), c, along ? 0 : HALF, 0, { box: { w: tl + 0.1, d: tw + 1.0 }, tag: 'dining' })) {
+          ctx.diningAt = { u: c[0], v: c[1] };
+          ctx.lightSpots.push({ u: c[0], v: c[1], y: 0, k: 0.8, pri: 1 });
+        }
+      }
+    }
+  }
+  if (!bed || S.area > 18) { const sp = rpWallSpot(ctx, S, 0.9, 0.85, { h: 2, tall: false, corner: 1.5, clear: 0.3, score: (p) => -wd(p) * 0.8 }); if (sp) {
+      // the big plant belongs in a corner; by a plain wall a slim one stands close to it, at a wall end none at all
+      const q = add2(sp.p, sp.nin, 0.42); let walls = 0;
+      for (let k = 0; k < 8; k++) { const r = [q[0] + Math.cos(k * Math.PI / 4 + sp.ang) * 0.85, q[1] + Math.sin(k * Math.PI / 4 + sp.ang) * 0.85]; if (!pointInPoly(r, S.poly)) walls++; }
+      if (walls >= 4) rpTry(ctx, S, F.plant(m, { h: 1.5, seed: 4 + seed }), q, sp.ang, 0, { box: { w: 0.6, d: 0.6 } });
+      else if (walls >= 3) rpTry(ctx, S, F.plant(m, { kind: 'snake', h: 0.9, seed: 7 + seed }), add2(sp.p, sp.nin, 0.24), sp.ang, 0, { box: { w: 0.4, d: 0.4 } });
+    } }
+}
+// Largest axis-aligned free rectangle of a room (10 cm grid; clear of walls, pieces, door zones) → [u0, v0, u1, v1].
+function rpFreeRect(ctx, S, o = {}) {
+  const G = 0.1, [bu0, bv0, bu1, bv1] = S.box, nx = Math.ceil((bu1 - bu0) / G), nz = Math.ceil((bv1 - bv0) / G);
+  if (nx < 2 || nz < 2 || nx * nz > 40000) return null;
+  const free = new Uint8Array(nx * nz), pad = o.pad ?? 0.3;
+  const blk = [...ctx.occ.map(q => ({ ...q, hl: q.hl + pad, hw: q.hw + pad })), ...ctx.zones];
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    const p = [bu0 + (i + 0.5) * G, bv0 + (j + 0.5) * G];
+    if (!pointInPoly(p, S.poly) || polyDist(p, S.poly) < (o.wall ?? 0.25)) continue;
+    let ok = true;
+    for (const q of blk) { const r = sub2(p, q.c); if (Math.abs(dot2(r, q.d)) < q.hl && Math.abs(cross2(q.d, r)) < q.hw) { ok = false; break; } }
+    if (ok) free[j * nx + i] = 1;
+  }
+  let best = null, ba = 0;
+  const hgt = new Int32Array(nx);
+  for (let j = 0; j < nz; j++) {
+    for (let i = 0; i < nx; i++) hgt[i] = free[j * nx + i] ? hgt[i] + 1 : 0;
+    const st = [];
+    for (let i = 0; i <= nx; i++) {
+      const h = i < nx ? hgt[i] : 0; let start = i;
+      while (st.length && st[st.length - 1][1] > h) {
+        const [si, sh] = st.pop(), w = i - si;
+        // (a square-ish rectangle is worth more than a long sliver)
+        const a = Math.min(w, sh * 1.6) * Math.min(sh, w * 1.6);
+        if (a > ba) { ba = a; best = [bu0 + si * G, bv0 + (j - sh + 1) * G, bu0 + i * G, bv0 + (j + 1) * G]; }
+        start = si;
+      }
+      if (!st.length || st[st.length - 1][1] < h) st.push([start, h]);
+    }
+  }
+  return best;
+}
+// Recessed downlights on a grid inside every room + the lamps' light pools.
+function rpLights(ctx) {
+  const { P, m, sg, cut } = ctx;
+  if (cut) return;
+  for (const S of P.rooms) {
+    const [u0, v0, u1, v1] = S.box, nu = Math.max(1, Math.round((u1 - u0) / 1.5)), nv = Math.max(1, Math.round((v1 - v0) / 1.5));
+    let n = 0;
+    for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) {
+      const p = [u0 + (u1 - u0) * (i + 0.5) / nu, v0 + (v1 - v0) * (j + 0.5) / nv];
+      if (!pointInPoly(p, S.poly) || polyDist(p, S.poly) < 0.35) continue;
+      rpDownlight(ctx, p[0], CH, p[1]); n++;
+      FX.fxFlat(sg, m.glowFaint, 'disc', p[0], 0.005, p[1], S.kind === 'bath' ? 1.35 : 1.7, S.kind === 'bath' ? 1.35 : 1.7);
+    }
+    if (!n) { rpDownlight(ctx, S.c[0], CH, S.c[1]); FX.fxFlat(sg, m.glowFaint, 'disc', S.c[0], 0.005, S.c[1], 1.4, 1.4); }
+  }
+}
+// A standing point in every space: on the floor, clear of walls and furniture, as central as that allows.
+function rpStand(ctx, S, o = {}) {
+  const G = 0.1, [u0, v0, u1, v1] = S.box, MIN = o.min ?? 0.3;
+  const occ = ctx.occ.filter(q => q.room === S.id || true);
+  let best = null;
+  const near = o.near || S.c;
+  for (let v = v0 + G / 2; v < v1; v += G) for (let u = u0 + G / 2; u < u1; u += G) {
+    const p = [u, v];
+    if (!pointInPoly(p, S.poly)) continue;
+    if (o.ok && !o.ok(p)) continue;
+    let cl = polyDist(p, S.poly);
+    if (cl < MIN) continue;
+    for (const q of occ) {
+      const r = sub2(p, q.c), dx = Math.max(0, Math.abs(dot2(r, q.d)) - q.hl), dz = Math.max(0, Math.abs(cross2(q.d, r)) - q.hw);
+      cl = Math.min(cl, Math.hypot(dx, dz));
+      if (cl < MIN) break;
+    }
+    if (cl < MIN) continue;
+    const sc = Math.min(cl, o.cap ?? 0.75) * 2 - Math.hypot(p[0] - near[0], p[1] - near[1]) * (o.pull ?? 0.35);
+    if (!best || sc > best.sc) best = { sc, p, cl };
+  }
+  if (!best && (o.min ?? 0.3) > 0.13) return rpStand(ctx, S, { ...o, min: (o.min ?? 0.3) - 0.08 });
+  return best ? [+best.p[0].toFixed(3), +best.p[1].toFixed(3)] : [+S.c[0].toFixed(3), +S.c[1].toFixed(3)];
+}
+
+// ---------------------------------------------------------------- curtains (straight windows of living rooms / bedrooms)
+function rpCurtains(ctx) {
+  const { P, I, m, cut } = ctx;
+  if (cut || ctx.opts.curtains === 'none') return;
+  for (const S of P.rooms) {
+    if (S.kind !== 'living' && S.kind !== 'bedroom') continue;
+    // one track per straight window wall stretch: the windows of a wall stretch are joined
+    for (const seg of S.segs) {
+      const ws = seg.wins.filter(w => w.s1 - w.s0 > 0.25);
+      if (!ws.length || seg.len < 1.2) continue;
+      const a0 = Math.max(0.05, Math.min(...ws.map(w => w.s0)) - 0.25), a1 = Math.min(seg.len - 0.05, Math.max(...ws.map(w => w.s1)) + 0.25), w = a1 - a0;
+      if (w < 1.1) continue;
+      const p = add2(add2(seg.a, seg.d, (a0 + a1) / 2), seg.nin, 0.14);
+      // (not across a door to the balcony, not through furniture standing at the window)
+      if (ctx.zones.some(z => z.kind !== 'passage' && z.kind !== 'bedside' && rectOverlap({ c: p, d: seg.d, hl: w / 2, hw: 0.1 }, z, -0.02))) continue;
+      const id = 'cur0-' + ctx.curtains.length;
+      rpPut(ctx, S, F.motorCurtains(m, { w, h: CH - 0.05 - 0.04, id }), p, angOf(seg.nin), CH - 0.05, { free: true });
+      const dr = P.doors.find(d => d.rooms && d.rooms.includes(S.id) && d.type !== 'balcony');
+      ctx.curtains.push({ id, level: 0, room: S, kind: S.kind, roomName: S.name, u: p[0], v: p[1], y: CH - 0.05, ref: dr ? dr.p : S.c });
+    }
+  }
+  // wall switch of every curtain: on a plain wall stretch of the room, as near as possible to where you come in
+  for (const rec of ctx.curtains) {
+    const S = rec.room;
+    const sp = rpWallSpot(ctx, S, 0.16, 0.05, { tall: true, passages: false, score: (p) => -Math.hypot(p[0] - rec.ref[0], p[1] - rec.ref[1]) });
+    if (!sp) continue;
+    const sw = F.curtainSwitch(m, { id: rec.id });
+    sw.position.set(sp.p[0], 1.05, sp.p[1]); sw.rotation.y = sp.ang; ctx.sg.add(sw);
+    const face = Math.abs(sp.nin[0]) > Math.abs(sp.nin[1]) ? (sp.nin[0] > 0 ? '+u' : '-u') : (sp.nin[1] > 0 ? '+v' : '-v');
+    rec.switch = { u: sp.p[0], v: sp.p[1], y: 1.05, face };
+    ctx.occ.push({ c: add2(sp.p, sp.nin, 0.03), d: sp.d, hl: 0.1, hw: 0.03, h: 0.2, tag: 'switch', room: S.id, wallOnly: true });
+  }
+}
+
+// ---------------------------------------------------------------- main (real interior)
+function buildReal(unit, styleId, opts, I) {
+  const m = getMaterials(styleId);
+  const P = rpPlan(unit, I);
+  if (!P.rooms.length) throw new Error('apartment: interior without rooms');
+  if (!P.segsDone) { rpSegs(P); P.segsDone = true; }
+  for (const S of P.spaces) S.has = null;
+  const cut = !!opts.cutaway;
+  const root = new THREE.Group(); root.name = 'apartment-' + unit.id + '-' + m.styleId + (cut ? '-cut' : '');
+  const sg = new THREE.Group(); sg.name = 'static-src';
+  const cg = new THREE.Group(); cg.name = 'colliders';
+  const ctx = { real: true, tallH: cut ? 1.05 : CH - 0.05, P, I, m, sg, cg, root, unit, cut, opts, A: rpAcc(), tmpGeos: [], colGeos: [], lightSpots: [], wins: [], doors: [], idoors: [], balconyDoors: [],
+    zones: [], occ: [], kitchens: [], curveSt: new Map(), curtains: [], busy: [], tvRooms: [], notes: [], laundry: null, sb: null, sofaBed: null, curLevel: null, segs: {}, showers: [], noFx: !!opts.noFx };
+  ctx.master = P.rooms.filter(r => r.kind === 'bedroom').sort((a, b) => b.area - a.area)[0] || null;
+  ctx.g = new THREE.Group(); sg.add(ctx.g);
+  CUR_M = m;
+  const T0 = performance.now();
+  try {
+    rpShell(ctx);
+    rpDoors(ctx);
+    ctx.A.flush(sg, ctx.tmpGeos);
+    // columns
+    for (const c of I.columns || []) { FX.cyl(sg, c.r || 0.25, c.r || 0.25, cut ? 1.1 : CH, m.wall, c.c[0], 0, c.c[1], 28); ocollider(cg, c.c, [1, 0], (c.r || 0.25) * 0.9, (c.r || 0.25) * 0.9, 0.02, 2.2); }
+    rpFixtures(ctx);
+    rpLeaves(ctx); ctx.leavesDone = true;
+    { const tR = performance.now(); rpRules(ctx); ctx.msRules = performance.now() - tR; }
+    rpCurtains(ctx);
+    rpLights(ctx);
+  } finally { CUR_M = null; }
+  const baked = new THREE.Group(); baked.name = 'baked';
+  root.add(baked);
+  // the sofa-bed's colliders: its own box (always solid) and the floor the opened bed takes (solid while open)
+  let sbCols = null;
+  if (ctx.sofaBed) {
+    const q = ctx.sofaBed, own = q.obj.children.find(c => c.userData.collider) || null;
+    const ext = ocollider(cg, q.Ro.c, q.Ro.d, q.Ro.hl, q.Ro.hw, 0.02, 0.62);
+    ext.name = 'col-sofabed'; ext.userData.solid = false; ext.raycast = NO_RAYCAST;
+    sbCols = { own, ext };
+  }
+  const T1 = performance.now();
+  const movers = cut ? null : buildMovers(ctx, sg, root);
+  const bdoors = cut ? [] : wireBalconyDoors(ctx, movers);
+  const idoors = cut ? [] : wireBalconyDoors({ unit, balconyDoors: ctx.idoors }, movers, 'interiorDoor');
+  for (const d of ctx.doors) if (d.type === 'balcony' || d.type === 'interior') { const live = typeof d.toggle === 'function'; d.state = live ? 'closed' : 'fixed'; }
+  const curtains = movers ? wireCurtains(ctx, movers) : [];
+  const T2 = performance.now();
+  const halos = cut ? null : bloomMesh(sg, m);
+  bake(sg, baked);
+  const T3 = performance.now();
+  if (halos) baked.add(halos);
+  ctx.tmpGeos.forEach(g => g.dispose());
+  cg.updateMatrixWorld(true);
+  root.add(cg);
+  const lights = cut ? [Object.assign(new THREE.HemisphereLight(0xfff1e0, 0x9a8a74, 1.5), { name: 'apt-fill' })] : buildLights(ctx);
+  lights.forEach(l => root.add(l));
+  const group = root;
+  // interior doors rest open (opts.doors: 'closed' → shut until someone comes near)
+  const doorsMode = opts.doors === 'closed' ? 'closed' : 'open';
+  if (doorsMode === 'open') for (const d of idoors) d.toggle(true, { instant: true });
+  // ---- rooms (unit coordinates)
+  const r3 = x => +x.toFixed(3);
+  const rooms = [], standPoints = [];
+  const NV = rpNav(P, I, ctx.navFine ? 0.05 : 0.1, ctx.navFine === 'tight' ? NAV_TIGHT : 0.27), RS = rpReach0(ctx);
+  const ent = P.doors.find(d => d.type === 'entrance') || null;
+  for (const S of P.spaces) {
+    const near = S.out ? (() => { const d = ctx.balconyDoors.find(q => q.rooms.includes(S.id)); return d ? add2(d.p, d.n, d.t / 2 + 0.75) : S.c; })() : S.c;
+    // (among the floor a walker can reach from the entrance, where the room has any)
+    const ci = P.spaces.indexOf(S), has = NV.cells[ci].some(k => RS.seen[k]);
+    const ok = has ? (p) => { const i = Math.floor((p[0] - NV.u0) / NV.G), j = Math.floor((p[1] - NV.v0) / NV.G); return i >= 0 && j >= 0 && i < NV.nx && j < NV.nz && RS.seen[j * NV.nx + i] === 1; } : null;
+    let stand = rpStand(ctx, S, S.out ? { near, pull: 0.6, cap: 0.5, ok, min: has ? 0.2 : 0.3 } : { ok, min: has ? 0.2 : 0.3 });
+    if (has && !ok(stand)) {
+      // (a room filled by its furniture: the reachable cell nearest to its centre)
+      let bd = Infinity;
+      for (const k of NV.cells[ci]) { if (!RS.seen[k]) continue; const i = k % NV.nx, j = (k - i) / NV.nx, q = [NV.u0 + (i + 0.5) * NV.G, NV.v0 + (j + 0.5) * NV.G], d = Math.hypot(q[0] - S.c[0], q[1] - S.c[1]); if (d < bd) { bd = d; stand = [r3(q[0]), r3(q[1])]; } }
+    }
+    const b = S.box;
+    const rec = { id: S.id, kind: S.kind, name: S.name, nk: S.nk, key: 'walk.' + S.nk, area: S.area, level: 0, y: 0, center: stand, label: [r3(S.c[0]), r3(S.c[1])], stand,
+      poly: S.poly.map(p => [r3(p[0]), r3(p[1])]), size: [+(b[2] - b[0]).toFixed(2), +(b[3] - b[1]).toFixed(2)] };
+    if (S.out) { rec.outdoor = true; rec.glazed = S.glazed; rec.side = rpOutSide(unit, S); if (S.detached) rec.detached = true; }
+    if (S.kitchen) rec.kitchen = true;
+    rooms.push(rec);
+    if (S.kind !== 'dressing' || S.area > 3) standPoints.push({ id: 'p-' + S.id, room: S.id, kind: S.kind, u: stand[0], v: stand[1], outdoor: !!S.out });
+  }
+  // ---- outdoor points: just outside the door of each outdoor space
+  const outdoorPoints = [];
+  for (const S of P.outdoor) {
+    const r = rooms.find(q => q.id === S.id);
+    outdoorPoints.push({ id: S.id, u: r.stand[0], v: r.stand[1], level: 0, side: r.side, kind: S.kind });
+  }
+  const mainOut = outdoorPoints.slice().sort((a, b) => (ctx.balconyDoors.some(d => d.rooms.includes(b.id) && typeof d.toggle === 'function') ? 1 : 0) - (ctx.balconyDoors.some(d => d.rooms.includes(a.id) && typeof d.toggle === 'function') ? 1 : 0))[0] || null;
+  const balconyPoint = mainOut ? { u: mainOut.u, v: mainOut.v, level: 0, side: mainOut.side, id: mainOut.id } : null;
+  const mainDoor = () => {
+    if (!bdoors.length) return null;
+    if (!balconyPoint) return bdoors[0];
+    return bdoors.slice().sort((a, b) => Math.hypot(a.u - balconyPoint.u, a.v - balconyPoint.v) - Math.hypot(b.u - balconyPoint.u, b.v - balconyPoint.v))[0];
+  };
+  if (opts.startOnBalcony && bdoors.length) mainDoor()?.toggle(true, { instant: true });
+  const tvs = cut ? [] : wireTvs(ctx, root);
+  const sofaBed = rpWireSofaBed(ctx, sbCols, () => disposed);
+  const fixtures = [];
+  root.traverse(o => { if (o.userData.playPart) { o.userData.action = { type: 'aptDoor', unitId: unit.id, part: o.userData.playPart }; if (WATER_PIECES.has(o.userData.piece)) fixtures.push(o); } });
+  // ---- curtains: closed until the visitor enters (as in the fitted-box builder)
+  let seqTok = 0, autoDone = opts.curtains === 'open' || opts.curtains === 'closed';
+  const openCurtains = (o = {}) => {
+    autoDone = true;
+    const tok = ++seqTok, gap = o.instant ? 0 : (o.stagger ?? 650);
+    return Promise.all(curtains.map((c, i) => new Promise(res => {
+      const go = () => { if (tok !== seqTok) return res(); c.toggle(true, { instant: !!o.instant }).then(res); };
+      if (!gap || !i) go(); else setTimeout(go, gap * i);
+    })));
+  };
+  const closeCurtains = (o = {}) => { ++seqTok; return Promise.all(curtains.map(c => c.toggle(false, o))); };
+  if (opts.curtains === 'open') openCurtains({ instant: true });
+  const onEnter = (e) => { const id = e && e.detail && e.detail.unitId; if (!id || id === unit.id) openCurtains(); };
+  const hasWin = typeof window !== 'undefined' && typeof window.addEventListener === 'function';
+  if (hasWin && curtains.length) window.addEventListener('vrc:apt-enter', onEnter);
+  let disposed = false;
+  const inside = (u, v) => P.rooms.some(S => u > S.box[0] && u < S.box[2] && v > S.box[1] && v < S.box[3] && pointInPoly([u, v], S.poly));
+  if (movers) {
+    // per frame (the camera that draws the flat): curtains open on the first frame from inside; a closed interior
+    // door opens when the camera comes near and, in 'closed' mode, shuts again behind it
+    const cp = new THREE.Vector3(), st = new Map();
+    let last = 0;
+    movers.onFrame((cam) => {
+      if (!cam || disposed) return;
+      const now = performance.now(); if (now - last < 120) return; last = now;
+      cp.setFromMatrixPosition(cam.matrixWorld); root.worldToLocal(cp);
+      if (cp.y < -0.3 || cp.y > CH + 0.3) return;
+      if (!autoDone && curtains.length && inside(cp.x, cp.z)) { autoDone = true; setTimeout(() => { if (!disposed) openCurtains(); }, 500); }
+      for (const d of idoors) {
+        const dist = Math.hypot(cp.x - d.u, cp.z - d.v);
+        let s = st.get(d); if (!s) st.set(d, s = { auto: false, far: 0, tapped: false });
+        if (!d.open) { if (dist < 1.35 && !s.hold) { s.auto = true; s.far = 0; d.toggle(true); } else if (dist > 1.9) s.hold = false; }
+        else if (doorsMode === 'closed' && s.auto) { if (dist > 2.6) { if (!s.far) s.far = now; else if (now - s.far > 2000) { s.auto = false; s.far = 0; d.toggle(false); } } else s.far = 0; }
+      }
+    });
+    // a door the visitor shuts by a tap stays shut until they step back
+    for (const d of idoors) for (const px of d.proxies || []) {
+      const tg = px.userData.toggle;
+      px.userData.toggle = (open) => { const s = st.get(d) || { }; st.set(d, s); const want = open === undefined ? !d.open : !!open; if (!want) s.hold = true; s.auto = false; return tg(open); };
+      if (d.collider) d.collider.userData.toggle = px.userData.toggle;
+    }
+  }
+  const disposeAll = () => {
+    disposed = true; ++seqTok;
+    if (hasWin) window.removeEventListener('vrc:apt-enter', onEnter);
+    baked.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
+    ctx.colGeos.forEach(g => g.dispose());
+    if (ctx.door) ctx.door.leaf.geometry.dispose();
+    if (movers) movers.dispose();
+  };
+  // ---- camera presets
+  const views = rpViews(ctx, rooms, balconyPoint);
+  // ---- plan summary. The fitted-box fields (ul, ur, vc, vF, vb) keep a compatible meaning where one exists:
+  //   vc = room face of the entrance wall at the door, ul = the entrance room's wall on the low-u side of the door at
+  //   that face (walk.js hangs the door monitor between ul and the door), doorU = entrance u. W / D are the unit's
+  //   fitted box; the real extent is `bbox` (rooms reach outside 0 … W / 0 … D).
+  const du = ent ? ent.p[0] : (unit.door && unit.door.u) || 0, et = ent ? (+ent.t || 0.25) : 0.25;
+  const eS = ent ? P.byId.get(ent.rooms[1]) : P.rooms[0];
+  let ul = du - 1, ur = du + 1;
+  if (eS) { const q = [du, et + 0.06]; if (pointInPoly(q, eS.poly)) { ul = du - rayPoly(q, [-1, 0], eS.poly); ur = du + rayPoly(q, [1, 0], eS.poly); } }
+  const bb = P.bbox;
+  const nWin = { front: 0, left: 0, right: 0, back: 0 };
+  for (const w of ctx.wins) if (!w.S.out) { const k = rpSideOf(unit, w.mid, w.e.n); nWin[k]++; }
+  const od0 = P.outdoor[0] || null;
+  const plan = {
+    real: true, mode: 'real', rot: 0, flip: false, duplex: false, levels: [], W: unit.width, D: unit.depth,
+    ul: r3(ul), ur: r3(ur), vc: r3(et), vF: r3(bb.v1), vb: null, doorU: r3(du),
+    entry: { wall: 'back', p: r3(du), t: r3(et) }, glaze: { left: nWin.left > 0, right: nWin.right > 0 },
+    outdoor: od0 ? { kind: od0.kind, side: rooms.find(r => r.id === od0.id).side, depth: null } : null, windows: nWin,
+    dropped: [], notes: ctx.notes.concat(P.warn), sofaBedSearch: ctx.sb ? ctx.sb.stats || [] : null, T: TYPES[unit.type] || null, bbox: { u0: r3(bb.u0), v0: r3(bb.v0), u1: r3(bb.u1), v1: r3(bb.v1) }, interior: I, canon: null,
+  };
+  const doors = ctx.doors.map(d => d);
+  for (const d of doors) { Object.defineProperty(d, 'state', { enumerable: true, configurable: true, get() { return d.type === 'passage' ? 'none' : d.type === 'entrance' && !ctx.door ? 'none' : typeof d.toggle !== 'function' ? 'fixed' : d.open ? 'open' : 'closed'; },
+    // 'open' / 'closed' (or true / false) operates the door through its own toggle; anything else is ignored
+    set(v) { const want = v === 'open' || v === true ? true : v === 'closed' || v === false ? false : null; if (want !== null && typeof d.toggle === 'function' && want !== !!d.open) d.toggle(want); } }); }
+  return {
+    group, rooms, entrance: { u: r3(du), v: 0 }, balconyPoint, lights, plan, views, real: true,
+    // unit-local bounding box of the whole flat incl. outdoor spaces, every door / passage, standing points
+    bbox: plan.bbox, doors, standPoints, outdoorPoints, decks: P.decks.map(k => ({ id: k.id, door: k.door, space: k.space, poly: k.poly.map(q => [r3(q[0]), r3(q[1])]) })),
+    sofaBed,
+    // V7: what was fitted (tests, notes): hall wardrobes, the bed of every bedroom with its bridge unit and wardrobe,
+    // the cabinets over the sofa-bed, the extras
+    joinery: { hall: ctx.hallW || [], beds: ctx.beds || [], overSofa: ctx.overSofa || null, extras: ctx.extras || [], livingWardrobe: P.rooms.filter(r => r.kind === 'living' && r.has && r.has.wardrobe).map(r => r.id) },
+    furniture: ctx.occ.filter(q => !q.wallOnly && !q.ghost).map(q => ({ tag: q.tag, room: q.room, c: [r3(q.c[0]), r3(q.c[1])], d: [r3(q.d[0]), r3(q.d[1])], hl: r3(q.hl), hw: r3(q.hw), h: q.h })),
+    zones: ctx.zones.map(z => ({ kind: z.kind, id: z.id, c: [r3(z.c[0]), r3(z.c[1])], d: z.d, hl: r3(z.hl), hw: r3(z.hw), hinge: z.hinge || null, r: z.r || null, type: z.type || null, angle: z.angle ?? null, ld: z.ld || null, sw: z.sw || null, core: z.core ?? null })),
+    stats: { meshes: baked.children.length + (ctx.door ? 2 : 0) + (movers ? movers.batches : 0), colliders: cg.children.length, fronts: movers ? movers.count : 0, windows: ctx.wins.length, windowIds: new Set(ctx.wins.map(w => w.op.win.id)).size,
+      ms: { furnish: Math.round(T1 - T0), fronts: Math.round(T2 - T1), bake: Math.round(T3 - T2), beds: Math.round(ctx.msBeds || 0), sb: Math.round(ctx.msSb || 0), rules: Math.round(ctx.msRules || 0) } },
+    doorLeaf: ctx.door ? ctx.door.leaf : null,
+    cabinets: movers ? movers.proxies.filter(p => !p.userData.balconyDoor && !p.userData.curtain && !p.userData.interiorDoor) : [], closeCabinets: movers ? movers.closeAll : () => Promise.resolve(),
+    balconyDoors: bdoors, interiorDoors: idoors,
+    openBalconyDoor: () => { const d = mainDoor(); return d ? d.toggle(true) : Promise.resolve(); },
+    openDoors: (o = {}) => Promise.all(idoors.map(d => d.toggle(true, o))), closeDoors: (o = {}) => Promise.all(idoors.map(d => d.toggle(false, o))),
+    curtains, openCurtains, closeCurtains,
+    get curtainsOpen() { return curtains.some(c => c.open); },
+    tvs, setTvs: (on) => Promise.all(tvs.map(t => t.toggle(on))),
+    laundry: ctx.laundry, island: ctx.island || null, snooker: null, game: null, fixtures,
+    closeBalconyDoors: () => Promise.all(bdoors.filter(d => d.open).map(d => d.toggle(false))),
+    dispose: disposeAll,
+  };
+}
+// The sofa-bed of a one-room flat → the record published as apt.sofaBed (null when the flat has none):
+//   { room, open, state: 'closed' | 'open', toggle(open?, { instant, dur }) → Promise, set(t), t, dur,
+//     closed {c, d, hl, hw} (the sofa), bed {c, d, hl, hw} (the floor the opened bed takes in front of it),
+//     footprint (both), p (wall point), front, wb (mattress width), len (mattress length), collider, bedCollider,
+//     keptBed / replacedBed / from }
+// Both colliders carry userData.action = { type: 'sofaBed', unitId } (the walkthrough's tap target). The bed
+// collider is solid only while the bed is open; every change fires window 'vrc:colliders-changed'
+// ({ unitId, sofaBed: true, open, collider }). The default state is CLOSED (cutaway and 360° export see a sofa).
+function rpWireSofaBed(ctx, cols, isDisposed) {
+  const q = ctx.sofaBed; if (!q) return null;
+  const { unit } = ctx, K = q.K, r3 = x => +x.toFixed(3);
+  const rect = R => ({ c: [r3(R.c[0]), r3(R.c[1])], d: [r3(R.d[0]), r3(R.d[1])], hl: r3(R.hl), hw: r3(R.hw) });
+  const full = { c: add2(q.p, q.f, (K.D + K.ext) / 2 + 0.012), d: q.xv, hl: K.L / 2, hw: (K.D + K.ext) / 2 };
+  const rec = { room: q.S.id, open: false, t: 0, dur: K.dur, closed: rect(q.Rc || { c: q.pc, d: q.xv, hl: K.L / 2, hw: K.D / 2 }), bed: rect(q.Ro), footprint: rect(full),
+    p: [r3(q.p[0]), r3(q.p[1])], front: [r3(q.f[0]), r3(q.f[1])], kind: K.kind, wb: K.bedW, len: K.bedLen, keptBed: q.keptBed, replacedBed: q.replacedBed, from: q.from,
+    collider: cols ? cols.own : null, bedCollider: cols ? cols.ext : null, promise: null };
+  Object.defineProperty(rec, 'state', { enumerable: true, get() { return rec.open ? 'open' : 'closed'; } });
+  if (ctx.cut || !cols) { rec.toggle = () => Promise.resolve(); rec.set = () => {}; rec.fixed = true; rec.open = ctx.opts.sofaBed === 'open'; return rec; }
+  const act = { type: 'sofaBed', unitId: unit.id };
+  for (const c of [cols.own, cols.ext]) if (c) { c.userData.action = act; c.userData.sofaBed = true; c.userData.open = false; }
+  const fire = () => { try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('vrc:colliders-changed', { detail: { unitId: unit.id, sofaBed: true, open: rec.open, collider: cols.ext } })); } catch { /* no DOM */ } };
+  const solid = (on) => { const c = cols.ext; if (c.userData.solid === on) return; c.userData.solid = on; c.raycast = on ? MESH_RAYCAST : NO_RAYCAST; fire(); };
+  let tok = 0;
+  rec.set = (t) => { rec.t = Math.max(0, Math.min(1, t)); K.set(rec.t); };
+  rec.toggle = (open, o = {}) => {
+    const want = open === undefined ? !rec.open : !!open;
+    if (want === rec.open) return rec.promise || Promise.resolve();
+    rec.open = want;
+    for (const c of [cols.own, cols.ext]) if (c) c.userData.open = c.userData._open = want;
+    const me = ++tok;
+    // opening: the floor is taken at once (the walkthrough moves a visitor standing there aside); closing: it is free
+    // again once the frame is back under the seat
+    if (want) solid(true);
+    if (o.instant || isDisposed()) { rec.set(want ? 1 : 0); if (!want) solid(false); rec.promise = null; return Promise.resolve(); }
+    const from = rec.t, to = want ? 1 : 0, dur = (o.dur > 0 ? o.dur : K.dur) * Math.max(0.3, Math.abs(to - from)), t0 = performance.now();   // o.dur: ms for the whole travel (the walkthrough's slow self-folding)
+    const p = rec.promise = new Promise(res => {
+      const step = () => {
+        if (me !== tok) return res();
+        if (isDisposed()) return res();
+        const k = Math.min(1, (performance.now() - t0) / dur);
+        rec.set(from + (to - from) * k);
+        if (k < 1) requestAnimationFrame(step); else { if (!want) solid(false); if (rec.promise === p) rec.promise = null; res(); }
+      };
+      step();
+    });
+    return p;
+  };
+  if (ctx.opts.sofaBed === 'open') rec.toggle(true, { instant: true });        // (dev / tests; the default is closed)
+  return rec;
+}
+// which side of the fitted box an outdoor space lies on (walk.js looks out sideways from a 'left' / 'right' one)
+function rpOutSide(unit, S) {
+  const c = polyCentroid(S.poly), W = +unit.width || 0, D = +unit.depth || 0;
+  const beyond = { front: c[1] - D, left: -c[0], right: c[0] - W, back: -c[1] };
+  return Object.keys(beyond).reduce((s, k) => beyond[k] > beyond[s] ? k : s, 'front');
+}
+function rpViews(ctx, rooms, bp) {
+  const { P } = ctx, E = 1.5, v = {};
+  const bb = P.bbox, cu = (bb.u0 + bb.u1) / 2, cv = (bb.v0 + bb.v1) / 2, span = Math.max(bb.u1 - bb.u0, bb.v1 - bb.v0);
+  // from a standing point towards the farthest corner of the room (the long view), a little down
+  const look = (r, fov) => {
+    let best = null, bd = -1;
+    for (const p of r.poly) { const d = Math.hypot(p[0] - r.stand[0], p[1] - r.stand[1]); if (d > bd) { bd = d; best = p; } }
+    return { pos: [r.stand[0], E, r.stand[1]], target: [best[0], 1.1, best[1]], fov };
+  };
+  const from = (r, tp, fov) => {
+    // stand at the point of the room farthest from the target, look at it
+    let best = r.stand, bd = -1;
+    const S = P.byId.get(r.id), [u0, v0, u1, v1] = S.box;
+    for (let a = v0 + 0.2; a < v1; a += 0.2) for (let b = u0 + 0.2; b < u1; b += 0.2) {
+      const p = [b, a];
+      if (!pointInPoly(p, S.poly) || polyDist(p, S.poly) < 0.3) continue;
+      if (ctx.occ.some(q => { const rr = sub2(p, q.c); return Math.abs(dot2(rr, q.d)) < q.hl + 0.2 && Math.abs(cross2(q.d, rr)) < q.hw + 0.2; })) continue;
+      // not behind an open door leaf
+      if (ctx.zones.some(z => { if (z.kind !== 'swing') return false; const rr = sub2(p, z.c); return Math.abs(dot2(rr, z.d)) < z.hl + 0.35 && Math.abs(cross2(z.d, rr)) < z.hw + 0.35; })) continue;
+      const d = Math.hypot(p[0] - tp[0], p[1] - tp[1]);
+      if (!(d > bd && d < 5.5)) continue;
+      // the target must be in sight: the line stays inside the room, clear of its walls
+      let seen = true;
+      for (let k = 1; k < 12 && seen; k++) { const q = [p[0] + (tp[0] - p[0]) * k / 12 * 0.85, p[1] + (tp[1] - p[1]) * k / 12 * 0.85]; if (!pointInPoly(q, S.poly) || polyDist(q, S.poly) < 0.12) seen = false; }
+      if (seen) { bd = d; best = p; }
+    }
+    return { pos: [best[0], E, best[1]], target: [tp[0], 1.0, tp[1]], fov };
+  };
+  const liv = rooms.find(r => r.kind === 'living');
+  if (liv) {
+    const S = P.byId.get(liv.id), so = S.has && S.has.sofa;
+    v.living = so ? from(liv, so.p, 68) : look(liv, 68);
+    v.living2 = look(liv, 70);
+  }
+  const k = ctx.kitchens[0];
+  if (k) { const r = rooms.find(q => q.id === k.S.id); v.kitchen = from(r, k.p, 70); }
+  const bedR = rooms.filter(r => r.kind === 'bedroom').sort((a, b) => b.area - a.area)[0] || rooms.find(r => { const S = P.byId.get(r.id); return S.has && S.has.bed; });
+  if (bedR) { const S = P.byId.get(bedR.id), b = S.has && S.has.bed; v.bedroom = b ? from(bedR, b.p, 72) : look(bedR, 72); }
+  const bath = rooms.find(r => r.kind === 'bath');
+  if (bath) v.bath = look(bath, 80);
+  if (bp) {
+    // along the balcony (towards its far end), turned outwards
+    const r = rooms.find(q => q.id === bp.id), S = P.byId.get(bp.id), c = polyCentroid(r.poly);
+    const e = S.edges.slice().sort((a, b) => b.len - a.len)[0], sgn = dot2(sub2(c, [bp.u, bp.v]), e.d) >= 0 ? 1 : -1;
+    const out = [c[0] - cu, c[1] - cv], l = Math.hypot(out[0], out[1]) || 1;
+    v.balcony = { pos: [bp.u, E, bp.v], target: [bp.u + e.d[0] * sgn * 3 + out[0] / l * 2.2, 1.25, bp.v + e.d[1] * sgn * 3 + out[1] / l * 2.2], fov: 78, outside: true };
+  }
+  const hall = rooms.find(r => r.kind === 'hall') || rooms[0];
+  v.hall = look(hall, 75);
+  v.top = { pos: [cu, 40, cv + 0.01], target: [cu, 0, cv], fov: Math.max(12, Math.min(34, span * 1.75)) };
+  v.dollhouse = { pos: [cu + span * 0.75 + 1.5, span * 0.85 + 2, cv + span * 0.8 + 2.5], target: [cu, 0.3, cv], fov: 40 };
+  return v;
+}
+
+// Public builders. A unit with a real interior is built from it; the fitted-box planner is the fallback.
+function buildAny(unit, styleId, opts) {
+  let I = null;
+  if (!opts.box) { try { I = unit && (unit.interior !== false) ? interiorOf(unit) : null; } catch { I = null; } }
+  if (I && I.rooms && I.rooms.length) {
+    try { return buildReal(unit, styleId, opts, I); }
+    catch (err) { try { console.warn('[apartment] real interior failed for ' + (unit && unit.id) + ' — fitted box used', err); } catch { /* no console */ } CUR_M = null; }
+  }
+  return build(unit, styleId, opts);
+}
+export function buildApartment(unit, styleId = 'milano', opts = {}) { return buildAny(unit, styleId, opts); }
+export function buildApartmentCutaway(unit, styleId = 'milano', opts = {}) { return buildAny(unit, styleId, { ...opts, cutaway: true }); }
+// Plan only (no geometry). Fitted-box plan: rooms, mode, windows (tests / tools of the fallback path).
 export function planApartment(unit) { return planUnit(unit); }
+// The geometry plan of a real interior (spaces with edges, wall intervals, openings, wall stretches) or null.
+export function planInterior(unit) { const I = interiorOf(unit); if (!I) return null; const P = rpPlan(unit, I); if (!P.segsDone) { rpSegs(P); P.segsDone = true; } return P; }
 export { STYLES } from './materials.js';

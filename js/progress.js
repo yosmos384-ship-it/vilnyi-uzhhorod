@@ -48,7 +48,7 @@ const whenOf = (iso, precision) => (precision === 'day' ? dayLong(iso) : cap1(mo
 
 // ---------------------------------------------------------------- data → model
 const pickL = o => (o == null ? '' : typeof o === 'string' ? (lang === 'en' ? o : '') : (o[lang] || ''));   // only the current language, never a foreign fallback
-const textOf = o => (o == null ? '' : typeof o === 'string' ? o : (o[lang] || (lang === 'uk' || lang === 'ru' ? o.uk : '') || ''));
+const textOf = o => (o == null ? '' : typeof o === 'string' ? o : (o[lang] || (lang === 'uk' ? o.uk : '') || ''));
 const creditName = c => (pgHas('credit.' + c) ? pg('credit.' + c) : c);
 const bNo = id => BUILDINGS?.[id]?.no ?? String(id).replace(/\D/g, '');
 const bName = id => pg('building', { n: bNo(id) });

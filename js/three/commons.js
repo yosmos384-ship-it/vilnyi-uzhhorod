@@ -827,6 +827,9 @@ function claimRig(root, spots, hemi = 0.12) {
 function wallRun(ctx, s) {
   const { B, C } = ctx;
   const H = s.H ?? ctx.H;
+  // body depth behind the hall line: WALL_T, or less (s.T) where the flats' own entrance walls are thinner — a real
+  // interior builds its entrance wall itself (0.07–0.38 m thick), the hall's body must not stick out of it into the flat
+  const WT = Math.min(WALL_T, Math.max(0.04, s.T ?? WALL_T));
   const P = (a, d) => s.axis === 'x' ? [a, s.c + s.side * d] : [s.c + s.side * d, a];
   const box = (mat, a0, a1, y0, y1, d0, d1) => { const [x0, z0] = P(a0, d0), [x1, z1] = P(a1, d1); B.box(mat, x0, x1, y0, y1, z0, z1); };
   const col = (a0, a1, y0, y1, d0, d1) => { const [x0, z0] = P(a0, d0), [x1, z1] = P(a1, d1); C.box(x0, x1, y0, y1, z0, z1); };
@@ -834,11 +837,11 @@ function wallRun(ctx, s) {
   // body gaps: lifts also leave a door pocket
   const gaps = ops.map(o => o.kind === 'lift' ? [o.c - POCKET, o.c + POCKET, LIFT_H + 0.1] : [o.a0, o.a1, o.h]);
   let a = s.a0;
-  const solidSeg = (a0, a1) => { if (a1 - a0 < 0.005) return; if (!s.noBody) box(s.body || 'plaster', a0, a1, 0, H, -WALL_T, FACE); col(a0, a1, 0, H, -WALL_T, FACE + 0.03); };
+  const solidSeg = (a0, a1) => { if (a1 - a0 < 0.005) return; if (!s.noBody) box(s.body || 'plaster', a0, a1, 0, H, -WT, FACE); col(a0, a1, 0, H, -WT, FACE + 0.03); };
   for (const [g0, g1, h] of gaps) {
     solidSeg(a, Math.max(a, g0));
-    if (h < H && !s.noBody) box(s.body || 'plaster', g0, g1, h, H, -WALL_T, FACE);
-    if (h < H) col(g0, g1, h, H, -WALL_T, FACE);
+    if (h < H && !s.noBody) box(s.body || 'plaster', g0, g1, h, H, -WT, FACE);
+    if (h < H) col(g0, g1, h, H, -WT, FACE);
     a = Math.max(a, g1);
   }
   solidSeg(a, s.a1);
@@ -890,8 +893,8 @@ function wallRun(ctx, s) {
   // opening trims
   for (const o of ops) {
     if (o.kind === 'pass' || o.noTrim) {
-      for (const e of [o.a0, o.a1]) box('bronzeDark', e - 0.012, e + 0.012, 0, o.h, -WALL_T, FACE + 0.02);
-      if (o.h < H) box('bronzeDark', o.a0, o.a1, o.h - 0.012, o.h + 0.012, -WALL_T, FACE + 0.02);
+      for (const e of [o.a0, o.a1]) box('bronzeDark', e - 0.012, e + 0.012, 0, o.h, -WT, FACE + 0.02);
+      if (o.h < H) box('bronzeDark', o.a0, o.a1, o.h - 0.012, o.h + 0.012, -WT, FACE + 0.02);
       continue;
     }
     const t = o.kind === 'lift' ? 0.07 : 0.045, p = o.kind === 'lift' ? 0.05 : 0.032;
@@ -899,9 +902,9 @@ function wallRun(ctx, s) {
     box(mat, o.a0 - t, o.a0, 0, o.h + t, FACE, FACE + p); box(mat, o.a1, o.a1 + t, 0, o.h + t, FACE, FACE + p);
     box(mat, o.a0 - t, o.a1 + t, o.h, o.h + t, FACE, FACE + p);
     if (o.kind === 'door' || o.kind === 'service') {   // jamb reveals + threshold
-      box('bronzeDark', o.a0, o.a0 + 0.012, 0, o.h, -WALL_T, FACE); box('bronzeDark', o.a1 - 0.012, o.a1, 0, o.h, -WALL_T, FACE);
-      box('bronzeDark', o.a0, o.a1, o.h - 0.012, o.h, -WALL_T, FACE);
-      box('nero', o.a0, o.a1, 0, 0.008, -WALL_T, FACE + 0.01);
+      box('bronzeDark', o.a0, o.a0 + 0.012, 0, o.h, -WT, FACE); box('bronzeDark', o.a1 - 0.012, o.a1, 0, o.h, -WT, FACE);
+      box('bronzeDark', o.a0, o.a1, o.h - 0.012, o.h, -WT, FACE);
+      box('nero', o.a0, o.a1, 0, 0.008, -WT, FACE + 0.01);
     }
     if (o.kind === 'lift') box('bronze', o.a0, o.a1, 0, 0.012, -0.12, FACE + 0.04);   // landing sill
   }

@@ -1,0 +1,1028 @@
+// ЖК VILNYI (Ужгород) — driving in the walkthrough (the methods walk.js mixes into Walkthrough).
+// Any parked car of the fleet can be entered (car park and streets): a prompt by the car, the driver's door swings, then
+// the driver's seat or a chase camera. Physics: cars.js CarController. The way out: car-park aisles → either ramp (its
+// barrier lifts) → the plot's driveway → the streets of the model (kerbs, buildings, trees, lamps and other traffic are
+// solid; the traffic brakes for the visitor) → the edge of the model turns the car round. Back the same way.
+// Inside: the live cockpit of car-models.js (instruments, radio screen, mirrors), the radio (radio.js — real stations, starts
+// with the gesture that enters the car), engine / tyre / wind / horn sounds (WebAudio, generated), indicators, wipers.
+// For the next wave (people, police, damage) the instance emits events and exposes a small API — see "hooks" below.
+// `this` is the Walkthrough instance (walk.js): it provides the scene, the collision lists, the HUD and the audio context.
+import * as THREE from 'three';
+import * as DATA from '../data.js';
+import { createRadio } from './radio.js';
+import { createCarAudio } from './car-audio.js';
+import { newDamage, addImpact, damageMods, damageLevel, applyDamage, createCarFx, DAMAGE_LEVELS } from './car-damage.js';
+
+const { RAMPS, SITE_CENTER } = DATA;
+const PARKING = DATA.PARKING || {};
+const EYE = 1.62;
+const damp = (k, dt) => 1 - Math.exp(-k * dt);
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerpN = (a, b, t) => a + (b - a) * t;
+const sstep = t => { t = clamp(t); return t * t * (3 - 2 * t); };
+function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } }
+const frame = () => new Promise(r => requestAnimationFrame(() => r(performance.now())));
+
+const CAR_PARK_LIMIT = 20, STREET_LIMIT = 50;          // km/h shown on the sign (a hint, as on a real site)
+const CAR_PARK_CAP = 40, RAMP_CAP = 36, OFFROAD_CAP = 70;   // km/h the limiter of the place allows (on a street: the car's own top speed)
+const SESSION_DMG = new Map();                        // record id → damage record: a car stays damaged for the page session
+const wrapPi = a => { a = (a + Math.PI) % (2 * Math.PI); return (a < 0 ? a + 2 * Math.PI : a) - Math.PI; };
+const carMass = S => ((S.perf && S.perf.mass) || 1) * 1600;
+const TICK_MS = 100;                                  // drive:tick events (10 per second)
+
+const CSS = `
+.vw-dx{position:absolute;display:flex;gap:8px;align-items:center;direction:ltr}
+.vw-dx button{pointer-events:auto;touch-action:none;-webkit-user-select:none;user-select:none}
+.vw-dgear{min-width:54px;height:44px;border-radius:12px;border:1px solid var(--ln);background:var(--bg);color:var(--g2);font:700 15px/1 "Manrope","Inter Tight",Arial,sans-serif;letter-spacing:.08em;display:inline-flex;align-items:center;justify-content:center;gap:5px;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.vw-dgear i{font-style:normal;opacity:.38}.vw-dgear i.on{opacity:1;color:#111;background:linear-gradient(180deg,#f0d596,#b88a3c);border-radius:6px;padding:4px 6px;margin:0 -2px}
+.vw-dround{width:44px;height:44px;border-radius:50%;border:1px solid var(--ln);background:var(--bg);color:var(--g2);display:inline-flex;align-items:center;justify-content:center;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.vw-dround.on{color:#111;background:linear-gradient(180deg,#f0d596,#b88a3c);border-color:transparent}
+.vw-dxr{right:calc(12px + var(--sr));bottom:calc(150px + var(--sb))}
+.vw:not(.phone) .vw-dxr{bottom:calc(22px + var(--sb))}
+.vw-dname{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(146px + var(--sb));padding:5px 12px;border-radius:999px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#e9dfc8;background:rgba(8,8,8,.5);white-space:nowrap;pointer-events:none!important;unicode-bidi:plaintext}
+.vw.phone .vw-dname{bottom:calc(126px + var(--sb));font-size:10px}
+.vw-dname b{color:var(--g2);font-weight:600}
+.vw.driving .vw-dname{animation:vwdname 7s ease forwards}
+@keyframes vwdname{0%,70%{opacity:1}100%{opacity:0}}
+.vw-dtop .vw-ico[data-kd]{width:40px;padding:0;justify-content:center}
+.vw.phone .vw-steer{width:158px;height:72px;border-radius:36px}
+.vw.phone .vw-steer .knob{width:48px;height:48px;margin:-24px 0 0 -24px}
+.vw.phone .vw-pedals .brake{width:70px;height:84px}.vw.phone .vw-pedals .gas{width:62px;height:118px}
+@media (orientation:portrait){
+  .vw.phone .vw-spdo{bottom:calc(150px + var(--sb));width:96px;height:96px;left:calc(12px + var(--sl));transform:none}
+  .vw.phone .vw-spdo .num b{font-size:29px}
+  .vw.phone .vw-dname{bottom:calc(254px + var(--sb))}
+  .vw.phone .vw-dxr{bottom:calc(150px + var(--sb))}
+  .vw.phone .vw-dtop{flex-wrap:wrap;justify-content:flex-end;max-width:calc(100vw - 20px)}
+}
+@media (orientation:landscape){
+  .vw.phone .vw-dxr{bottom:calc(142px + var(--sb))}
+  .vw.phone .vw-steer{left:calc(18px + var(--sl))}
+}
+.vw.tilt .vw-steer{opacity:.35}
+.vw:not(.phone) .vw-dhand{display:none}
+.vw.drive-fp:not(.phone) .vw-spdo{opacity:0;pointer-events:none}
+.vw.drive-fp:not(.phone) .vw-dradio{bottom:calc(22px + var(--sb))}
+.vw.drive-fp:not(.phone) .vw-dname{bottom:calc(70px + var(--sb))}
+.vw-dradio{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(150px + var(--sb));display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:999px;border:1px solid var(--ln);background:var(--bg);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);direction:ltr;max-width:calc(100vw - 16px)}
+.vw-dradio button{pointer-events:auto;width:34px;height:34px;flex:none;border-radius:50%;border:0;background:transparent;color:var(--g2);display:inline-flex;align-items:center;justify-content:center;font-size:13px;touch-action:manipulation}
+.vw-dradio button:active{background:rgba(201,164,92,.25)}
+.vw-dradio .st{min-width:0;max-width:200px;padding:0 6px;display:flex;flex-direction:column;align-items:center;line-height:1.15;pointer-events:none!important;unicode-bidi:plaintext}
+.vw-dradio .st b{font-size:12px;font-weight:600;color:#f1e7cf;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.vw-dradio .st i{font-style:normal;font-size:9.5px;letter-spacing:.08em;color:#bfb497;white-space:nowrap}
+.vw-dradio.off .st b{opacity:.55}.vw-dradio [data-kr=power].on{color:#111;background:linear-gradient(180deg,#f0d596,#b88a3c)}
+.vw-dradio.live .st i{color:#7fe08f}
+.vw:not(.phone) .vw-dname{bottom:calc(198px + var(--sb))}
+.vw.phone .vw-dradio{bottom:calc(128px + var(--sb))}
+.vw.phone .vw-dradio .st{max-width:132px}
+@media (orientation:portrait){.vw.phone .vw-dradio{bottom:calc(256px + var(--sb))}.vw.phone .vw-dname{bottom:calc(304px + var(--sb))}}
+@media (orientation:landscape){.vw.phone .vw-dradio{bottom:auto;top:calc(56px + var(--st));left:calc(12px + var(--sl));transform:none}.vw[dir=rtl].phone .vw-dradio{left:auto;right:calc(12px + var(--sr))}.vw.phone .vw-dradio .st{max-width:150px}.vw.phone .vw-dname{bottom:calc(126px + var(--sb))}}
+`;
+const ICON = {
+  horn: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10v4h3l6 4V6l-6 4z"/><path d="M16.5 9.5c1 .7 1.5 1.5 1.5 2.5s-.5 1.800-1.500 2.500M19 7c1.600 1.300 2.500 3 2.500 5s-.9 3.700-2.500 5"/></svg>',
+  tilt: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="8" height="18" rx="1.8" transform="rotate(-20 12 12)"/><path d="M3 8c.6-2 1.800-3.400 3.500-4.200M21 16c-.6 2-1.800 3.400-3.500 4.200"/></svg>',
+  reset: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.600-5.900"/><path d="M4 4v4.500h4.500"/></svg>',
+  prev: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h2v14H6zM20 5v14l-10-7z"/></svg>',
+  next: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5v14l10-7z"/></svg>',
+  volDn: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.500L12 6v12l-4.500-3.500H4z"/><path d="M16 12h5"/></svg>',
+  volUp: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.500L12 6v12l-4.500-3.500H4z"/><path d="M16 12h5M18.500 9.500v5"/></svg>',
+  hand: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6.2"/><path d="M4.600 6.500a9.500 9.500 0 0 0 0 11M19.400 6.500a9.500 9.500 0 0 1 0 11"/><path d="M10.500 15v-6h2.200a1.800 1.800 0 0 1 0 3.600h-2.200"/></svg>',
+  power: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3.500v8"/><path d="M6.600 6.800a7.500 7.500 0 1 0 10.800 0"/></svg>',
+};
+
+export const driveMixin = {
+  // ======================= the cars of the car park =======================
+  // New car park (drawing): PARKING.bays of data.js → cars.js parkingCars() fills about two thirds of them by its rules.
+  // Old car park: the builder's own list `parkedCars`. This is the one place that knows both.
+  _parkingBays(c) {
+    if (Array.isArray(PARKING.bays) && PARKING.bays.length) return { bays: PARKING.bays, src: 'data' };
+    const b = c && c.parking && c.parking.bays;
+    if (Array.isArray(b) && b.length && b[0].yaw != null && b[0].x != null) return { bays: b, src: 'builder' };
+    return null;
+  },
+  _adoptParking(c) {
+    const C = this.mods.cars;
+    if (!this.fleet || !c || !C) return;
+    try {
+      const P = this._parkingBays(c), y = PARKING.y ?? -4.2;
+      let list = null;
+      if (P && P.src === 'data' && C.parkingCars) list = C.parkingCars(P.bays, { y });
+      else if (Array.isArray(c.parkedCars) && c.parkedCars.length) list = c.parkedCars;
+      else if (P && C.parkingCars) list = C.parkingCars(P.bays, { y });
+      if (list && list.length) {
+        // a car that would stand in a wall or a column is left out (the drawing wins over the dice)
+        const veto = P && P.src === 'data' ? q => this._spotFree(q, true) : null;
+        if (this.fleet.add(list, 'parking', veto).length) this._registerCars();
+      }
+      if (c.carInstances && c.carInstances.group) c.carInstances.group.visible = false;   // the fleet draws them now
+      this._initBarriers();
+    } catch (e) { console.warn('[walk] parked cars', e); }
+  },
+  // a parked car at c = {kind, x, y, z, yaw} touches no wall / building (and, unless wallsOnly, no other car)
+  _spotFree(c, wallsOnly = false) {
+    const S = this.mods.cars.carSpec(c.kind), ctl = { S, rec: { collider: null }, v: 1, _wallsOnly: wallsOnly };
+    for (const v of [1, -1]) { ctl.v = v; if (this._carBlocked(ctl, c.x, c.z, c.yaw, c.y)) return false; }
+    return true;
+  },
+
+  // ======================= barriers at the ramps =======================
+  // One boom per ramp, just outside its portal (or at RAMPS[].gate when the data places it). It lifts when a car comes
+  // near from either side and drops behind it; while it is down it is solid.
+  _initBarriers() {
+    if (this._barriers || !this.mods.cars || !this.mods.cars.rampModel) return;
+    this._barriers = [];
+    // the car-park builder may draw its own boom: then only the logic is added here
+    let own = false; if (this.commons && this.commons.group) this.commons.group.traverse(o => { if (/barrier|boom/i.test(o.name || '') && o.userData && o.userData.arm) own = true; });
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.1 });
+    const box = (w, h, d, x, y, z, hex) => { const g = new THREE.BoxGeometry(w, h, d).toNonIndexed(); g.translate(x, y, z); const c = new THREE.Color(hex), a = new Float32Array(g.attributes.position.count * 3); for (let i = 0; i < a.length; i += 3) { a[i] = c.r; a[i + 1] = c.g; a[i + 2] = c.b; } g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g; };
+    const merge = list => { const n = list.reduce((s, g) => s + g.attributes.position.count, 0), P = new Float32Array(n * 3), N = new Float32Array(n * 3), Cc = new Float32Array(n * 3); let o = 0; for (const g of list) { P.set(g.attributes.position.array, o); N.set(g.attributes.normal.array, o); Cc.set(g.attributes.color.array, o); o += g.attributes.position.count * 3; g.dispose(); } const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.BufferAttribute(N, 3)); g.setAttribute('color', new THREE.BufferAttribute(Cc, 3)); return g; };
+    for (const R of RAMPS) {
+      const m = this.mods.cars.rampModel(R), [dx, dz] = m.dirTop;
+      let px = m.pts[0][0] + dx * 1.6, pz = m.pts[0][2] + dz * 1.6, py = m.y0 > 0.02 ? m.y0 * (1 - 1.6 / 3.2) : 0, ax = dx, az = dz, hw = m.hw;
+      const gate = R.gate && Array.isArray(R.gate.p) && /barrier|boom|шлагбаум/i.test(String(R.gate.kind || 'barrier')) ? R.gate : null;
+      if (gate) {   // nearest point of the ramp path gives the level and the direction
+        let best = null; for (let i = 0; i + 1 < m.pts.length; i++) { const a = m.pts[i], b = m.pts[i + 1], ux = b[0] - a[0], uz = b[2] - a[2], L2 = ux * ux + uz * uz || 1, t = clamp(((gate.p[0] - a[0]) * ux + (gate.p[1] - a[2]) * uz) / L2), qx = a[0] + ux * t, qz = a[2] + uz * t, d = Math.hypot(gate.p[0] - qx, gate.p[1] - qz); if (!best || d < best.d) best = { d, y: a[1] + (b[1] - a[1]) * t, ux: -ux / Math.sqrt(L2), uz: -uz / Math.sqrt(L2) }; }
+        if (best && best.d < 12) { px = gate.p[0]; pz = gate.p[1]; py = best.y; ax = best.ux; az = best.uz; hw = (gate.w || m.hw * 2) / 2; }
+      }
+      // across the ramp: the post stands on the right of a car driving OUT (right of (ax, az) is (−az, ax))
+      const rx = -az, rz = ax, L = hw * 2 - 0.5;
+      const B = { id: R.id, x: px, y: py, z: pz, ax, az, rx, rz, hw, L, t: 0, group: null, arm: null, own };
+      if (!own) {
+        const g = new THREE.Group(); g.name = 'walk-barrier-' + R.id; g.position.set(px + rx * (hw - 0.22), py, pz + rz * (hw - 0.22)); g.rotation.y = Math.atan2(ax, az);
+        const post = new THREE.Mesh(merge([box(0.3, 1.05, 0.34, 0, 0.525, 0, '#2c2f33'), box(0.32, 0.08, 0.36, 0, 1.09, 0, '#e3b21c'), box(0.06, 0.06, 0.02, 0, 0.8, 0.18, '#d02a1e')]), mat);
+        const armParts = []; const n = Math.max(4, Math.round(L / 0.5));
+        for (let i = 0; i < n; i++) armParts.push(box(L / n, 0.09, 0.05, -(i + 0.5) * L / n, 0, 0, i % 2 ? '#c8231e' : '#f2f2ee'));
+        const arm = new THREE.Mesh(merge(armParts), mat); arm.position.set(-0.05, 0.98, 0.0);   // local −x points across the ramp towards the far side
+        g.add(post, arm); this.scene.add(g); B.group = g; B.arm = arm;
+      }
+      this._barriers.push(B);
+    }
+  },
+  _barrierUpdate(dt, p) {
+    if (!this._barriers) return;
+    for (const B of this._barriers) {
+      // distance along the ramp direction (+ = street side) and across it
+      const ox = p.x - B.x, oz = p.z - B.z, s = ox * B.ax + oz * B.az, c = Math.abs(ox * B.rx + oz * B.rz);
+      const near = this.drive && c < B.hw + 3 && s > -9 && s < 11 && Math.abs(p.y - B.y) < 3;
+      B.t += ((near ? 1 : 0) - B.t) * damp(near ? 3.6 : 2.2, dt);
+      if (B.arm) { B.arm.rotation.z = -sstep(B.t) * 1.42; B.arm.updateMatrixWorld(true); }
+    }
+  },
+  // the raised divider between the two lanes of a ramp (0.18 m kerb with pylons on the drawing) is solid for a car
+  _islandBlocks(x, z, yaw, S) {
+    if (!this._islands) {
+      this._islands = [];
+      for (const R of RAMPS) { const K = R.kerbs; if (!K || !Array.isArray(K.div) || K.divEnd == null || !R.topPoint) continue;
+        const ax = R.axis === 'z', top = (ax ? R.topPoint[2] : R.topPoint[0]) + (R.dirUp ? R.dirUp[ax ? 1 : 0] : -1) * 1.2, a0 = Math.min(K.divEnd, top), a1 = Math.max(K.divEnd, top), c0 = Math.min(...K.div) + 0.04, c1 = Math.max(...K.div) - 0.04;
+        this._islands.push(ax ? { x0: c0, x1: c1, z0: a0, z1: a1 } : { x0: a0, x1: a1, z0: c0, z1: c1 }); }
+    }
+    for (const I of this._islands) {
+      if (x < I.x0 - 4 || x > I.x1 + 4 || z < I.z0 - 4 || z > I.z1 + 4) continue;
+      if (this.mods.cars.quadsOverlap(this.mods.cars.carCorners(S.kind, x, z, yaw, 0), [[I.x0, I.z0], [I.x1, I.z0], [I.x1, I.z1], [I.x0, I.z1]])) return true;
+    }
+    return false;
+  },
+  _barrierBlocks(quad, y) {
+    if (!this._barriers) return false;
+    const Q = this.mods.cars.quadsOverlap;
+    for (const B of this._barriers) {
+      if (B.t > 0.55 || Math.abs(y - B.y) > 1.6) continue;
+      const a = [B.x + B.rx * B.hw, B.z + B.rz * B.hw], b = [B.x - B.rx * B.hw, B.z - B.rz * B.hw], t = 0.12;
+      if (Q(quad, [[a[0] + B.ax * t, a[1] + B.az * t], [b[0] + B.ax * t, b[1] + B.az * t], [b[0] - B.ax * t, b[1] - B.az * t], [a[0] - B.ax * t, a[1] - B.az * t]])) return true;
+    }
+    return false;
+  },
+
+  // ======================= hooks for the next wave (people, police, damage) =======================
+  // Events (walk.onDrive(type, cb) → unsubscribe; also re-sent on window as CustomEvent 'vrc:drive' with detail {type, …}):
+  //   'drive:enter'     { car }                       the visitor sat down in `car`
+  //   'drive:exit'      { car }                       … and got out (car = the record left standing)
+  //   'drive:tick'      { car, pos: {x, y, z}, vel: {x, z}, speedKmh, heading, steer, braking, onRoad }   10 × per second while driving
+  //   'drive:collision' { car, impulse (kg·m/s), speed (m/s lost), hard, point: [x, y, z], normal: [x, z], other }
+  //                     other = a fleet record / a traffic car / { building } / 'kerb' / null (wall, column, barrier)
+  //   'drive:horn'      { car, on }
+  //   'drive:radio'     { car, on, station, status }
+  // `car` is always the fleet RECORD of the car: { id (stable: 'bay:1/16', 'kerb:3', 'traffic:7' …), kind, colour, x, y, z, yaw,
+  // src, bay, driver (a slot for people.js), disabled, collider }.
+  _bus() { return this._dbus || (this._dbus = new Map()); },
+  onDrive(type, cb) { if (type !== '*' && !/^drive:/.test(type)) type = 'drive:' + type; const m = this._bus(); if (!m.has(type)) m.set(type, new Set()); m.get(type).add(cb); return () => this.offDrive(type, cb); },
+  offDrive(type, cb) { if (type !== '*' && !/^drive:/.test(type)) type = 'drive:' + type; const s = this._bus().get(type); if (s) s.delete(cb); },
+  _emitDrive(type, detail) {
+    const s = this._bus().get(type), all = this._bus().get('*');
+    for (const set of [s, all]) if (set) for (const cb of [...set]) { try { cb(detail, type); } catch (e) { console.warn('[drive] listener', type, e); } }
+    if (type !== 'drive:tick') { try { window.dispatchEvent(new CustomEvent('vrc:drive', { detail: { type, ...detail } })); } catch { /* no window */ } }
+  },
+  /** The car the visitor drives now: its fleet record + live numbers, or null on foot. */
+  getPlayerCar() {
+    const D = this.drive; if (!D) return null; const c = D.ctl;
+    return { car: D.rec, id: D.rec.id, kind: D.rec.kind, name: c.S.name, plate: D.car.plate || '', x: c.x, y: c.y, z: c.z, yaw: c.yaw, v: c.v, pos: { x: c.x, y: c.y, z: c.z }, heading: c.yaw, vel: { x: Math.sin(c.yaw) * c.v, y: 0, z: Math.cos(c.yaw) * c.v }, speedKmh: c.v * 3.6,
+      mass: carMass(c.S), spec: c.S, ctl: c, model: D.car, group: D.car.group, driver: D.rec.driver, disabled: !!c.disabled,
+      box: this.mods.cars.carCorners(c.S.kind, c.x, c.z, c.yaw, 0), size: { L: c.S.L, W: c.S.W, H: c.S.H, zF: c.S.zF, zR: c.S.zR }, damage: D.rec.dmg || null, damageLevel: damageLevel(D.rec.dmg), slip: c.beta, steer: c.steer, braking: c.braking, horn: !!this._hornOn };
+  },
+  /** cb(car) for every moving traffic car: { id, x, y, z, yaw, v (m/s along its lane), vx, vz, kind, colour, driver (slot), disabled }. */
+  forEachTrafficCar(cb) { const tr = this._trafficRef(); if (tr && tr.forEach) tr.forEach(cb); else if (tr && tr.cars) for (const c of tr.cars) if (!c.taken) cb(c); },
+  /** Turn a traffic car into a parked fleet car where it stands and (unless enter === false) put the visitor into it. → the fleet record | null */
+  async takeTrafficCar(car, { enter = true } = {}) {
+    const tr = this._trafficRef(); if (!tr || !tr.take || !this.fleet || !car) return null;
+    if (enter && this.drive) return null;                                   // get out of the present car first
+    const p = tr.take(typeof car === 'string' ? tr.cars.find(c => c.id === car) : car); if (!p) return null;
+    const rec = this.fleet.addOne({ ...p, src: 'taken' }); this._registerCars();
+    this.fleet.update(this.camera, true);
+    if (enter) await this._enterCar(rec, { gesture: false });
+    return rec;
+  },
+  _findCar(car) {
+    if (!car) return null;
+    if (typeof car === 'string') { const r = this.fleet && this.fleet.byId(car); if (r) return r; const tr = this._trafficRef(); return (tr && tr.cars && tr.cars.find(c => c.id === car)) || null; }
+    return car.car || car;
+  },
+  /** A disabled car has no drive (it still rolls, steers and brakes). Works for the visitor's car, parked cars and traffic. */
+  setCarDisabled(car, on = true) {
+    const c = this._findCar(car); if (!c) return false; c.disabled = !!on;
+    if (this.drive && this.drive.rec === c) { this.drive.ctl.disabled = !!on; this._renderDriveHud(true); }
+    return true;
+  },
+  /** A shove in m/s (world): addCarImpulse(car, [vx, vz]) | (car, {x, z}) | (car, vx, vz). The visitor's car takes it in full; a traffic car along its lane; a parked car remembers it (rec.impulse). */
+  addCarImpulse(car, v, vz2) {
+    const c = this._findCar(car); if (!c || v == null) return false;
+    const vx = typeof v === 'number' ? v : Array.isArray(v) ? v[0] : v.x || 0, vz = typeof v === 'number' ? +vz2 || 0 : Array.isArray(v) ? v[1] : v.z || 0;
+    if (this.drive && this.drive.rec === c) { this.drive.ctl.addImpulse(vx, vz); return true; }
+    if (c.path != null && 'v0' in c) { c.push = (c.push || 0) + vx * Math.sin(c.yaw) + vz * Math.cos(c.yaw); return true; }
+    c.impulse = [(c.impulse ? c.impulse[0] : 0) + vx, (c.impulse ? c.impulse[1] : 0) + vz]; return true;
+  },
+
+  /** Open / close the driver's door of a parked or the driven car (only a car near enough to have its detailed model moves). */
+  openCarDoor(car, on = true) { const c = this._findCar(car), m = c && this.fleet && this.fleet.carOf(c); if (!m || !m.setDoor) return false; this._doorSwing(m, m.doorOpen, on ? 1 : 0, 300); return true; },
+  /** Stop a traffic car where it is (its driver brakes to a halt and waits) or let it go on: stopCar(car, on = true). Works on a fleet car too (= setCarDisabled). */
+  stopCar(car, on = true) { const c = this._findCar(car); if (!c) return false; if (c.path != null && 'v0' in c) { c.disabled = !!on; return true; } return this.setCarDisabled(c, on); },
+  /** The whole takeover of a car: a traffic car is stopped, leaves the traffic and becomes a fleet car where it stands, its driver's door opens
+   *  and the visitor is seated in it (the driver, if the people module put one into car.driver, is that module's to pull out BEFORE calling this
+   *  — the 'drive:take' event tells it). A parked fleet car is simply entered. → Promise<fleet record | null> */
+  async takeCar(car, { enter = true } = {}) {
+    const c = this._findCar(car); if (!c) return null;
+    if (c.path != null && 'v0' in c) { this._emitDrive('drive:take', { car: c, driver: c.driver || null }); return this.takeTrafficCar(c, { enter }); }
+    this._emitDrive('drive:take', { car: c, driver: c.driver || null });
+    if (enter && !this.drive) await this._enterCar(c, { gesture: false });
+    return c;
+  },
+  /** Seats of a car in ITS frame (+z forward, +x the driver's side = left; y above the ground) and where the doors are:
+   *  → { driver: {x, y, z}, passenger: {x, y, z}, rear: [{x, y, z} × 2], doorDriver: {x, z}, doorPassenger: {x, z}, eye: {x, y, z}, toWorld(p) → {x, y, z} } */
+  carSeats(car) {
+    const c = this._findCar(car); if (!c) return null;
+    const S = this.mods.cars.carSpec(c.kind), sx = S.driverX ?? 0.37, sz = S.seatZ ?? S.seat ?? -0.1, sy = (S.cushion ?? 0.3) + 0.08, rz = sz - Math.min(0.95, S.wb * 0.32);
+    const co = Math.cos(c.yaw), si = Math.sin(c.yaw), toWorld = p => ({ x: c.x + p.x * co + p.z * si, y: (c.y || 0) + (p.y || 0), z: c.z - p.x * si + p.z * co });
+    return { driver: { x: sx, y: sy, z: sz }, passenger: { x: -sx, y: sy, z: sz }, rear: S.kind === 'super' || S.kind === 'cabrio' || S.kind === 'gt' ? [] : [{ x: sx, y: sy, z: rz }, { x: -sx, y: sy, z: rz }],
+      doorDriver: { x: S.W / 2 + 0.55, y: 0, z: sz - 0.2 }, doorPassenger: { x: -(S.W / 2 + 0.55), y: 0, z: sz - 0.2 }, eye: { x: sx, y: S.eye ?? 1.15, z: sz }, toWorld };
+  },
+  /** Footprint of any car now: four world corners [[x, z] × 4] (front-left, front-right, rear-right, rear-left order of cars.js carCorners) + height. */
+  carBox(car) { const c = car && car.car ? car : this._findCar(car); if (!c) return null; const r = this.drive && (c === this.drive.rec) ? this.drive.ctl : c; const S = this.mods.cars.carSpec(c.kind); return { corners: this.mods.cars.carCorners(S.kind, r.x, r.z, r.yaw, 0), y: r.y || 0, h: S.H, x: r.x, z: r.z, yaw: r.yaw }; },
+  /** Damage from outside (the police ramming, a falling thing): damageCar(car, { point: [x, y, z] world, dir: [dx, dz] world push, speed m/s }). → the result of car-damage.js addImpact */
+  damageCar(car, { point = null, dir = null, speed = 5, scrape = false } = {}) { const c = this._findCar(car); if (!c || c.path != null) return null; return this._damageRec(c, point || [c.x, (c.y || 0) + 0.5, c.z], dir, speed, scrape); },
+  /** As new again (also revives a wrecked car). */
+  repairCar(car) { const c = this._findCar(car); if (!c) return false; c.dmg = null; SESSION_DMG.delete(c.id); c.disabled = false; c.hazard = false; if (this.drive && this.drive.rec === c) { Object.assign(this.drive.ctl.mod, damageMods(null)); this.drive.ctl.disabled = false; this.drive.dmg = null; if (this.drive.ind === 2) this.drive.ind = 0; applyDamage(this.drive.car, null); this._renderDriveHud(true); } return true; },
+
+  // ======================= crashes: damage, pushed cars, alarms, smoke =======================
+  // world point + world push direction → the car's own frame → the damage record of the fleet record (created on first need)
+  _damageRec(rec, point, dir, speed, scrape) {
+    const S = this.mods.cars.carSpec(rec.kind), live = this.drive && this.drive.rec === rec ? this.drive.ctl : rec;
+    const c = Math.cos(live.yaw), s = Math.sin(live.yaw), dx = point[0] - live.x, dz = point[2] - live.z;
+    const d = rec.dmg || (rec.dmg = SESSION_DMG.get(rec.id) || newDamage());
+    const res = addImpact(d, S, { point: [dx * c - dz * s, point[1] - (live.y || 0), dx * s + dz * c], dir: dir ? [dir[0] * c - dir[1] * s, dir[0] * s + dir[1] * c] : null, speed, scrape });
+    SESSION_DMG.set(rec.id, d); (this._dmgRecs || (this._dmgRecs = new Set())).add(rec);
+    if (d.dead) { rec.disabled = true; rec.hazard = true; }
+    return res;
+  },
+  // a parked (or crashed) car gets a shove: world velocity change (m/s) and a spin (rad/s); it slides to rest against its brakes
+  _pushCar(rec, vx, vz, spin = 0) {
+    if (!rec || !rec.collider || (this.drive && this.drive.rec === rec)) return null;
+    const P = this._pushed || (this._pushed = new Map()); let pc = P.get(rec);
+    if (!pc) { pc = new this.mods.cars.CarController(rec); pc.passive = true; P.set(rec, pc); }
+    const crs = pc.yaw - pc.beta, wx = Math.sin(crs) * pc.v + vx, wz = Math.cos(crs) * pc.v + vz, sp = Math.hypot(wx, wz);
+    pc.v = Math.min(sp, 40); pc.beta = sp > 0.05 ? wrapPi(pc.yaw - Math.atan2(wx, wz)) : 0; pc.yawKick = clamp(pc.yawKick + spin, -2.5, 2.5);
+    return pc;
+  },
+  // a moving traffic car that was hit hard leaves the traffic: it becomes a (damaged) fleet car where it stands
+  _crashTraffic(tc) {
+    const tr = this._trafficRef(); if (!tr || !tr.take || !this.fleet) return null;
+    const p = tr.take(tc); if (!p) return null;
+    const rec = this.fleet.addOne({ ...p, src: 'crashed' }); rec.hazard = true; rec.driver = p.driver || null; rec.wasTraffic = true;
+    this._registerCars(); this.fleet.markDirty();
+    return rec;
+  },
+  _alarm(rec, now = performance.now()) {
+    if (rec.driver || rec.wasTraffic || rec.src === 'taken') return;                // somebody sits in it: no alarm
+    rec.alarmUntil = now + 7000; (this._dmgRecs || (this._dmgRecs = new Set())).add(rec);
+    const A = this._carAudio(), cam = this.camera.position; if (A) A.alarm(7, clamp(1.4 - Math.hypot(rec.x - cam.x, rec.z - cam.z) / 40, 0.1, 1));
+    this._emitDrive('drive:alarm', { car: rec });
+  },
+  // the visitor's car touched something this frame (I = CarController.impact)
+  _carImpact(D, I, now) {
+    const { ctl, rec, car } = D, C = this.mods.cars, S = ctl.S;
+    if (!(I.speed > 0.7)) return;
+    let other = I.other, orec = null, speed = I.speed, tc = null;
+    const fx = Math.sin(I.course), fz = Math.cos(I.course), sgn = I.dir || 1, px = fx * sgn, pz = fz * sgn;   // world direction of travel at the contact
+    if (other && typeof other === 'object' && !other.building) { if (other.path != null && 'v0' in other) tc = other; else if (other.collider) orec = other; }
+    if (tc) {
+      // closing speed with a moving car; a real blow takes it out of the traffic, a touch only shoves it along its lane
+      const rel = Math.max(0.3, 1 - (tc.vx * px + tc.vz * pz) / Math.max(1, I.before)); speed = I.speed * Math.min(1.8, rel);
+      if (I.hard && speed > 3.2) orec = this._crashTraffic(tc); else { this.addCarImpulse(tc, px * speed * 0.4, pz * speed * 0.4); }
+      other = orec || tc;
+    }
+    if (orec) {
+      const So = C.carSpec(orec.kind), mp = carMass(S), mo = carMass(So), share = mp / (mp + mo), vHit = I.hard ? I.before : speed;
+      // both cars leave the contact with (nearly) the common speed; the car that was hit a little faster, so that they part
+      const vc = vHit * share;
+      if (I.hard) ctl.v = sgn * vc * 0.72;
+      const side = (orec.x - ctl.x) * fz - (orec.z - ctl.z) * fx;                       // off-centre hits spin the other car
+      this._pushCar(orec, px * vc * 1.22, pz * vc * 1.22, clamp(side * vHit * 0.05, -1.6, 1.6) * (I.hard ? 1 : 0.4));
+      const sOther = vHit * share * 1.25, r2 = this._damageRec(orec, I.point, [px, pz], sOther, !I.hard);
+      if (!orec.driver && sOther > 1.2) this._alarm(orec, now);
+      speed = vHit * (1 - share) * 1.25;                                                // a car gives way: softer than a wall
+      void r2;
+    }
+    const before = damageLevel(rec.dmg);
+    const res = this._damageRec(rec, I.point, I.normal, speed, !I.hard);
+    D.dmg = rec.dmg; Object.assign(ctl.mod, damageMods(rec.dmg, S));
+    if (!I.hard) { D.scrape = Math.min(1, (D.scrape || 0) + 0.5 + speed * 0.05); if (this._carFx && speed > 2) this._carFx.sparks(I.point[0], I.point[1], I.point[2], Math.min(14, 3 + Math.round(speed)), [px * Math.abs(ctl.v), 0, pz * Math.abs(ctl.v)]); }
+    else if (this._carFx && speed > 6) this._carFx.sparks(I.point[0], I.point[1], I.point[2], Math.min(24, Math.round(speed)), [0, 0, 0]);
+    // the look (at most a few times per second: bending ≈ 100 000 vertices takes a moment)
+    if (now - (D.bendT || 0) > 180 || res.died || res.level > before) { D.bendT = now; try { applyDamage(car, rec.dmg); } catch (e) { console.warn('[drive] damage look', e); } } else D.bendDue = true;
+    const A = this._carAudio(); if (A && now - (D.sndT || 0) > 90) { D.sndT = now; A.impact(Math.max(speed, I.hard ? 2 : 1), { glass: res.glass, metal: res.kmh > 14 }); }
+    if (navigator.vibrate && speed > 2) try { navigator.vibrate(speed > 8 ? 120 : 35); } catch { /* optional */ }
+    if (res.died) { ctl.disabled = true; rec.disabled = true; D.ind = 2; D.indT = now; this._toast(this.t('walk.car.wrecked'), 6000); if (this._eng) this._engineStop(); this._renderDriveHud(true); }
+    else if (res.level > before && res.level >= 2) this._toast(this.t('walk.car.dmg' + Math.min(4, res.level)), 2200);
+    const mass = carMass(S), detail = { car: rec, speed, speedKmh: speed * 3.6, impulse: speed * mass, hard: !!I.hard, point: I.point, normal: I.normal, other, zone: res.zone, level: res.level, levelName: DAMAGE_LEVELS[res.level], wrecked: !!rec.dmg.dead, pos: { x: ctl.x, y: ctl.y, z: ctl.z } };
+    this._emitDrive('drive:impact', detail); this._emitDrive('drive:collision', detail);
+    if (res.died) this._emitDrive('drive:wrecked', { car: rec });
+  },
+  // every frame, driving or on foot: cars sliding after a shove, alarms and hazard lights, smoke and sparks, the look of damaged cars nearby
+  _carsTick(dt) {
+    if (!this.fleet || !(dt > 0)) return;
+    const now = performance.now(), cam = this.camera.position;
+    if (this._pushed && this._pushed.size) {
+      const world = this._driveWorld();
+      for (const [rec, pc] of this._pushed) {
+        pc.impact = null; const n = Math.min(4, Math.max(1, Math.ceil(dt * 60))); for (let i = 0; i < n; i++) pc.step(dt / n, {}, world);
+        Object.assign(rec, { x: pc.x, y: pc.y, z: pc.z, yaw: pc.yaw, pitch: pc.pitch });
+        this.fleet.moved(rec); for (const e of this.solids) if (e.o === rec.collider) e.box = null;
+        if (pc.impact && pc.impact.speed > 1.5) { const I = pc.impact; this._damageRec(rec, I.point, I.normal, I.speed, !I.hard); const A = this._carAudio(); if (A) A.impact(I.speed, { gain: clamp(1.3 - Math.hypot(rec.x - cam.x, rec.z - cam.z) / 30, 0.15, 1) }); const o = I.other; if (o && o.collider && o !== rec && I.speed > 2.5) { const cx = Math.sin(I.course), cz = Math.cos(I.course); this._pushCar(o, cx * I.speed * 0.5, cz * I.speed * 0.5); this._damageRec(o, I.point, [cx, cz], I.speed * 0.6, !I.hard); this._alarm(o, now); } }
+        if (Math.abs(pc.v) < 0.06 && Math.abs(pc.yawKick) < 0.02) { this._pushed.delete(rec); this._trafficObstacles(true); }
+      }
+    }
+    const fx = this._carFx; let smoking = false;
+    if (this._dmgRecs && this._dmgRecs.size) {
+      const blink = Math.floor(now / 380) % 2 === 0, drv = this.drive ? this.drive.rec : null;
+      for (const rec of this._dmgRecs) {
+        const d = rec.dmg, live = rec === drv ? this.drive.ctl : rec, dist = Math.hypot(live.x - cam.x, live.z - cam.z);
+        // smoke from the engine bay: steam when it is hurt, dark smoke when it is wrecked
+        if (d && d.engine > 0.5 && dist < 90 && Math.abs((live.y || 0) - cam.y) < 12) {
+          smoking = true; const S = this.mods.cars.carSpec(rec.kind), rear = S.kind === 'super', lz = rear ? S.zR + 0.75 : S.zF - 0.85, co = Math.cos(live.yaw), si = Math.sin(live.yaw);
+          rec._smk = (rec._smk || 0) + dt * (d.dead ? 16 : d.engine > 0.8 ? 10 : 5);
+          if (!this._carFx) { try { this._carFx = createCarFx(); this.scene.add(this._carFx.group); } catch (e) { console.warn('[drive] fx', e); this._carFx = null; rec._smk = 0; } }
+          while (rec._smk >= 1 && this._carFx) { rec._smk -= 1; this._carFx.smoke(live.x + lz * si, (live.y || 0) + S.H * (rear ? 0.62 : 0.56), live.z + lz * co, d.dead || d.engine > 0.8 ? 'smoke' : 'steam', 1); }
+        }
+        // alarm / hazard lights (seen on the detailed model only)
+        if (rec !== drv) {
+          const car = this.fleet.carOf(rec), on = (rec.alarmUntil && now < rec.alarmUntil) || rec.hazard;
+          if (car && (on || rec._blinking)) { car.setLights(false, false, false, on && blink); rec._blinking = on; }
+          if (rec.alarmUntil && now >= rec.alarmUntil) rec.alarmUntil = 0;
+        }
+        if (!d && !rec.alarmUntil && !rec.hazard) this._dmgRecs.delete(rec);
+      }
+    }
+    if (this._carFx && (smoking || this._carFx.live > 0 || this._fxWas)) { const k = this.envMode === 'night' ? 0.25 : this.envMode === 'dusk' ? 0.55 : 1; this._fxWas = this._carFx.update(dt, cam.y < -1 ? 0.5 : k, this.renderer.domElement.height / (2 * Math.tan(this.camera.fov * Math.PI / 360))) > 0; }
+    // the look of damaged cars that have their detailed model now (one car per frame)
+    if (this.fleet.active) for (const rec of this.fleet.active) {
+      if (!rec.dmg) { const sd = SESSION_DMG.get(rec.id); if (sd) { rec.dmg = sd; if (sd.dead) { rec.disabled = true; rec.hazard = true; } (this._dmgRecs || (this._dmgRecs = new Set())).add(rec); } }
+      const car = this.fleet.carOf(rec), want = rec.dmg ? rec.dmg.rev : 0; if (!car || (car.damageRev || 0) === want) continue;
+      if (this.drive && this.drive.rec === rec && !this.drive.bendDue && now - (this.drive.bendT || 0) < 180) continue;
+      try { applyDamage(car, rec.dmg); } catch (e) { console.warn('[drive] damage look', e); car.damageRev = want; }
+      if (this.drive && this.drive.rec === rec) { this.drive.bendDue = false; this.drive.bendT = now; }
+      break;
+    }
+  },
+  _driveDispose() { try { if (this._carFx) this._carFx.dispose(); } catch { /* */ } this._carFx = null; this._pushed = null; this._dmgRecs = null; try { if (this._carA) this._carA.dispose(); } catch { /* */ } this._carA = null; this._eng = null; },
+
+  /** The same hooks as one object with on / off (what an adapter of another module expects): walk.driveHooks() */
+  driveHooks() {
+    return this._dapi || (this._dapi = { on: (t, cb) => this.onDrive(t, cb), off: (t, cb) => this.offDrive(t, cb), getPlayerCar: () => this.getPlayerCar(), forEachTrafficCar: cb => this.forEachTrafficCar(cb),
+      takeTrafficCar: (c, o) => this.takeTrafficCar(c, o), setCarDisabled: (c, on) => this.setCarDisabled(c, on), addCarImpulse: (c, a, b) => this.addCarImpulse(c, a, b), openCarDoor: (c, on) => this.openCarDoor(c, on),
+      forEachParkedCar: cb => { if (this.fleet) for (const r of this.fleet.records) if (!this.drive || r !== this.drive.rec) cb(r); }, carSpec: k => this.mods.cars.carSpec(k),
+      takeCar: (c, o) => this.takeCar(c, o), stopCar: (c, on) => this.stopCar(c, on), carSeats: c => this.carSeats(c), carBox: c => this.carBox(c), damageCar: (c, o) => this.damageCar(c, o), repairCar: c => this.repairCar(c),
+      enterCar: (c, o) => this._enterCar(this._findCar(c), { gesture: false, ...o }), exitCar: () => this._exitCar(), isDriving: () => !!this.drive, STATIONS: null });
+  },
+
+  // ======================= the extended city (V8-city), when it is there =======================
+  // environment.js may carry env.city (the real Uzhhorod around the plot). Then its data module answers where the roads,
+  // the houses and the edge of the map are; without it the streets of data.js (cars.js drive area) are all there is.
+  _cityStart() {
+    try {
+      const ec = this.env && this.env.city; if (!ec) return;
+      if (typeof ec.enable === 'function') Promise.resolve(ec.enable()).catch(() => {});
+      if (!this._cityP) this._cityP = import('./city-data.js').then(m => { this._cityMod = m; return m.loadCity ? m.loadCity() : null; }).catch(() => { this._cityMod = null; });
+    } catch { /* optional */ }
+  },
+  _city() { const m = this._cityMod; return m && m.CITY && m.CITY.ready ? m : null; },
+  // outside the hand-built surroundings of the plot the city's own data rules
+  _cityOut(M, x, z) { const s = M.CITY.seam; return !s || x < s.x0 || x > s.x1 || z < s.z0 || z > s.z1; },
+
+  // ======================= entering / leaving =======================
+  _showCarChip(rec, ms = 7000) {
+    this._chipRec = rec; this.el.carChip.classList.add('show');
+    const S = this.mods.cars.carSpec(rec.kind), lbl = this.el.carChip.querySelector('.lbl');
+    if (lbl) lbl.textContent = this.t('walk.car.enter') + (S.name ? ' · ' + S.name : '');
+    clearTimeout(this._chipT); if (ms) this._chipT = setTimeout(() => { if (!this._chipNear) this._hideCarChip(); }, ms);
+  },
+  async _doorSwing(car, from, to, ms) {
+    if (!car || !car.setDoor) return;
+    const t0 = performance.now();
+    for (;;) { const t = clamp((performance.now() - t0) / ms); car.setDoor(lerpN(from, to, sstep(t))); if (t >= 1 || this.disposed) break; await frame(); }
+  },
+  async _enterCar(rec = this._chipRec, { gesture = true } = {}) {
+    if (!rec || !this.fleet || this.drive || this.riding || this.busy) return;
+    if (gesture && this._gameNotice && this._gameNotice(() => this._enterCar(rec, { gesture: true }))) return;   // V9: first drive → the game-mode notice
+    this.busy = true; this._hideCarChip();
+    // FIRST, still inside the tap / key press that got us here: the radio and the audio context (browsers demand a gesture)
+    if (gesture) { this._radioStart(); this._carAudio(); if (this._gameAudioResume) this._gameAudioResume(); }
+    this._cityStart();
+    try {
+      this._driveHudInit();
+      this.fleet.setFocus(rec); this.fleet.update(this.camera, true);
+      const car = this.fleet.carOf(rec);
+      if (!car) { this._radioStop(); return; }
+      await this._doorSwing(car, 0, 1, 380);
+      await this._fade(true);
+      const ctl = new this.mods.cars.CarController(rec);
+      if (!rec.dmg && SESSION_DMG.has(rec.id)) rec.dmg = SESSION_DMG.get(rec.id);
+      if (rec.dmg) { Object.assign(ctl.mod, damageMods(rec.dmg, ctl.S)); if (rec.dmg.dead) ctl.disabled = true; if ((car.damageRev || 0) !== rec.dmg.rev) { try { applyDamage(car, rec.dmg); } catch { /* look only */ } } }
+      rec.alarmUntil = 0; rec.hazard = false; if (this._carA) this._carA.alarmStop();
+      this._fovWalk = this.camera.fov;
+      this.drive = { rec, car, ctl, view: lsGet('vrc.walk.carView') === 'chase' ? 'chase' : 'fp', look: { yaw: 0, pitch: 0 }, pad: { gas: 0, brake: 0, steer: 0 }, cam: null, lights: null,
+        gear: 'D', manual: false, dmg: rec.dmg || null, start: { x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw }, trail: [], trailT: 0, rHold: null, turn: null, horn: 0, tilt: 0, obsT: 0, blinkT: 0,
+        ind: 0, indT: 0, indSteer: 0, wipers: false, wipT: 0, tickT: 0, frame: 0, mirror: null, hudT: 0 };
+      this.glide = null; this.player.vel.set(0, 0, 0); this.keys.clear();
+      car.setInside(this.drive.view === 'fp'); car.ensureCockpit && car.ensureCockpit(); if (car.cockpit) car.cockpit.group.visible = true;
+      this._mirrorInit(this.drive);
+      this.root.classList.add('driving'); this.root.classList.toggle('drive-fp', this.drive.view === 'fp');
+      this._renderDriveHud(true);
+      if (!this._carMuted() && !ctl.disabled) this._engineStart(rec.kind);                    // engine sound is on by default, quietly; the HUD button mutes everything
+      this._driveUpdate(0);
+      this._doorSwing(car, 1, 0, 320).then(() => { const A = this._carA; if (A && this.drive) A.door(); });
+      if (!this._driveHinted && this._isTouch) { this._driveHinted = true; this._toast(this.t('walk.car.hintTouch'), 6000); }   // desktop: the key list stands in the corner
+      this._emitDrive('drive:enter', { car: rec });
+      if (this._gameStart) { this._gameHudInit(); this._gameStart(); }   // V9: people + police once the city data is there
+    } finally { this.busy = false; await this._fade(false); }
+  },
+  async _exitCar() {
+    const D = this.drive; if (!D || this.busy) return;
+    if (Math.abs(D.ctl.v) > 1.6) { this._toast(this.t('walk.car.stopFirst'), 1800); return; }
+    this.busy = true;
+    try {
+      const { rec, car, ctl } = D, S = ctl.S;
+      ctl.v = 0;
+      // where to stand: beside the driver's door, else the other side, else behind / in front
+      const c = Math.cos(ctl.yaw), s = Math.sin(ctl.yaw), toW = (lx, lz) => [ctl.x + lx * c + lz * s, ctl.z - lx * s + lz * c];
+      const spots = [[S.W / 2 + 0.6, S.seat - 0.25], [-(S.W / 2 + 0.6), S.seat - 0.25], [0, S.zR - 0.8], [0, S.zF + 0.8], [S.W / 2 + 1.2, S.seat]];
+      let pos = null, side = 0;
+      for (let i = 0; i < spots.length; i++) {
+        const [x, z] = toW(spots[i][0], spots[i][1]);
+        const fy = this._floorAt(x, ctl.y + 0.3, z, this._near(this.floors, new THREE.Vector3(x, ctl.y, z), 2));
+        if (fy == null || Math.abs(fy - ctl.y) > 0.6) continue;
+        if (!this._isFree(x, fy, z)) continue;
+        // beside the car: there must be a way out of the gap, forwards or backwards (a neighbour may stand 40 cm away)
+        if (i < 2) { const lx = spots[i][0], run = (z0, z1) => { for (let lz = z0, n = 0; n < 14; n++, lz += Math.sign(z1 - z0) * 0.4) { const [qx, qz] = toW(lx, lz); if (!this._isFree(qx, fy, qz)) return false; if ((z1 - lz) * Math.sign(z1 - z0) <= 0) break; } return true; };
+          if (!run(spots[i][1], S.zF + 0.7) && !run(spots[i][1], S.zR - 0.7)) continue; }
+        pos = new THREE.Vector3(x, fy, z); side = i; break;
+      }
+      if (side === 0) await this._doorSwing(car, 0, 1, 300);
+      await this._fade(true);
+      Object.assign(rec, { x: ctl.x, y: ctl.y, z: ctl.z, yaw: ctl.yaw, pitch: ctl.pitch, roll: 0 });
+      if (rec.dmg && rec.dmg.dead) rec.hazard = true;
+      this._radioStop(); this._carSoundsStop();
+      car.setInside(false); car.setLights(false); car.setWheels(ctl.spin, 0); if (this.headSpot) this.headSpot.intensity = 0;
+      if (car.cockpit) { car.cockpit.setWipers(0); car.cockpit.setMirrorMap(null); car.cockpit.group.visible = false; }
+      this._mirrorDispose(D);
+      car.group.position.set(ctl.x, ctl.y, ctl.z); car.group.rotation.set(-ctl.pitch, ctl.yaw, 0, 'YXZ'); car.group.updateMatrixWorld(true);
+      this.fleet.setFocus(null); this.fleet.moved(rec);
+      for (const e of this.solids) if (e.o === rec.collider) e.box = null;
+      this.drive = null;
+      this.root.classList.remove('driving', 'tilt', 'drive-fp');
+      this._tiltStop();
+      this._applyFov();
+      this._trafficObstacles(true);
+      if (!pos) { const [x, z] = toW(S.W / 2 + 0.6, S.seat); const [fx, fz] = this._freeSpot(x, ctl.y, z, 3); pos = new THREE.Vector3(fx, ctl.y, fz); }
+      // look back at the car just left
+      this._place(pos, Math.atan2(ctl.x - pos.x, ctl.z - pos.z) + Math.PI + (side === 0 ? 0.35 : 0));
+      this.player.eye = EYE;
+      this._lastPlace = null; this._updateHud(true);
+      if (side === 0) this._doorSwing(car, 1, 0, 420);
+      else car.setDoor && car.setDoor(0);
+      this._emitDrive('drive:exit', { car: rec });
+    } finally { this.busy = false; await this._fade(false); }
+  },
+  // headlights: automatic (dusk / night / underground) until toggled
+  _toggleHeadlights() { const D = this.drive; if (!D) return; D.lights = !this._lightsOn(D); this._renderDriveHud(true); },
+  _lightsOn(D = this.drive) { return D ? (D.lights != null ? D.lights : this.envMode !== 'day' || D.ctl.y < -0.8) : false; },
+  // the sound button (and M): everything of the car — engine, tyres, wind, horn, radio — off / on
+  _carMuted() { return lsGet('vrc.walk.carSound') === 'off'; },
+  _toggleCarSound() {
+    const D = this.drive; if (!D) return;
+    const mute = !this._carMuted();
+    lsSet('vrc.walk.carSound', mute ? 'off' : 'on');
+    const A = this._carAudio(); if (A) A.setMuted(mute);
+    if (this._radio) this._radio.setMuted(mute);
+    if (!mute && !this._eng) this._engineStart(D.rec.kind);
+    this._renderDriveHud(true);
+  },
+  _toggleCarView() {
+    const D = this.drive; if (!D) return;
+    D.view = D.view === 'fp' ? 'chase' : 'fp'; D.cam = null; D.look.yaw = D.look.pitch = 0;
+    D.car.setInside(D.view === 'fp'); if (D.car.cockpit) D.car.cockpit.group.visible = true; lsSet('vrc.walk.carView', D.view); this.root.classList.toggle('drive-fp', D.view === 'fp');
+    this._renderDriveHud(true);
+  },
+  _toggleGear(g) {
+    const D = this.drive; if (!D) return;
+    if (Math.abs(D.ctl.v) > 0.8) { this._toast(this.t('walk.car.stopFirst'), 1400); return; }
+    D.gear = g || (D.gear === 'D' ? 'R' : 'D'); D.manual = D.gear === 'R';
+    this._renderDriveHud(true);
+  },
+  // indicators: −1 right, +1 left, 0 off (the same key again cancels; they cancel themselves after the turn); 2 = hazards
+  _setIndicator(v) { const D = this.drive; if (!D) return; D.ind = D.ind === v ? 0 : v; D.indT = performance.now(); D.indSteer = 0; },
+  _toggleWipers() { const D = this.drive; if (!D) return; D.wipers = !D.wipers; },
+  // back to where the car last drove freely (R held, or the reset button): out of any corner it got wedged into
+  async _resetCar() {
+    const D = this.drive; if (!D || this.busy) return;
+    this.busy = true;
+    try {
+      await this._fade(true);
+      const now = performance.now(), ctl = D.ctl, rec0 = D.rec;
+      const p = [...D.trail].reverse().find(q => now - q.t > 2500 && Math.hypot(q.x - ctl.x, q.z - ctl.z) > 2.5) || D.trail[0] || D.start;
+      Object.assign(ctl, { x: p.x, y: p.y, z: p.z, yaw: p.yaw, v: 0, steer: 0, pitch: p.pitch || 0, roll: 0, dive: 0, hit: 0, gear: 'D', _autoR: false, yawKick: 0, beta: 0 });
+      const fresh = !!(rec0.dmg && rec0.dmg.dead); if (fresh) { this.repairCar(rec0); if (!this._carMuted()) this._engineStart(rec0.kind); }
+      D.gear = 'D'; D.manual = false; D.cam = null; D.turn = null; D.trail = D.trail.filter(q => q.t <= p.t);
+      this._driveUpdate(0);
+      this._toast(this.t(fresh ? 'walk.car.fresh' : 'walk.car.reset'), fresh ? 3000 : 1800);
+    } finally { this.busy = false; await this._fade(false); }
+  },
+  // keys while driving (called first by walk.js _onKey): true = handled
+  _driveKey(ev, down, code) {
+    const D = this.drive; if (!D) return false;
+    if (code === 'KeyR') {
+      if (ev.repeat) return true;
+      if (down) D.rHold = performance.now();
+      else { const held = D.rHold ? performance.now() - D.rHold : 0; D.rHold = null; if (held < 700 && held > 0) this._toggleGear(); }
+      return true;
+    }
+    if (code === 'KeyH') { if (!ev.repeat) { if (down) this._hornStart(); else this._hornStop(); } return true; }
+    if (down && !ev.repeat && code === 'KeyE') { ev.preventDefault(); this._exitCar(); return true; }
+    if (down && (code === 'Comma' || code === 'Period')) { if (!ev.repeat) this._radioCmd(code === 'Comma' ? 'prev' : 'next'); return true; }
+    if (down && (code === 'Minus' || code === 'Equal' || code === 'NumpadSubtract' || code === 'NumpadAdd')) { this._radioCmd(code === 'Minus' || code === 'NumpadSubtract' ? 'down' : 'up'); return true; }
+    if (down && !ev.repeat && code === 'KeyO') { this._radioCmd('power'); return true; }
+    if (down && !ev.repeat && (code === 'KeyZ' || code === 'KeyX')) { this._setIndicator(code === 'KeyZ' ? 1 : -1); return true; }
+    if (down && !ev.repeat && code === 'KeyG') { this._setIndicator(2); return true; }
+    if (down && !ev.repeat && code === 'KeyP') { this._toggleWipers(); return true; }
+    return false;
+  },
+
+  // ======================= the radio =======================
+  _radioGet() {
+    if (this._radio !== undefined) return this._radio;
+    try {
+      this._radio = createRadio(this.opts && this.opts.radio ? this.opts.radio : {});
+      this._radio.onChange(st => { this._radioHud(); if (this.drive) this._emitDrive('drive:radio', { car: this.drive.rec, on: st.on, station: st.station, status: st.status }); });
+    } catch (e) { console.warn('[drive] radio', e); this._radio = null; }
+    return this._radio;
+  },
+  _radioStart() { const R = this._radioGet(); if (!R) return; try { R.setMuted(this._carMuted()); R.start(); } catch { /* never blocks the drive */ } },
+  _radioStop() { const R = this._radio; if (R) { try { R.stop(false); } catch { /* */ } } this._radioHud(); },
+  _radioCmd(c) {
+    const R = this._radioGet(); if (!R || !this.drive) return;
+    try {
+      if (c === 'next') R.next(); else if (c === 'prev') R.prev(); else if (c === 'power') R.toggle();
+      else if (c === 'up') R.volumeBy(0.1); else if (c === 'down') R.volumeBy(-0.1);
+    } catch { /* */ }
+    this._radioHud();
+  },
+  _radioHud() {
+    const e = this.el, R = this._radio; if (!e || !e.dradio || !R) return;
+    const st = R.state, s = st.station;
+    e.dradio.classList.toggle('off', !st.on); e.dradio.classList.toggle('live', st.on && st.status === 'playing');
+    e.dradioName.textContent = st.on && s ? s.name : this.t('walk.radio.off');
+    e.dradioSub.textContent = !st.on ? this.t('walk.radio.title') : (s ? s.freq + ' · ' : '') + (st.status === 'playing' ? this.t('walk.radio.live') : st.status === 'error' ? this.t('walk.radio.none') : this.t('walk.radio.connecting'));
+    e.dradio.querySelector('[data-kr=power]').classList.toggle('on', st.on);
+  },
+
+  // ======================= the physics world =======================
+  _groundAt(x, y, z) {
+    const o = this._v1.set(x, y + 0.9, z);
+    const hits = this._cast(this._near(this.floors, o, 3), o, this._v2.set(0, -1, 0), 2.0);
+    for (const h of hits) if (h.point.y <= y + 0.62) return h.point.y;
+    // far out in the extended city there is no collider plane: the world is flat at y = 0 there
+    if (Math.abs(y) < 0.7) { const M = this._city(); if (M && this._cityOut(M, x, z) && (!M.insideCity || M.insideCity(x, z))) return 0; }
+    return null;
+  },
+  _carBlocked(ctl, x, z, yaw, y) {
+    const S = ctl.S, hw = S.W / 2 + 0.02, zf = S.zF + 0.04, zr = S.zR - 0.04, zc = (zf + zr) / 2;
+    const c = Math.cos(yaw), s = Math.sin(yaw), W = (lx, lz) => [x + lx * c + lz * s, z - lx * s + lz * c];
+    const [cx, cz] = W(0, zc), dirS = ctl.v >= 0 ? 1 : -1, nrm = [-s * dirS, -c * dirS];
+    const con = (other, point) => { ctl.contact = { point: point || [x + s * (dirS > 0 ? zf : zr), y + 0.5, z + c * (dirS > 0 ? zf : zr)], normal: nrm, other }; return true; };
+    // a car that is being shoved: the visitor's car is solid for it (when it would come closer), the visitor's stale parking collider is not
+    const drv = this.drive && ctl !== this.drive.ctl && ctl.passive ? this.drive : null;
+    if (drv) { const p = drv.ctl; if (Math.abs(p.y - y) < 1.5 && Math.hypot(p.x - x, p.z - z) < 7 && Math.hypot(p.x - x, p.z - z) < Math.hypot(p.x - ctl.x, p.z - ctl.z) - 1e-4 && this.mods.cars.quadsOverlap(this.mods.cars.carCorners(S.kind, x, z, yaw, 0.02), this.mods.cars.carCorners(p.S.kind, p.x, p.z, p.yaw, 0.02))) return con(drv.rec); }
+    // other traffic and a lowered barrier are solid too
+    if (ctl.rec && ctl.rec.collider && y > -1.2) {
+      const tr = this._trafficRef(), quad = this.mods.cars.carCorners(S.kind, x, z, yaw, 0.03);
+      const tc = tr && tr.hits && tr.hits(quad, cx, cz); if (tc) return con(tc === true ? 'traffic' : tc);
+      if (this._barrierBlocks(quad, y)) return con('barrier');
+      if (this._game && this.drive && ctl === this.drive.ctl) { const pu = this._gamePoliceHit(quad, cx, cz); if (pu) return con({ police: pu.unit || pu }); }   // V9: patrol cars are solid
+      // houses of the extended city (outside the hand-built surroundings, which have their own colliders)
+      const M = this._city();
+      if (M && M.buildingsNear && this._cityOut(M, x, z)) { const b = this._cityHouseHit(M, quad, cx, cz, S.L / 2 + 1); if (b) return con({ building: b.id }); }
+    } else if (ctl.rec && ctl.rec.collider && this._barrierBlocks(this.mods.cars.carCorners(S.kind, x, z, yaw, 0.03), y)) return con('barrier');
+    if (ctl.rec && ctl.rec.collider && this._islandBlocks(x, z, yaw, S)) return con('kerb');
+    const center = this._v1.set(cx, y + 0.6, cz);
+    const own = ctl.rec.collider;
+    const onRamp = this._rampDist(x, z) < 0.3;   // a ramp through a tower: the tower's street-level shell must not close it
+    const stale = drv ? drv.rec.collider : null;
+    const solids = this._near(this.solids, center, S.L / 2 + 1.2).filter(o => o !== own && o !== stale && !o.userData.floor && !o.userData.gate && !(onRamp && o.name === 'outdoor-solid') && !(ctl._wallsOnly && o.userData.carId));
+    if (!solids.length) return false;
+    const pts = [], fwd = ctl.v >= 0;
+    for (const k of [-1, -0.5, 0, 0.5, 1]) pts.push([k * hw, fwd ? zf : zr]);
+    for (const k of [0.2, 0.5, 0.8]) for (const sx of [-1, 1]) pts.push([sx * hw, fwd ? lerpN(zc, zf, k) : lerpN(zc, zr, k)]);
+    for (const sx of [-1, 1]) pts.push([sx * hw, fwd ? zr + 0.3 : zf - 0.3]);   // the swinging far end while turning
+    const o = new THREE.Vector3(), d = new THREE.Vector3();
+    for (const h of [0.42, 0.95]) {
+      o.set(cx, y + h, cz);
+      for (const [lx, lz] of pts) {
+        const [px, pz] = W(lx, lz); d.set(px - cx, 0, pz - cz); const L = d.length(); if (L < 1e-3) continue; d.divideScalar(L);
+        const hit = this._cast(solids, o, d, L).find(q => !q.object.userData.floor);
+        if (hit) {
+          const id = hit.object.userData.carId, other = id != null && this.fleet ? this.fleet.byId(id) : null;
+          let n = nrm; if (hit.face) { const fn = hit.face.normal.clone().transformDirection(hit.object.matrixWorld); if (Math.hypot(fn.x, fn.z) > 0.3) { const l = Math.hypot(fn.x, fn.z); n = [fn.x / l, fn.z / l]; } }
+          ctl.contact = { point: [hit.point.x, hit.point.y, hit.point.z], normal: n, other };
+          return true;
+        }
+      }
+    }
+    return false;
+  },
+  // does the car's footprint touch a house of the city data? (corners and edge mid-points of the car inside the outline, or a
+  // vertex of the outline inside the car)
+  _cityHouseHit(M, quad, cx, cz, r) {
+    let list; try { list = M.buildingsNear(cx, cz, r + 2); } catch { return null; }
+    if (!list || !list.length) return null;
+    const inP = (P, px, pz) => { let k = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, zi] = P[i], [xj, zj] = P[j]; if ((zi > pz) !== (zj > pz) && px < (xj - xi) * (pz - zi) / (zj - zi) + xi) k = !k; } return k; };
+    const pts = []; for (let i = 0; i < 4; i++) { const a = quad[i], b = quad[(i + 1) % 4]; pts.push(a, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], [a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]); }
+    for (const b of list) {
+      if (!b || !b.poly || b.near) continue;
+      if (pts.some(p => inP(b.poly, p[0], p[1])) || b.poly.some(p => inP(quad, p[0], p[1]))) return b;
+    }
+    return null;
+  },
+  _driveArea() {
+    const C = this.mods.cars;
+    if (this._dArea || !this.env || !this.env.group || !C || !C.createDriveArea) return this._dArea || null;
+    if (!this.env.group.getObjectByName('road-strips')) return null;   // streets not built yet
+    try { this._dArea = C.createDriveArea(this.env.group, { center: SITE_CENTER }); } catch (e) { console.warn('[walk] drive area', e); this._dArea = null; }
+    return this._dArea;
+  },
+  _trafficRef() { const ctx = this.env && this.env.modules && this.env.modules.context; return (ctx && ctx.traffic) || null; },
+  // tell the moving traffic what stands in its lanes: the visitor's car and the cars left on a street
+  _trafficObstacles(force = false) {
+    const tr = this._trafficRef(); if (!tr || !tr.setObstacles) return;
+    const now = performance.now(); if (!force && now - (this._obsT || 0) < 120) return; this._obsT = now;
+    const list = [];
+    if (this.drive && this.drive.ctl.y > -0.6) { const c = this.drive.ctl; list.push({ x: c.x, z: c.z, kind: c.S.kind }); }
+    if (this.fleet) for (const r of this.fleet.movedCars || []) if (r.y > -0.6 && (!this.drive || r !== this.drive.rec)) list.push({ x: r.x, z: r.z, kind: r.kind });
+    if (this._game) { if (!this.drive && this.player.pos.y > -0.6) list.push({ x: this.player.pos.x, z: this.player.pos.z, kind: 'person' }); for (const o of this._gameRoadObstacles()) list.push(o); }   // V9: people on the road
+    tr.setObstacles(list);
+  },
+  // is (x, z) on a carriageway? (the raster of the surroundings, or a road of the city data)
+  _onRoad(x, z) {
+    const A = this._driveArea(); if (A && A.test(x, z)) return true;
+    const M = this._city(); if (M && M.roadAt) { try { const r = M.roadAt(x, z, 14); return !!(r && r.on); } catch { /* */ } }
+    return !A;
+  },
+  _driveWorld() {
+    if (this._dw) return this._dw;
+    return (this._dw = {
+      ground: (x, y, z) => this._groundAt(x, y, z),
+      blocked: (ctl, x, z, yaw, y) => this._carBlocked(ctl, x, z, yaw, y),
+      // the limiter of the place: car park and ramps; off the road in the open city; near the edge of the model. On a street
+      // only the car's own top speed counts (the 50 on the sign is a sign).
+      limit: (x, y, z) => {
+        const D = this.drive; let cap = y < -0.8 ? CAR_PARK_CAP / 3.6 : this._rampDist(x, z) < 1 ? RAMP_CAP / 3.6 : 999;
+        if (D && D.offRoad) cap = Math.min(cap, OFFROAD_CAP / 3.6);
+        if (D && D.edge > 0) cap = Math.min(cap, lerpN(14, 3.5, D.edge));
+        return cap;
+      },
+      // underground the car-park walls bound the car; above ground: carriageways, the plot's driveways, the ramps, the
+      // forecourts (cars.js drive area) — kerbs and everything beyond them stop it. In the extended city (outside the
+      // hand-built surroundings) the car may leave the road: only houses, water and the edge of the map stop it.
+      // No area yet → 300 m round the yard.
+      drivable: (x, z) => {
+        if (this.drive && this.drive.ctl.y < -1) return true;
+        const A = this._driveArea();
+        if (A ? A.test(x, z) : Math.hypot(x - SITE_CENTER[0], z - SITE_CENTER[1]) < 300) return true;
+        const M = this._city(); if (!M || !this._cityOut(M, x, z)) return false;
+        try { if (M.insideCity && !M.insideCity(x, z)) return false; const ar = M.areaAt && M.areaAt(x, z); return !(ar && (ar.kind === 'water' || ar.kind === 'rail')); } catch { return false; }
+      },
+    });
+  },
+
+  // ======================= the map on the centre screen =======================
+  // the streets within ≈ 350 m (data.js STREETS + the city data when it is loaded); underground: the aisles and ramps of the car park
+  _mapRoads(x, y, z) {
+    const under = y < -1.5, c = this._mapC, M = this._city();
+    if (c && c.under === under && c.city === !!M && Math.hypot(x - c.x, z - c.z) < 70) return c;
+    const roads = [], names = [], R = 380;
+    if (under) {
+      for (const a of PARKING.aisles || []) roads.push({ pts: a.pts, w: Math.min(3, a.width || 6) });
+      for (const r of RAMPS) if (r.centerline) roads.push({ pts: r.centerline.map(p => [p[0], p[2]]), w: 3, main: true });
+    } else {
+      for (const st of DATA.STREETS || []) { const pts = (st.pts || []).filter(p => Math.hypot(p[0] - x, p[1] - z) < R + 150); if (pts.length > 1) { roads.push({ pts: st.pts, w: st.w || 6, main: !!st.main }); names.push(st); } }
+      if (M && M.roadsNear) { try { for (const r of M.roadsNear(x, z, R)) if (r.car && !r.near) { roads.push({ pts: r.pts, w: r.w || 6, main: r.cls === 'primary' || r.cls === 'secondary' }); names.push(r); } } catch { /* optional */ } }
+      for (const r of RAMPS) if (r.centerline) roads.push({ pts: r.centerline.map(p => [p[0], p[2]]), w: 4 });
+    }
+    const lang = this.lang || (this.opts && this.opts.lang) || 'uk';
+    const name = (px, pz) => {
+      if (under) return 'P −1';
+      let best = null; for (const st of names) { const pts = st.pts; for (let i = 0; i + 1 < pts.length; i++) { const ax = pts[i][0], az = pts[i][1], ux = pts[i + 1][0] - ax, uz = pts[i + 1][1] - az, L2 = ux * ux + uz * uz || 1, t = clamp(((px - ax) * ux + (pz - az) * uz) / L2), d = Math.hypot(px - ax - ux * t, pz - az - uz * t); if (d < 14 && (!best || d < best.d)) best = { d, st }; } }
+      const n = best && best.st.name; return n ? (typeof n === 'string' ? n : n[lang] || n.uk || n.en || '') : '';
+    };
+    return (this._mapC = { x, z, under, city: !!M, roads, name, marks: under ? [] : [{ x: SITE_CENTER[0], z: SITE_CENTER[1], label: 'VILNYI', r: 5 }], rev: ((c && c.rev) || 0) + 1 });
+  },
+
+  // ======================= mirrors =======================
+  // One small picture of what is behind the car, drawn every few frames into a render target; the inside mirror and the two
+  // door mirrors show parts of it (car-models.js createCockpit). Off (a neutral still) with ?mirrors=0 or when the target
+  // cannot be made.
+  _mirrorInit(D) {
+    const ck = D.car.cockpit; if (!ck) return;
+    try {
+      if (/[?&]mirrors=0/.test(location.search) || lsGet('vrc.walk.mirrors') === 'off') return;
+      const touch = !!this._isTouch, w = touch ? 256 : 384, h = touch ? 64 : 96;
+      const rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, depthBuffer: true, generateMipmaps: false });
+      const cam = new THREE.PerspectiveCamera(ck.mirrorPose.fov, ck.mirrorPose.aspect, 0.4, touch ? 140 : 240);
+      D.mirror = { rt, cam, every: touch ? 6 : 3, n: 0 };
+      ck.setMirrorMap(rt.texture);
+    } catch (e) { console.warn('[drive] mirrors', e); D.mirror = null; }
+  },
+  _mirrorRender(D = this.drive, force = false, render = null) {
+    const M = D && D.mirror; if (!M || !D.car.cockpit) return;
+    if (!force && (D.view !== 'fp' || (M.n++ % M.every) !== 0)) return;
+    const r = this.renderer, g = D.car.group, ck = D.car.cockpit;
+    M.cam.position.copy(ck.mirrorPose.pos); g.localToWorld(M.cam.position);
+    M.cam.rotation.set(0, D.ctl.yaw, 0, 'YXZ'); M.cam.updateMatrixWorld(true);   // a camera looks down its −z: with the car's yaw that is straight back
+    const prev = r.getRenderTarget(), vis = ck.group.visible;
+    ck.group.visible = false;
+    try { r.setRenderTarget(M.rt); (render || r.render).call(r, this.scene, M.cam); } catch (e) { if (!this._mirErr) { this._mirErr = true; console.warn('[drive] mirror render', e); } D.mirror = null; ck.setMirrorMap(null); try { M.rt.dispose(); } catch { /* */ } }
+    finally { r.setRenderTarget(prev); ck.group.visible = vis; }
+  },
+  _mirrorDispose(D) { if (D && D.mirror) { try { D.mirror.rt.dispose(); } catch { /* */ } D.mirror = null; } },
+
+  // ======================= per-frame driving =======================
+  _driveUpdate(dt) {
+    const D = this.drive, { ctl, car, rec } = D, k = this.keys, pad = D.pad, now = performance.now();
+    let gas = Math.max(k.has('KeyW') || k.has('ArrowUp') ? 1 : 0, pad.gas);
+    let brake = Math.max(k.has('KeyS') || k.has('ArrowDown') ? 1 : 0, pad.brake);
+    const hand = Math.max(k.has('Space') ? 1 : 0, pad.hand || 0);                // Space = handbrake (rear wheels): stops the car, and swings the tail round in a turn
+    let steer = (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) - (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0);
+    if (Math.abs(pad.steer) > Math.abs(steer)) steer = pad.steer;
+    if (D.tiltOn && Math.abs(D.tilt) > Math.abs(steer)) steer = D.tilt;
+    // R held: reset
+    if (D.rHold && now - D.rHold > 1100) { D.rHold = null; this._resetCar(); return; }
+    // the edge of the model: slow down in time (the faster, the earlier), then the car is turned round on the spot
+    const A = this._driveArea(), fx0 = Math.sin(ctl.yaw), fz0 = Math.cos(ctl.yaw), M = this._city();
+    D.edge = 0;
+    if (ctl.y > -1 && (A || M)) {
+      const sgn = Math.sign(ctl.v || 1), stop = ctl.v * ctl.v / (2 * 7) * sgn, px = ctl.x + fx0 * stop, pz = ctl.z + fz0 * stop;   // where the car could come to rest
+      let e = 0;
+      if (M && M.insideCity) { try { e = M.insideCity(px, pz) ? (M.insideCity(px + fx0 * 30 * sgn, pz + fz0 * 30 * sgn) ? 0 : 0.5) : 1; } catch { e = 0; } }
+      else if (A && A.edge) { const rx = ctl.x - SITE_CENTER[0], rz = ctl.z - SITE_CENTER[1], rl = Math.hypot(rx, rz) || 1, out = (fx0 * rx + fz0 * rz) / rl * sgn; e = out > 0.2 ? Math.max(A.edge(ctl.x, ctl.z), A.edge(px, pz)) : 0; }
+      if (e > 0) {
+        D.edge = e;
+        if (now - (this._edgeT || 0) > 6000) { this._edgeT = now; this._toast(this.t('walk.car.edge'), 3200); }
+        const rx = ctl.x - SITE_CENTER[0], rz = ctl.z - SITE_CENTER[1];
+        if (e > 0.82 && !D.turn) D.turn = { t: 0, yaw0: ctl.yaw, dir: (fx0 * rz - fz0 * rx) > 0 ? -1 : 1 };
+      }
+    }
+    D.offRoad = ctl.y > -0.6 && !!M && this._cityOut(M, ctl.x, ctl.z) && !this._onRoad(ctl.x, ctl.z);
+    const world = this._driveWorld();
+    ctl.impact = null;
+    if (D.turn) {
+      // gentle turn-back: brake to a stop, swing the car round half a turn, hand the wheel back
+      const T = D.turn;
+      if (Math.abs(ctl.v) > 0.3) { const n = Math.max(1, Math.ceil(dt * 60)); for (let i = 0; i < n; i++) ctl.step(dt / n, { brake: 1, gear: ctl.gear }, world); }
+      else { ctl.v = 0; T.t += dt / 2.2; ctl.yaw = T.yaw0 + T.dir * Math.PI * sstep(T.t); ctl.steer = T.dir * 0.4 * Math.sin(Math.PI * clamp(T.t)); if (T.t >= 1) { D.turn = null; ctl.steer = 0; D.gear = 'D'; D.manual = false; ctl.gear = 'D'; ctl._autoR = false; } }
+    } else {
+      const inp = { gas, brake, steer, hand, gear: D.gear, auto: !D.manual && !(pad.brake > 0) && !this._isTouch };   // hold-brake-to-reverse is a keyboard habit; touch has the D / R button
+      const n = Math.min(6, Math.max(1, Math.ceil(dt / (1 / 60))));   // ≥ 60 Hz dynamics; the controller cuts each step into moves of ≤ 0.3 m
+      const hit0 = ctl.hit; ctl.hit = 0;
+      for (let i = 0; i < n; i++) ctl.step(dt / n, inp, world);
+      void hit0;
+      // a trail of free-running poses for the reset
+      if (!ctl.hit && Math.abs(ctl.v) > 1.5 && now - D.trailT > 700) { D.trailT = now; D.trail.push({ t: now, x: ctl.x, y: ctl.y, z: ctl.z, yaw: ctl.yaw, pitch: ctl.pitch }); if (D.trail.length > 40) D.trail.shift(); }
+    }
+    // a contact → damage, sound, pushed cars, events (the hardest one of this frame)
+    if (ctl.impact && ctl.impact.speed > 0.7 && now - (D.colT || 0) > 60) { D.colT = now; try { this._carImpact(D, ctl.impact, now); } catch (e) { console.warn('[drive] impact', e); } }
+    D.scrape = Math.max(0, (D.scrape || 0) - dt * 4);
+    // a wrecked car: the starter turns, nothing else
+    if (ctl.disabled && gas > 0.5 && now - (D.failT || 0) > 2600) { D.failT = now; const A = this._carAudio(); if (A) A.startFail(); if (rec.dmg && rec.dmg.dead && now - (D.failToast || 0) > 9000) { D.failToast = now; this._toast(this.t('walk.car.wrecked'), 5000); } }
+    if (rec.dmg && rec.dmg.dead && D.ind !== 2) { D.ind = 2; D.indT = now; }
+    // car pose
+    Object.assign(rec, { x: ctl.x, y: ctl.y, z: ctl.z, yaw: ctl.yaw, pitch: ctl.pitch, roll: ctl.roll });
+    const g = car.group;
+    g.position.set(ctl.x, ctl.y + ctl.bump * Math.sin(now / 30), ctl.z);
+    g.rotation.set(-(ctl.pitch + (ctl.dive || 0)), ctl.yaw, ctl.roll, 'YXZ');
+    g.updateMatrixWorld(true);
+    car.setWheels(ctl.spin, ctl.steer);
+    this.player.pos.set(ctl.x, ctl.y, ctl.z);
+    // indicators cancel themselves once the wheel comes back from a real turn
+    if (D.ind === 1 || D.ind === -1) { const sN = ctl.steer / (ctl.perf.lock || 0.6) * D.ind; D.indSteer = Math.max(D.indSteer, Math.abs(ctl.v) > 1 ? sN : 0); if (D.indSteer > 0.3 && sN < 0.06) D.ind = 0; else if (now - D.indT > 30000) D.ind = 0; }
+    const blink = Math.floor((now - D.indT) / 380) % 2 === 0, haz = !!D.turn || D.ind === 2;
+    const left = (haz || D.ind === 1) && blink, right = (haz || D.ind === -1) && blink;
+    if ((D.ind || haz) && blink !== D.blinkWas) { const A = this._carA; if (A && dt) A.tick(blink); } D.blinkWas = blink;
+    // lights: on at dusk / night and underground; brake lights while braking or held on the brake; reversing lamps
+    const under = ctl.y < -0.8, on = this._lightsOn(D);
+    const stopHeld = (ctl.reversing ? gas : brake) > 0 && Math.abs(ctl.v) < 0.3;
+    car.setLights(on, (ctl.braking && Math.abs(ctl.v) > 0.2) || stopHeld || !!D.turn, ctl.reversing && !D.turn, left, right);
+    const fx = Math.sin(ctl.yaw), fz = Math.cos(ctl.yaw), S = ctl.S;
+    if (this.headSpot) {
+      this.headSpot.intensity = on ? (under ? 60 : this.envMode === 'day' ? 30 : 110) : 0;
+      this.headSpot.distance = under ? 42 : 70;
+      this.headSpot.position.set(ctl.x + fx * (S.zF - 0.3), ctl.y + 0.72, ctl.z + fz * (S.zF - 0.3));
+      this.headSpot.target.position.set(ctl.x + fx * (S.zF + 14), ctl.y - 0.6 + Math.sin(ctl.pitch) * 14, ctl.z + fz * (S.zF + 14));
+      this.headSpot.target.updateMatrixWorld(true);
+    }
+    this._barrierUpdate(dt || 0.016, ctl);
+    this._trafficObstacles();
+    // wipers
+    const ck = car.cockpit;
+    if (ck) { if (D.wipers || D.wipT % 1 > 0.001) { D.wipT += (dt || 0) / 1.3; if (!D.wipers && D.wipT % 1 < 0.03) D.wipT = Math.round(D.wipT); } ck.setWipers(0.5 - 0.5 * Math.cos(D.wipT * Math.PI * 2)); }
+    // camera
+    const cam = this.camera, L = D.look, kmhAbs = Math.abs(ctl.v) * 3.6;
+    if (!this._dragging) { L.yaw *= 1 - damp(2.2, dt); L.pitch *= 1 - damp(2.2, dt); }
+    const rush = Math.min(13, Math.max(0, kmhAbs - 70) * 0.062);              // the view widens a little at speed
+    const vf = (D.view === 'fp' ? Math.min(this._fovWalk || cam.fov, cam.aspect < 1 ? 92 : 70) : Math.min(this._fovWalk || cam.fov, cam.aspect < 1 ? 100 : 72)) + rush;
+    if (Math.abs(cam.fov - vf) > 0.05) { cam.fov += (vf - cam.fov) * (dt ? damp(4, dt) : 1); cam.updateProjectionMatrix(); }
+    if (D.view === 'fp') {
+      const e = car.eye.clone(); { const rw = S.gh && S.gh.roofW; if (rw) e.x = Math.min(e.x, rw - 0.22); }   // under a narrow roof the driver's head is nearer the middle (the A-pillar stays out of the road ahead)
+      car.group.localToWorld(e);
+      cam.position.copy(e);
+      // look a little into the corner, like a driver does; reversing with the view turned far round = looking over the shoulder
+      cam.rotation.set(ctl.pitch * 0.9 - 0.05 + L.pitch, ctl.yaw + Math.PI + L.yaw + ctl.steer * 0.22, -ctl.roll * 0.6, 'YXZ');
+    } else {
+      const dist = (under ? 5.2 : 6.4) + Math.min(3.2, Math.abs(ctl.v) * 0.045), h = under ? 1.7 : 2.4;
+      const a = ctl.yaw + L.yaw;
+      const want = new THREE.Vector3(ctl.x - Math.sin(a) * dist, ctl.y + h, ctl.z - Math.cos(a) * dist);
+      // keep the camera on our side of walls / columns and under the car-park ceiling
+      const from = new THREE.Vector3(ctl.x, ctl.y + 1.3, ctl.z), dir = want.clone().sub(from), len = dir.length(); dir.divideScalar(len);
+      const sol = this._near(this.solids, from, len + 1).filter(o => o !== rec.collider && !o.userData.carId);
+      const hit = this._cast(sol, from, dir, len).find(q => !q.object.userData.floor);
+      if (hit) want.copy(from).addScaledVector(dir, Math.max(0.6, hit.distance - 0.35));
+      if (under) { const up = this._cast(this._near(this.solids, want, 3), new THREE.Vector3(want.x, ctl.y + 1.0, want.z), new THREE.Vector3(0, 1, 0), 2.2).find(q => !q.object.userData.carId); if (up) want.y = Math.min(want.y, up.point.y - 0.25); }
+      if (!D.cam) D.cam = want.clone(); else D.cam.lerp(want, damp(dt ? 7 + Math.abs(ctl.v) * 0.12 : 1000, dt || 1));
+      cam.position.copy(D.cam);
+      cam.lookAt(ctl.x + fx * 1.6, ctl.y + 1.0 + L.pitch * 3, ctl.z + fz * 1.6);
+    }
+    this._syncEnvMap();
+    // the instruments and the centre screen (≈ 12 × per second), the mirrors (every few frames)
+    if (ck && now - D.hudT > 80) {
+      D.hudT = now; const R = this._radio, rs = R ? R.state : null, dn = new Date();
+      const lim = under || this._rampDist(ctl.x, ctl.z) < 1 ? CAR_PARK_LIMIT : STREET_LIMIT;
+      const dm = rec.dmg, eng = dm ? dm.engine : 0, night = this.envMode === 'night' || (under && this.envMode !== 'day');
+      if (rec.fuel == null) { let h = 0; for (let i = 0; i < rec.id.length; i++) h = (h * 31 + rec.id.charCodeAt(i)) >>> 0; rec.fuel = 0.42 + (h % 53) / 100; }
+      const mapR = this._mapRoads(ctl.x, ctl.y, ctl.z);
+      ck.draw({ kmh: kmhAbs, rpm: ctl.perf.eng === 'ev' ? Math.abs(ctl.aLong) / (ctl.perf.acc || 8) * ctl.redline * (gas > 0 ? 1 : 0.25) : ctl.disabled ? 0 : ctl.rpm, redline: ctl.redline, gear: D.turn ? 'P' : ctl.gearShown, gearNo: ctl.gearNo, lights: on, left, right, limit: lim, disabled: ctl.disabled,
+        fuel: rec.fuel, temp: clamp(0.5 + eng * 0.46), odo: (D.odo || 0) / 1000, night,
+        warn: { engine: eng > 0.3 || ctl.disabled, abs: ctl.abs && blink, hand: ctl.hand, hazard: haz && blink, fuel: rec.fuel < 0.12, door: car.doorOpen > 0.05, temp: eng > 0.75 },
+        map: { x: ctl.x, z: ctl.z, yaw: ctl.yaw, roads: mapR.roads, marks: mapR.marks, rev: mapR.rev, scale: under ? 2.2 : kmhAbs > 120 ? 0.55 : 0.95, street: mapR.name(ctl.x, ctl.z) },
+        msg: rs && rs.on && rs.status === 'error' ? this.t('walk.radio.none') : '',
+        radio: rs ? { on: rs.on, name: rs.station ? rs.station.name : '', freq: rs.station ? rs.station.freq : '', status: rs.status, volume: rs.volume, muted: rs.muted } : { on: false },
+        clock: String(dn.getHours()).padStart(2, '0') + ':' + String(dn.getMinutes()).padStart(2, '0'),
+        labels: this._ckLabels || (this._ckLabels = { radio: this.t('walk.radio.title'), off: this.t('walk.radio.off'), connecting: this.t('walk.radio.connecting'), noSignal: this.t('walk.radio.noSignal'), live: this.t('walk.radio.live'), kmh: this.t('walk.car.kmh') }) });
+    }
+    { const dist = Math.abs(ctl.v) * (dt || 0); D.odo = (D.odo || 0) + dist; if (rec.fuel != null && ctl.perf.eng) rec.fuel = Math.max(0.05, rec.fuel - dist * (0.000004 + gas * 0.000006)); }
+    this._mirrorRender(D);
+    this._carSoundUpdate(ctl, ctl.reversing ? brake : gas, dt);
+    if (this.fleet) this.fleet.update(cam);
+    this._carsTick(dt);
+    this._renderDriveHud(false);
+    if (now - D.tickT >= TICK_MS) {
+      D.tickT = now;
+      this._emitDrive('drive:tick', { car: rec, pos: { x: ctl.x, y: ctl.y, z: ctl.z }, vel: { x: fx * ctl.v, z: fz * ctl.v }, speedKmh: ctl.v * 3.6, heading: ctl.yaw, steer: ctl.steer, braking: ctl.braking, onRoad: !D.offRoad });
+    }
+  },
+
+  // ======================= HUD =======================
+  // extra controls for driving (gear D / R, horn, radio, tilt steering, reset) — added to walk.js' drive panel once
+  _driveHudInit() {
+    const e = this.el; if (!e || e.dgear || !e.drive) return;
+    const st = document.createElement('style'); st.textContent = CSS; e.drive.appendChild(st);
+    const x = document.createElement('div'); x.className = 'vw-dx vw-dxr';
+    x.innerHTML = `<button class="vw-dround vw-dhand" data-kd="hand">${ICON.hand}</button><button class="vw-dround" data-kd="horn">${ICON.horn}</button><button class="vw-dgear" data-kd="gear"><i data-g="D">D</i><i data-g="R">R</i></button>`;
+    e.drive.appendChild(x);
+    const name = document.createElement('div'); name.className = 'vw-dname'; e.drive.appendChild(name);
+    // the radio: previous · station · next · quieter · louder · on / off
+    const rd = document.createElement('div'); rd.className = 'vw-dradio off'; rd.setAttribute('role', 'group');
+    rd.innerHTML = `<button data-kr="prev">${ICON.prev}</button><span class="st"><b></b><i></i></span><button data-kr="next">${ICON.next}</button><button data-kr="down">${ICON.volDn}</button><button data-kr="up">${ICON.volUp}</button><button data-kr="power">${ICON.power}</button>`;
+    e.drive.appendChild(rd);
+    rd.addEventListener('click', ev => { const b = ev.target.closest('[data-kr]'); if (!b) return; ev.stopPropagation(); this._radioCmd(b.dataset.kr); });
+    rd.addEventListener('pointerdown', ev => ev.stopPropagation());
+    e.dradio = rd; e.dradioName = rd.querySelector('.st b'); e.dradioSub = rd.querySelector('.st i');
+    const top = e.drive.querySelector('.vw-dtop');
+    const mk = (kd, html) => { const b = document.createElement('button'); b.className = 'vw-btn vw-ghost vw-ico'; b.dataset.kd = kd; b.innerHTML = html; top.insertBefore(b, top.firstChild); return b; };
+    e.dreset = mk('reset', ICON.reset);
+    if (this._isTouch && typeof window.DeviceOrientationEvent !== 'undefined') e.dtilt = mk('tilt', ICON.tilt);
+    e.dgear = x.querySelector('[data-kd=gear]'); e.dhorn = x.querySelector('[data-kd=horn]'); e.dname = name; e.dhand = x.querySelector('[data-kd=hand]');
+    { const b = e.dhand, on = ev => { ev.preventDefault(); ev.stopPropagation(); try { b.setPointerCapture(ev.pointerId); } catch { /* */ } b.classList.add('on'); if (this.drive) this.drive.pad.hand = 1; }, off = () => { b.classList.remove('on'); if (this.drive) this.drive.pad.hand = 0; };
+      b.addEventListener('pointerdown', on); for (const n of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(n, off); b.addEventListener('contextmenu', ev => ev.preventDefault()); }
+    e.dgear.addEventListener('click', ev => { ev.stopPropagation(); this._toggleGear(); });
+    e.dreset.addEventListener('click', ev => { ev.stopPropagation(); this._resetCar(); });
+    if (e.dtilt) e.dtilt.addEventListener('click', ev => { ev.stopPropagation(); this._toggleTilt(); });
+    const hOn = ev => { ev.preventDefault(); ev.stopPropagation(); try { e.dhorn.setPointerCapture(ev.pointerId); } catch { /* */ } e.dhorn.classList.add('on'); this._hornStart(); };
+    const hOff = () => { e.dhorn.classList.remove('on'); this._hornStop(); };
+    e.dhorn.addEventListener('pointerdown', hOn); for (const n of ['pointerup', 'pointercancel', 'lostpointercapture']) e.dhorn.addEventListener(n, hOff);
+    e.dhorn.addEventListener('contextmenu', ev => ev.preventDefault());
+  },
+  _renderDriveHud(force) {
+    const D = this.drive, e = this.el; if (!D || !e) return;
+    const ctl = D.ctl, kmh = Math.round(Math.abs(ctl.v) * 3.6), lim = ctl.y < -0.8 || this._rampDist(ctl.x, ctl.z) < 1 ? CAR_PARK_LIMIT : STREET_LIMIT;
+    const gear = D.turn ? 'P' : ctl.gearShown;
+    if (force || kmh !== this._lastKmh || gear !== this._lastGear) {
+      this._lastKmh = kmh; this._lastGear = gear; e.spd.textContent = String(kmh); e.gear.textContent = gear;
+      const f = Math.min(1, kmh / (lim === CAR_PARK_LIMIT ? 40 : Math.max(120, ctl.perf.vmax))); e.arc.style.strokeDasharray = `${(141.4 * f).toFixed(1)} 200`;
+      if (e.dgear) for (const i of e.dgear.querySelectorAll('i')) i.classList.toggle('on', i.dataset.g === (ctl.reversing ? 'R' : 'D'));
+    }
+    if (force || lim !== this._lastLim) { this._lastLim = lim; e.lim.textContent = String(lim); if (!force && lim === CAR_PARK_LIMIT && this.el) this._toast(this.t('walk.car.parkLimit').replace('{n}', CAR_PARK_LIMIT), 2600); }
+    e.spdo.classList.toggle('over', kmh > lim + 2);
+    if (force) {
+      e.carLights.classList.toggle('on', this._lightsOn(D)); e.carSound.classList.toggle('on', !this._carMuted());
+      e.carView.querySelector('.lbl').textContent = this.t(D.view === 'fp' ? 'walk.car.chase' : 'walk.car.cockpit');
+      e.carExit.querySelector('.lbl').textContent = this.t('walk.car.exit');
+      e.dhint.textContent = this.t('walk.car.hint');
+      if (e.dname) e.dname.innerHTML = `<b>${ctl.S.name}</b>${D.car.plate ? ' · ' + D.car.plate : ''}`;
+      const lab = (b, k) => { if (b) { b.setAttribute('aria-label', this.t(k)); b.title = this.t(k); } };
+      lab(e.dgear, 'walk.car.gear'); lab(e.dhorn, 'walk.car.horn'); lab(e.dhand, 'walk.car.handbrake'); lab(e.dreset, 'walk.car.resetBtn'); lab(e.dtilt, 'walk.car.tilt'); lab(e.carSound, 'walk.car.sound');
+      if (e.dradio) { e.dradio.setAttribute('aria-label', this.t('walk.radio.title')); for (const [kr, key] of [['prev', 'walk.radio.prev'], ['next', 'walk.radio.next'], ['down', 'walk.radio.volDown'], ['up', 'walk.radio.volUp'], ['power', 'walk.radio.power']]) lab(e.dradio.querySelector(`[data-kr=${kr}]`), key); this._radioHud(); }
+      if (e.dtilt) e.dtilt.classList.toggle('on', !!D.tiltOn);
+      const sp = e.brake && e.brake.querySelector('span'); if (sp) sp.textContent = this.t('walk.car.brakeShort');
+      const sg = e.gas && e.gas.querySelector('span'); if (sg) sg.textContent = this.t('walk.car.gasShort');
+      this._ckLabels = null;
+    }
+  },
+
+  // ---- tilt steering (phones / tablets, optional): roll the device like a wheel
+  async _toggleTilt() {
+    const D = this.drive; if (!D) return;
+    if (D.tiltOn) { D.tiltOn = false; this._tiltStop(); this.root.classList.remove('tilt'); return this._renderDriveHud(true); }
+    try { const DO = window.DeviceOrientationEvent; if (DO && typeof DO.requestPermission === 'function') { const r = await DO.requestPermission(); if (r !== 'granted') { this._toast(this.t('walk.car.tiltDenied'), 2400); return; } } } catch { this._toast(this.t('walk.car.tiltDenied'), 2400); return; }
+    this._tiltFn = ev => {
+      const Dd = this.drive; if (!Dd || !Dd.tiltOn || ev.gamma == null) return;
+      const ang = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+      // roll about the axis that points into the screen: gamma in portrait, ±beta in landscape
+      const roll = ang === 90 ? ev.beta : ang === 270 || ang === -90 ? -ev.beta : ev.gamma;
+      const k = clamp(roll / 28, -1, 1); Dd.tilt = -(Math.abs(k) < 0.08 ? 0 : k);
+    };
+    window.addEventListener('deviceorientation', this._tiltFn);
+    D.tiltOn = true; D.tilt = 0; this.root.classList.add('tilt'); this._renderDriveHud(true);
+    this._toast(this.t('walk.car.tiltOn'), 2400);
+  },
+  _tiltStop() { if (this._tiltFn) { window.removeEventListener('deviceorientation', this._tiltFn); this._tiltFn = null; } },
+
+  // ======================= sound (car-audio.js: all generated, WebAudio) =======================
+  // One master gain for the car (the HUD's sound button / M mutes it together with the radio). Engine per car type, tyres,
+  // wind, gear shifts, horn per class, indicator relay, impacts, the alarm of a parked car. The radio is lowered under the horn.
+  _carAudio() {
+    const ac = this._audio(); if (!ac) return null;
+    if (this._carA && this._carA.ac === ac) return this._carA;
+    try { this._carA = createCarAudio(ac, { muted: this._carMuted() }); } catch (e) { console.warn('[drive] audio', e); this._carA = null; }
+    return this._carA;
+  },
+  _engineStart(kind) { const A = this._carAudio(); if (!A || A.state.engine) return; A.engineStart(this.mods.cars.carSpec(kind)); this._eng = A; },
+  _carSoundUpdate(ctl, gas, dt) {
+    const A = this._eng; if (!A) return; void dt; const D = this.drive, dm = D && D.dmg;
+    A.update({ rpm: ctl.rpm, redline: ctl.redline, throttle: gas, v: ctl.v, gearNo: ctl.reversing ? 0 : ctl.gearNo, squeal: ctl.squeal, slip: Math.abs(ctl.beta || 0) * 2, under: ctl.y < -0.8, disabled: ctl.disabled, damage: dm ? dm.engine : 0, scrape: D ? D.scrape || 0 : 0 });
+  },
+  _engineUpdate(ctl, gas, dt) { this._carSoundUpdate(ctl, gas, dt); },   // older name
+  _engineStop() { const A = this._eng; this._eng = null; if (A) A.engineStop(); },
+  _carSoundsStop() { this._engineStop(); this._hornStop(); },
+  _hornStart() {
+    if (this._hornOn || !this.drive) return;
+    this._hornOn = true; this._emitDrive('drive:horn', { car: this.drive.rec, on: true });
+    if (this._radio && this._radio.setDuck) this._radio.setDuck(0.25);
+    const A = this._carAudio(); if (A) A.horn(true, this.drive.ctl.S);
+  },
+  _hornStop() {
+    if (this._hornOn) { this._hornOn = false; if (this.drive) this._emitDrive('drive:horn', { car: this.drive.rec, on: false }); }
+    if (this._radio && this._radio.setDuck) this._radio.setDuck(1);
+    const A = this._carA; if (A) A.horn(false);
+  },
+  // the thud of a contact; a hard one (speed m/s) adds the crunch of metal, and glass when something broke
+  _thud(k = 1, speed = 0, opts = {}) {
+    const A = this._carAudio(); if (A) A.impact(Math.max(speed, k * 2.5), opts);
+    if (navigator.vibrate) try { navigator.vibrate(speed > 5 ? 80 : 30); } catch { /* optional */ }
+  },
+};

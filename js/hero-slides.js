@@ -1,6 +1,9 @@
 // Hero slideshow: slide 1 is the developer's night render (with slow Ken Burns and a few twinkling lights sampled
-// from its own lit windows), then the daytime renders from assets/hero-slides.json, then the live 3D
-// (js/hero3d.js renders into #heroHost only while that slide is on — see the 'vrc:hero3d' event).
+// from its own lit windows), then the daytime renders from assets/hero-slides.json, then the "3D" slide.
+// V4: the 3D slide shows a path-traced still of the complex first (assets/hero3d/<view>-<day|dusk|night>.webp, cameras in
+// assets/hero3d/views.json; made by pano-work/hero/) — sharp and instant on every device. The day / dusk / night control
+// swaps the stills. The live model (js/hero3d.js, same camera) loads behind the still and takes over only when the
+// visitor drags or taps; without WebGL, with Save-Data or on a failed build the stills simply stay.
 // Auto-advances with cross-fades, pauses on hover / touch / when off screen, swipe on phones, dots with captions,
 // and a "↺ Main image" button (and the logo) that returns to slide 1 at any time.
 import { t, pick, onLangChange, dir } from './i18n.js';
@@ -18,8 +21,9 @@ function init() {
 
   const slides = [
     { el: $('.hs-real', track), kind: 'real', cap: () => t('hs.cap.real') },
-    { el: slide3d, kind: '3d', cap: () => t('hs.cap.3d') },
+    { el: slide3d, kind: '3d', cap: () => t(stills.ok && !liveOk() ? 'hs.cap.still' : 'hs.cap.3d') },
   ];
+  const liveOk = () => st3d() === 'ready';
   // The "cover" box of slide 1 takes the picture's real proportions from the file itself (the CSS value is only the
   // first guess), so a replaced render is never stretched and the lights canvas stays aligned with it.
   const realImg = $('.hs-img', slides[0].el);
@@ -33,6 +37,7 @@ function init() {
   // Set here, when the 3D slide is next in line, so the stylesheet needs no project-specific image path.
   const POSTER = 'assets/hero-real-night-1280.jpg';
   function poster() {
+    stills.load();
     const p = $('.hs-3d-poster', slide3d);
     if (p && !p.dataset.set) { p.dataset.set = '1'; p.style.backgroundImage = `url("${POSTER}")`; p.style.backgroundPosition = '60% 55%'; }
   }
@@ -82,9 +87,16 @@ function init() {
     return new Promise(res => { const d = () => res(); s.img.addEventListener('load', d, { once: true }); s.img.addEventListener('error', d, { once: true }); setTimeout(d, 2500); });
   }
 
+  // ---------- path-traced stills of the 3D slide ----------
+  const stills = createStills(slide3d, stage, () => { if (fail3d && !stills.ok) drop3d(); else texts(); });
+
   // ---------- 3D availability ----------
   const st3d = () => window.__vrcHero3D;   // 'created' | 'ready' | 'failed' | undefined (never created, e.g. Save-Data)
+  let fail3d = false;
   function drop3d() {
+    fail3d = true;
+    // V4: no WebGL / Save-Data / failed build → the slide stays, as path-traced stills (dropped only if those are missing too)
+    if (stills.ok || stills.pending) { stage.classList.remove('live'); texts(); return; }
     const i = slides.findIndex(s => s.kind === '3d'); if (i < 0) return;
     const wasOn = cur === i;
     slides.splice(i, 1); slide3d.hidden = true;
@@ -111,7 +123,7 @@ function init() {
     stopTimer();
     if (user) cap.setAttribute('aria-live', 'polite');
     if (next.kind === '3d') poster();
-    if (next.kind === '3d' && !st3d()) { setTimeout(() => { if (!st3d()) drop3d(); }, 6000); }
+    if (next.kind === '3d' && !st3d() && !stills.ok && !stills.pending) { setTimeout(() => { if (!st3d()) drop3d(); }, 6000); }
     await ready(next);
     if (token !== busy) return;
     if (!slides.includes(next)) return go(i, { user });       // it was dropped while loading (missing file): take the one now in its place
@@ -133,7 +145,8 @@ function init() {
     // The 3D slide's time starts when the model is on screen, not while it is still being built (slow phones): the
     // autoplay waits for 'ready' (at most 25 s), otherwise the slide could end before it was ever seen.
     holds.delete('3dload'); clearTimeout(loadT);
-    if (next.kind === '3d' && st3d() !== 'ready') { holds.add('3dload'); loadT = setTimeout(() => hold('3dload', false), 25000); }
+    if (next.kind === '3d' && st3d() !== 'ready' && !stills.ok) { holds.add('3dload'); loadT = setTimeout(() => hold('3dload', false), 25000); }
+    if (next.kind === '3d') stills.show(); else stills.hide();
     prefetch(cur + 1);
     texts(true);
     restart();
@@ -182,7 +195,8 @@ function init() {
   track.addEventListener('pointerdown', e => {
     if (e.button > 0) return;
     const on3d = slides[cur]?.kind === '3d';
-    if (on3d) { hold('3d', true); return; }   // dragging the 3D orbits it; the user is exploring, so stop the autoplay
+    if (on3d && !e.target.closest('.hs-ui, .mode')) slide3d.dataset.want = Date.now();   // pulled at the still before the model was ready: hero3d.js hands over as soon as it is
+    if (on3d && (liveOk() || !stills.ok)) { hold('3d', true); return; }   // dragging the 3D orbits it; the user is exploring, so stop the autoplay
     sw = { x: e.clientX, y: e.clientY, id: e.pointerId };
   });
   track.addEventListener('pointerup', e => {
@@ -231,6 +245,7 @@ function init() {
     } else cap.textContent = text;
   }
   onLangChange(() => texts());
+  document.addEventListener('vrc:hero3d-state', () => texts());
 
   // ---------- lights: gentle twinkles at the render's own brightest warm points ----------
   const lights = createLights($('.hs-real .hs-cover', track), $('.hs-real .hs-img', track), reduced);
@@ -350,5 +365,74 @@ function createLights(box, img, reduced) {
   else img.addEventListener('load', () => setTimeout(start, 400), { once: true });
   api.run = r => { on = r; if (!r && raf) { cancelAnimationFrame(raf); raf = 0; } kick(); };
   api.visible = v => { vis = v; kick(); };
+  return api;
+}
+
+// The stills of the "3D" slide. One <img> per light mode, stacked; only the current mode is fetched (the others on the
+// first switch to them). Landscape or portrait picture by the slide's own aspect. The current light mode is read from the
+// page's day / dusk / night control (#modeCtl, owned by app.js): its pressed button, else the saved choice, else dusk.
+function createStills(host, stage, onChange) {
+  const api = { ok: false, pending: true, load() {}, show() {}, hide() {}, mode: 'dusk' };
+  if (!host) { api.pending = false; return api; }
+  const MODES = ['day', 'dusk', 'night'];
+  const modeCtl = document.getElementById('modeCtl');
+  const box = document.createElement('div'); box.className = 'hs-stills'; box.setAttribute('aria-hidden', 'true');
+  host.insertBefore(box, host.querySelector('.hero3d-slot') || null);
+  let V = null, view = null, viewKey = '', wanted = false, shown = false;
+  const imgs = {};
+  const readMode = () => {
+    const b = modeCtl?.querySelector('button[aria-pressed="true"]');
+    let m = b?.dataset.mode; if (!MODES.includes(m)) { try { m = localStorage.getItem('vrc.time'); } catch (e) { m = null; } }
+    return MODES.includes(m) ? m : 'dusk';
+  };
+  const signal = () => { try { document.dispatchEvent(new CustomEvent('vrc:hero3d-stills', { detail: { ok: api.ok, mode: api.mode } })); } catch (e) { /* ignore */ } };
+  function pickView() {
+    const r = host.getBoundingClientRect(); if (!r.width || !r.height) return V.views.land;
+    return V.views.port && r.width / r.height < (V.portraitBelow || 0.95) ? V.views.port : V.views.land;
+  }
+  function build() {
+    const v = pickView(), key = v === V.views.port ? 'port' : 'land';
+    if (key === viewKey) return; viewKey = key; view = v;
+    box.textContent = '';
+    for (const m of MODES) {
+      const im = document.createElement('img'); im.alt = ''; im.decoding = 'async'; im.draggable = false; im.dataset.mode = m;
+      if (v.w && v.h) { im.width = v.w; im.height = v.h; }
+      const pos = v.pos || [0.5, 0.5]; im.style.objectPosition = `${pos[0] * 100}% ${pos[1] * 100}%`;
+      im.addEventListener('load', () => { im.dataset.ok = '1'; apply(); });
+      im.addEventListener('error', () => { im.dataset.ok = '0'; apply(); });
+      box.appendChild(im); imgs[m] = im;
+    }
+    if (wanted) fetchMode(api.mode);
+    apply();
+  }
+  function fetchMode(m) {
+    const im = imgs[m], f = view?.files?.[m];
+    if (!im || !f) { if (im) im.dataset.ok = '0'; return; }
+    if (!im.getAttribute('src')) im.src = 'assets/hero3d/' + f;
+  }
+  // which still is on: the current mode's when it has loaded (until then the previous one stays), none when it failed
+  function apply() {
+    if (!V) return;
+    const cur = imgs[api.mode], okNow = cur?.dataset.ok === '1';
+    if (okNow) for (const m of MODES) imgs[m].classList.toggle('on', m === api.mode);
+    else if (cur?.dataset.ok === '0') for (const m of MODES) imgs[m].classList.remove('on');
+    const was = api.ok, any = MODES.some(m => imgs[m].classList.contains('on'));
+    api.ok = any; api.pending = wanted ? (!any && cur?.dataset.ok !== '0') : !!(view?.files?.[api.mode]);
+    host.classList.toggle('has-stills', any);
+    stage.classList.toggle('stills', any);
+    if (any && modeCtl && shown) modeCtl.hidden = false;        // the light switch works on the stills too (also without WebGL)
+    if (was !== api.ok || !api.pending) onChange();
+    signal();
+  }
+  function setMode(m) { if (m === api.mode && imgs[m]?.getAttribute('src')) return; api.mode = m; if (V && wanted) { fetchMode(m); apply(); } }
+  fetch('assets/hero3d/views.json').then(r => (r.ok ? r.json() : null)).then(j => {
+    if (!j?.views?.land?.files) { api.pending = false; onChange(); return; }
+    V = j; api.mode = readMode(); build();
+    new ResizeObserver(() => build()).observe(host);
+  }).catch(() => { api.pending = false; onChange(); });
+  if (modeCtl) new MutationObserver(() => setMode(readMode())).observe(modeCtl, { subtree: true, attributes: true, attributeFilter: ['aria-pressed'] });
+  api.load = () => { wanted = true; if (V) { api.mode = readMode(); fetchMode(api.mode); } };
+  api.show = () => { shown = true; api.load(); if (api.ok && modeCtl) modeCtl.hidden = false; };
+  api.hide = () => { shown = false; };
   return api;
 }

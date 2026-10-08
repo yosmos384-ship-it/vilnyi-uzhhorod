@@ -16,7 +16,6 @@ const UNITS_BY_ID = new Map(UNITS.map(u => [u.id, u]));
 const LOCAL = {
   uk: { 'plan.entrance': 'Вхід', 'plan.roomsShort': '{n}к', 'plan.m2': 'м²', 'plan.imgFail': 'Креслення недоступне — показано схему' },
   en: { 'plan.entrance': 'Entrance', 'plan.roomsShort': '{n}-rm', 'plan.m2': 'm²', 'plan.imgFail': 'Drawing unavailable — the scheme is shown' },
-  ru: { 'plan.entrance': 'Вход', 'plan.roomsShort': '{n}к', 'plan.m2': 'м²', 'plan.imgFail': 'Чертёж недоступен — показана схема' },
   he: { 'plan.entrance': 'כניסה', 'plan.roomsShort': '{n} חד׳', 'plan.m2': 'מ״ר', 'plan.imgFail': 'השרטוט אינו זמין — מוצגת סכמה' },
   ro: { 'plan.entrance': 'Intrare', 'plan.roomsShort': '{n} cam.' },
   de: { 'plan.entrance': 'Eingang', 'plan.roomsShort': '{n} Zi.' },
@@ -35,7 +34,7 @@ const f1 = n => (Math.round(n * 100) / 100).toString();
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const pts = arr => arr.map(p => `${f1(p[0])},${f1(p[1])}`).join(' ');
 const rectPoly = r => [[r.x0, r.z0], [r.x1, r.z0], [r.x1, r.z1], [r.x0, r.z1]];
-const fmtNum = (n, d) => { const s = Number(n).toFixed(d); return lang === 'uk' || lang === 'ru' ? s.replace('.', ',') : s; };
+const fmtNum = (n, d) => { const s = Number(n).toFixed(d); return lang === 'uk' ? s.replace('.', ',') : s; };
 const m2 = () => tl('plan.m2');
 const fmtArea = (n, d = 1) => `${fmtNum(n, d)} ${m2()}`;
 const roomsText = r => (r === 1 ? t('rooms.1') : t('rooms.n', { n: r }));
@@ -155,7 +154,9 @@ function ensureCss() {
 const inPolyPt = (p, x, z) => { let c = false; for (let i = 0, j = p.length - 1; i < p.length; j = i++) { const [xi, zi] = p[i], [xj, zj] = p[j]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c; } return c; };
 export function createPlan(host, opts = {}) {
   const { onSelect = () => {}, onHover = () => {}, statusOf = u => u.status, matches = () => true,
-    numberOf = u => u.apNo ?? u.index } = opts;
+    numberOf = u => u.apNo ?? u.index,
+    // V3-ui: optional action button on the hover card — cardAction(u) → { id, label } | null; onCardAction(u, id)
+    cardAction = null, onCardAction = () => {} } = opts;
   const uid = 'pl' + (++INSTANCE);
   ensureCss();
   host.classList.add('plan');
@@ -468,14 +469,38 @@ export function createPlan(host, opts = {}) {
       <div class="pc-rooms"><i class="dot r${u.rooms}"></i>${esc(roomsText(u.rooms))}</div>
       <div class="pc-price" dir="ltr">${esc(money(u.price))}</div>
       <div class="pc-meta"><span dir="ltr">${esc(fmtArea(T.total, 2))}</span><span dir="ltr">${esc(money(u.ppm))}/${esc(m2())}</span><span>${face}</span></div>`;
+    let act = null; try { act = cardAction ? cardAction(u) : null; } catch (e) { act = null; }
+    if (act && act.label) card.insertAdjacentHTML('beforeend', `<button type="button" class="pc-act" tabindex="-1" data-pc-act="${esc(act.id || 'act')}">${esc(act.label)}</button>`);
+    card.classList.toggle('has-act', !!(act && act.label)); cardUnit = u; clearTimeout(cardT);
     card.hidden = false;
     const hr = host.getBoundingClientRect(); const cw = card.offsetWidth, ch = card.offsetHeight;
-    let x = clientX - hr.left + 16, y = clientY - hr.top + 16;
-    if (x + cw > hr.width - 8) x = clientX - hr.left - cw - 16;
-    if (y + ch > hr.height - 8) y = clientY - hr.top - ch - 16;
+    const off = card.classList.contains('has-act') ? 8 : 16;       // a card with a button stays put and close, so the pointer can reach it
+    let x = clientX - hr.left + off, y = clientY - hr.top + off;
+    if (x + cw > hr.width - 8) x = clientX - hr.left - cw - off;
+    if (y + ch > hr.height - 8) y = clientY - hr.top - ch - off;
     card.style.left = Math.max(8, x) + 'px'; card.style.top = Math.max(8, y) + 'px';
   }
-  function hideCard() { card.hidden = true; }
+  function hideCard() { clearTimeout(cardT); card.hidden = true; cardUnit = null; }
+  // V3-ui: a card that carries a button does not follow the pointer; it waits a moment before it moves to another flat
+  // or hides, and stays while the pointer is on it (CSS: .plan-card.has-act { pointer-events: auto }).
+  let cardUnit = null, cardT = 0, overCard = false;
+  const sticky = () => !card.hidden && card.classList.contains('has-act');
+  function hoverCard(u, x, y) {
+    if (!sticky()) return showCard(u, x, y);
+    if (cardUnit === u) { clearTimeout(cardT); cardT = 0; return; }
+    clearTimeout(cardT); cardT = setTimeout(() => { if (!overCard) showCard(u, x, y); }, 220);
+  }
+  function leaveCard() {
+    if (!sticky()) return hideCard();
+    clearTimeout(cardT); cardT = setTimeout(() => { if (!overCard) { hideCard(); hover(null); } }, 320);
+  }
+  card.addEventListener('pointerenter', () => { overCard = true; clearTimeout(cardT); });
+  card.addEventListener('pointerleave', () => { overCard = false; hideCard(); hover(null); });
+  card.addEventListener('click', e => {
+    const b = e.target.closest('[data-pc-act]'); if (!b || !cardUnit) return;
+    const u = cardUnit; overCard = false; hideCard(); hover(null);
+    try { onCardAction(u, b.dataset.pcAct); } catch (err) { console.warn('[plan] card action:', err); }
+  });
 
   // ---- pointer interaction: pan/zoom + click ----
   const pointers = new Map(); let drag = null; let moved = 0; let pinch = null;
@@ -534,13 +559,14 @@ export function createPlan(host, opts = {}) {
     }
     if (e.pointerType === 'mouse' && !pointers.size) {
       const g = e.target.closest?.('.pl-unit');
-      if (g) { const u = UNITS_BY_ID.get(g.dataset.id); showCard(u, e.clientX, e.clientY); hover(u); }
+      if (g) { const u = UNITS_BY_ID.get(g.dataset.id); hoverCard(u, e.clientX, e.clientY); hover(u); }
+      else if (sticky()) leaveCard();
       else { hideCard(); hover(null); }
     }
   });
   const endPtr = e => { pointers.delete(e.pointerId); if (pointers.size < 2) pinch = null; if (!pointers.size) drag = null; };
   svg.addEventListener('pointerup', endPtr); svg.addEventListener('pointercancel', endPtr);
-  svg.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') { hideCard(); hover(null); } });
+  svg.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') { if (sticky()) leaveCard(); else { hideCard(); hover(null); } } });
   svg.addEventListener('click', e => {
     if (moved > 6) return;
     const g = e.target.closest('.pl-unit'); if (!g) return;

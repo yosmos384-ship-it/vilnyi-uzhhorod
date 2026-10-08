@@ -10,11 +10,17 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import {
   UNITS, TYPES, BUILDINGS, B_IDS, GEOM, LEVELS, PROJECT, DEFAULT_SEL, SITE_CENTER, PARKING, RAMPS, coresOf, corridorsOf, footprintOf, hallEdgesOf,
   floorY, floorH, floorsOf, liftFloors, topFloor, floorFromY, floorLabel, isGround, unitById, unitsOn, blocksOn, unitLabel, unitToLocal, unitToWorld, unitYaw, money,
-  worldToLocal, buildingCenter,
+  worldToLocal, buildingCenter, interiorOf, plateOf,
 } from '../data.js';
 import { I18N } from '../i18n.js';
+import { driveMixin } from './drive.js';
+import { gameMixin } from './drive-game.js';   // V9: people + police + notice + «Без крові» around the drive (the game layer)   // V6: entering cars, vehicle physics, driving HUD (mixed into Walkthrough at the end of this file)
 
-const EYE = 1.62, EYE_360 = 1.55, SPEED = 1.4, RUN = 2.4, RADIUS = 0.28, STEP_UP = 0.45, STEP_DOWN = 1.1;
+// RADIUS 0.24 (was 0.28): apartment.js keeps 0.27 m free around every piece it places and proves its flats walkable
+// with a 0.22 m body; 0.24 leaves a margin on both sides. tools/test-site.py (walk part) walks every room of every
+// layout with this code.
+const EYE = 1.62, EYE_360 = 1.55, SPEED = 1.4, RUN = 2.4, RADIUS = 0.24, STEP_UP = 0.45, STEP_DOWN = 1.1;
+const NAV_CELL = 0.08, NAV_R = [RADIUS + 0.05, RADIUS + 0.01, RADIUS - 0.03];   // route planning inside a flat (see _navOf)
 const RAY_HEIGHTS = [0.3, 1.0, 1.6];
 const CAR_DEPTH = 1.05;        // lift car centre behind the landing door (m)
 const MAX_DPR = 1.75;
@@ -43,7 +49,6 @@ const LOCAL_CAR = {};
 const CAR_TXT = {
   en: { lights: 'Headlights', sound: 'Engine sound', edge: 'Edge of the site — turn back', enter: 'Enter car', exit: 'Exit car', cockpit: 'Cockpit view', chase: 'Chase view', gas: 'Accelerate', brake: 'Brake / reverse', steer: 'Steer', outside: 'Outside', driving: 'Driving', limit: 'Speed limit', hint: 'W / ↑ accelerate · S / ↓ brake & reverse · A D / ← → steer · C camera · L lights · M sound · F exit', tapCar: 'Tap a car to drive it' },
   he: { lights: 'פנסים', sound: 'צליל מנוע', edge: 'גבול האתר — הסתובבו', enter: 'היכנסו לרכב', exit: 'יציאה מהרכב', cockpit: 'מבט מתא הנהג', chase: 'מבט מאחור', gas: 'האצה', brake: 'בלם / רוורס', steer: 'היגוי', outside: 'בחוץ', driving: 'בנהיגה', limit: 'מהירות מרבית', hint: 'W / ↑ האצה · S / ↓ בלם ורוורס · A D / ← → היגוי · C מצלמה · L פנסים · M צליל · F יציאה', tapCar: 'הקישו על רכב כדי לנהוג בו' },
-  ru: { lights: 'Фары', sound: 'Звук мотора', edge: 'Граница территории — разворачивайтесь', enter: 'Сесть в машину', exit: 'Выйти из машины', cockpit: 'Вид из салона', chase: 'Вид сзади', gas: 'Газ', brake: 'Тормоз / назад', steer: 'Руль', outside: 'Улица', driving: 'За рулём', limit: 'Ограничение скорости', hint: 'W / ↑ газ · S / ↓ тормоз и задний ход · A D / ← → руль · C камера · L фары · M звук · F выйти', tapCar: 'Нажмите на машину, чтобы сесть за руль' },
   uk: { lights: 'Фари', sound: 'Звук двигуна', edge: 'Межа території — розвертайтеся', enter: 'Сісти в авто', exit: 'Вийти з авто', cockpit: 'Вигляд із салону', chase: 'Вигляд ззаду', gas: 'Газ', brake: 'Гальмо / назад', steer: 'Кермо', outside: 'Надворі', driving: 'За кермом', limit: 'Обмеження швидкості', hint: 'W / ↑ газ · S / ↓ гальмо й задній хід · A D / ← → кермо · C камера · L фари · M звук · F вийти', tapCar: 'Торкніться авто, щоб сісти за кермо' },
   ro: { lights: 'Faruri', sound: 'Sunet motor', edge: 'Limita zonei — întoarceți', enter: 'Urcă în mașină', exit: 'Coboară din mașină', cockpit: 'Vedere din habitaclu', chase: 'Vedere din spate', gas: 'Accelerează', brake: 'Frână / marșarier', steer: 'Volan', outside: 'Afară', driving: 'La volan', limit: 'Limită de viteză', hint: 'W / ↑ accelerează · S / ↓ frână și marșarier · A D / ← → volan · C cameră · L faruri · M sunet · F coboară', tapCar: 'Atinge o mașină ca s-o conduci' },
   fr: { lights: 'Phares', sound: 'Son du moteur', edge: 'Limite du site — faites demi-tour', enter: 'Monter à bord', exit: 'Descendre', cockpit: 'Vue cockpit', chase: 'Vue arrière', gas: 'Accélérer', brake: 'Freiner / reculer', steer: 'Volant', outside: 'Extérieur', driving: 'Au volant', limit: 'Limitation de vitesse', hint: 'W / ↑ accélérer · S / ↓ freiner et reculer · A D / ← → volant · C caméra · L phares · M son · F descendre', tapCar: 'Touchez une voiture pour la conduire' },
@@ -58,21 +63,19 @@ for (const [lang, o] of Object.entries(CAR_TXT)) for (const [k, v] of Object.ent
 // Strings introduced with the 3D lift panel / open-any-door features, in all 8 site languages
 // (used only when the site's i18n has no such key).
 const LOCAL = {
-  en: { 'walk.mode.live': 'Live 3D', 'walk.mode.photo': 'Photo-real', 'walk.soonApt': 'Photoreal 360° is coming soon for this apartment', 'walk.mode3d': 'Free 3D', 'walk.modeReal': 'Photoreal', 'walk.soon': 'Coming soon', 'walk.reserveThis': 'Reserve this apartment', 'walk.floors': 'Floors', 'walk.tapDoor': 'Tap the door to open it', 'walk.tapKey': 'Tap a floor button on the panel', 'walk.alarm': 'Alarm bell (demo)', 'walk.roomsN': 'rooms', 'walk.status.reserved': 'Reserved', 'walk.status.sold': 'Sold' },
+  en: { 'walk.mode.live': 'Live 3D', 'walk.mode.photo': 'Real 360°', 'walk.soonApt': 'Photoreal 360° is coming soon for this apartment', 'walk.mode3d': 'Free 3D', 'walk.modeReal': 'Photoreal', 'walk.soon': 'Coming soon', 'walk.reserveThis': 'Reserve this apartment', 'walk.floors': 'Floors', 'walk.tapDoor': 'Tap the door to open it', 'walk.tapKey': 'Tap a floor button on the panel', 'walk.alarm': 'Alarm bell (demo)', 'walk.roomsN': 'rooms', 'walk.status.reserved': 'Reserved', 'walk.status.sold': 'Sold' },
   he: { 'walk.mode.live': '3D חי', 'walk.mode.photo': '360° אמיתי', 'walk.soonApt': 'סיור 360° אמיתי לדירה זו יגיע בקרוב', 'walk.mode3d': '3D חופשי', 'walk.modeReal': 'מציאותי', 'walk.soon': 'בקרוב', 'walk.reserveThis': 'שריינו את הדירה הזו', 'walk.floors': 'קומות', 'walk.tapDoor': 'הקישו על הדלת כדי לפתוח אותה', 'walk.tapKey': 'הקישו על כפתור הקומה בלוח המעלית', 'walk.alarm': 'פעמון אזעקה (הדגמה)', 'walk.roomsN': 'חד׳', 'walk.status.reserved': 'משוריינת', 'walk.status.sold': 'נמכרה', 'walk.lift': 'מעלית', 'walk.floor': 'קומה', 'walk.corridor': 'מסדרון', 'walk.room.loggia': 'לוג׳יה', 'walk.room.terrace': 'מרפסת גג', 'walk.room.storage': 'מחסן', 'walk.room.dressing': 'חדר ארונות' },
-  ru: { 'walk.mode.live': 'Живое 3D', 'walk.mode.photo': 'Фото 360°', 'walk.soonApt': 'Фотореалистичный 360° для этой квартиры скоро появится', 'walk.mode3d': 'Свободный 3D', 'walk.modeReal': 'Фотореализм', 'walk.soon': 'Скоро', 'walk.reserveThis': 'Забронировать эту квартиру', 'walk.floors': 'Этажи', 'walk.tapDoor': 'Нажмите на дверь, чтобы открыть', 'walk.tapKey': 'Нажмите кнопку этажа на панели', 'walk.alarm': 'Кнопка вызова (демо)', 'walk.roomsN': 'комн.', 'walk.status.reserved': 'Забронирована', 'walk.status.sold': 'Продана' },
-  uk: { 'walk.mode.live': 'Живе 3D', 'walk.mode.photo': 'Фото 360°', 'walk.soonApt': 'Фотореалістичний 360° для цієї квартири незабаром', 'walk.mode3d': 'Вільний 3D', 'walk.modeReal': 'Фотореалізм', 'walk.soon': 'Незабаром', 'walk.reserveThis': 'Забронювати цю квартиру', 'walk.floors': 'Поверхи', 'walk.tapDoor': 'Торкніться дверей, щоб відчинити', 'walk.tapKey': 'Натисніть кнопку поверху на панелі', 'walk.alarm': 'Кнопка виклику (демо)', 'walk.roomsN': 'кімн.', 'walk.status.reserved': 'Заброньована', 'walk.status.sold': 'Продана' },
-  ro: { 'walk.mode.live': '3D live', 'walk.mode.photo': '360° fotorealist', 'walk.soonApt': 'Turul 360° fotorealist pentru acest apartament vine în curând', 'walk.mode3d': '3D liber', 'walk.modeReal': 'Fotorealist', 'walk.soon': 'În curând', 'walk.reserveThis': 'Rezervă acest apartament', 'walk.floors': 'Etaje', 'walk.tapDoor': 'Atinge ușa pentru a o deschide', 'walk.tapKey': 'Apasă butonul etajului de pe panou', 'walk.alarm': 'Alarmă (demo)', 'walk.roomsN': 'camere', 'walk.status.reserved': 'Rezervat', 'walk.status.sold': 'Vândut' },
-  fr: { 'walk.mode.live': '3D en direct', 'walk.mode.photo': '360° photoréaliste', 'walk.soonApt': 'Le 360° photoréaliste de cet appartement arrive bientôt', 'walk.mode3d': '3D libre', 'walk.modeReal': 'Photoréaliste', 'walk.soon': 'Bientôt', 'walk.reserveThis': 'Réserver cet appartement', 'walk.floors': 'Étages', 'walk.tapDoor': 'Touchez la porte pour l’ouvrir', 'walk.tapKey': 'Appuyez sur un bouton d’étage du panneau', 'walk.alarm': 'Alarme (démo)', 'walk.roomsN': 'pièces', 'walk.status.reserved': 'Réservé', 'walk.status.sold': 'Vendu' },
-  it: { 'walk.mode.live': '3D dal vivo', 'walk.mode.photo': '360° fotorealistico', 'walk.soonApt': 'Il 360° fotorealistico di questo appartamento arriverà presto', 'walk.mode3d': '3D libero', 'walk.modeReal': 'Fotorealistico', 'walk.soon': 'Presto disponibile', 'walk.reserveThis': 'Prenota questo appartamento', 'walk.floors': 'Piani', 'walk.tapDoor': 'Tocca la porta per aprirla', 'walk.tapKey': 'Premi il pulsante del piano sul pannello', 'walk.alarm': 'Allarme (demo)', 'walk.roomsN': 'locali', 'walk.status.reserved': 'Riservato', 'walk.status.sold': 'Venduto' },
-  de: { 'walk.mode.live': 'Live-3D', 'walk.mode.photo': 'Fotorealistisch 360°', 'walk.soonApt': 'Fotorealistisches 360° für diese Wohnung folgt in Kürze', 'walk.mode3d': 'Freies 3D', 'walk.modeReal': 'Fotorealistisch', 'walk.soon': 'Demnächst', 'walk.reserveThis': 'Diese Wohnung reservieren', 'walk.floors': 'Etagen', 'walk.tapDoor': 'Tippen Sie auf die Tür, um sie zu öffnen', 'walk.tapKey': 'Tippen Sie auf eine Etagentaste', 'walk.alarm': 'Notruf (Demo)', 'walk.roomsN': 'Zimmer', 'walk.status.reserved': 'Reserviert', 'walk.status.sold': 'Verkauft' },
+  uk: { 'walk.mode.live': '3D наживо', 'walk.mode.photo': '360° реальне', 'walk.soonApt': 'Фотореалістичний 360° для цієї квартири незабаром', 'walk.mode3d': 'Вільний 3D', 'walk.modeReal': 'Фотореалізм', 'walk.soon': 'Незабаром', 'walk.reserveThis': 'Забронювати цю квартиру', 'walk.floors': 'Поверхи', 'walk.tapDoor': 'Торкніться дверей, щоб відчинити', 'walk.tapKey': 'Натисніть кнопку поверху на панелі', 'walk.alarm': 'Кнопка виклику (демо)', 'walk.roomsN': 'кімн.', 'walk.status.reserved': 'Заброньована', 'walk.status.sold': 'Продана' },
+  ro: { 'walk.mode.live': '3D live', 'walk.mode.photo': '360° real', 'walk.soonApt': 'Turul 360° fotorealist pentru acest apartament vine în curând', 'walk.mode3d': '3D liber', 'walk.modeReal': 'Fotorealist', 'walk.soon': 'În curând', 'walk.reserveThis': 'Rezervă acest apartament', 'walk.floors': 'Etaje', 'walk.tapDoor': 'Atinge ușa pentru a o deschide', 'walk.tapKey': 'Apasă butonul etajului de pe panou', 'walk.alarm': 'Alarmă (demo)', 'walk.roomsN': 'camere', 'walk.status.reserved': 'Rezervat', 'walk.status.sold': 'Vândut' },
+  fr: { 'walk.mode.live': '3D en direct', 'walk.mode.photo': '360° réel', 'walk.soonApt': 'Le 360° photoréaliste de cet appartement arrive bientôt', 'walk.mode3d': '3D libre', 'walk.modeReal': 'Photoréaliste', 'walk.soon': 'Bientôt', 'walk.reserveThis': 'Réserver cet appartement', 'walk.floors': 'Étages', 'walk.tapDoor': 'Touchez la porte pour l’ouvrir', 'walk.tapKey': 'Appuyez sur un bouton d’étage du panneau', 'walk.alarm': 'Alarme (démo)', 'walk.roomsN': 'pièces', 'walk.status.reserved': 'Réservé', 'walk.status.sold': 'Vendu' },
+  it: { 'walk.mode.live': '3D dal vivo', 'walk.mode.photo': '360° reale', 'walk.soonApt': 'Il 360° fotorealistico di questo appartamento arriverà presto', 'walk.mode3d': '3D libero', 'walk.modeReal': 'Fotorealistico', 'walk.soon': 'Presto disponibile', 'walk.reserveThis': 'Prenota questo appartamento', 'walk.floors': 'Piani', 'walk.tapDoor': 'Tocca la porta per aprirla', 'walk.tapKey': 'Premi il pulsante del piano sul pannello', 'walk.alarm': 'Allarme (demo)', 'walk.roomsN': 'locali', 'walk.status.reserved': 'Riservato', 'walk.status.sold': 'Venduto' },
+  de: { 'walk.mode.live': '3D live', 'walk.mode.photo': '360° real', 'walk.soonApt': 'Fotorealistisches 360° für diese Wohnung folgt in Kürze', 'walk.mode3d': 'Freies 3D', 'walk.modeReal': 'Fotorealistisch', 'walk.soon': 'Demnächst', 'walk.reserveThis': 'Diese Wohnung reservieren', 'walk.floors': 'Etagen', 'walk.tapDoor': 'Tippen Sie auf die Tür, um sie zu öffnen', 'walk.tapKey': 'Tippen Sie auf eine Etagentaste', 'walk.alarm': 'Notruf (Demo)', 'walk.roomsN': 'Zimmer', 'walk.status.reserved': 'Reserviert', 'walk.status.sold': 'Verkauft' },
 };
 // Balcony / loggia / terrace doors open on approach or on tap: first-time hint, all 8 site languages.
 const BALCONY_DOOR_TXT = {
   en: 'Balcony doors open as you approach — or tap a door to open and close it',
   he: 'דלתות המרפסת נפתחות כשמתקרבים אליהן — אפשר גם להקיש על הדלת כדי לפתוח ולסגור',
   ro: 'Ușile de balcon se deschid când vă apropiați — sau atingeți ușa pentru a o deschide și închide',
-  ru: 'Балконные двери открываются, когда вы подходите, — или нажмите на дверь, чтобы открыть и закрыть её',
   uk: 'Балконні двері відчиняються, коли ви підходите, — або торкніться дверей, щоб відчинити й зачинити їх',
   fr: 'Les portes du balcon s’ouvrent à votre approche — ou touchez la porte pour l’ouvrir et la fermer',
   it: 'Le porte del balcone si aprono quando ti avvicini — oppure tocca la porta per aprirla e chiuderla',
@@ -101,11 +104,6 @@ const BELL_TXT = {
     'ic.concierge': 'Sună la concierge', 'ic.mine': 'Apartamentul meu', 'ic.calling': 'Se apelează apartamentul {n}…', 'ic.callingCg': 'Se apelează concierge-ul…',
     'ic.answer': 'Apartamentul {n} a răspuns — ușa este deschisă, poftiți.', 'ic.none': 'Nu există apartamentul {n} în acest bloc',
     'ic.goApt': 'Mergi la acest apartament', 'ic.enter': 'Intră în hol', 'ic.again': 'Alt apartament', 'ic.close': 'Închide', 'ic.locked': 'Ușa este încuiată — folosiți interfonul de lângă ea' },
-  ru: { entrance: 'Вход', 'bell.ring': 'Звоним в квартиру {n}…', 'bell.hint': 'Позвоните в звонок у двери', 'mon.open': 'Дверь открыта',
-    'ic.title': 'Домофон', 'ic.prompt': 'Введите номер квартиры', 'ic.range': 'Квартиры {a}–{b}', 'ic.stair': 'В этом доме', 'ic.call': 'Вызов', 'ic.del': 'Стереть',
-    'ic.concierge': 'Вызвать консьержа', 'ic.mine': 'Моя квартира', 'ic.calling': 'Вызываем квартиру {n}…', 'ic.callingCg': 'Вызываем консьержа…',
-    'ic.answer': 'Квартира {n} ответила — дверь открыта, проходите.', 'ic.none': 'В этом доме нет квартиры {n}',
-    'ic.goApt': 'Пройти к этой квартире', 'ic.enter': 'Войти в лобби', 'ic.again': 'Другая квартира', 'ic.close': 'Закрыть', 'ic.locked': 'Дверь заперта — воспользуйтесь домофоном рядом' },
   fr: { entrance: 'Entrée', 'bell.ring': 'On sonne à l’appartement {n}…', 'bell.hint': 'Sonnez à côté de la porte', 'mon.open': 'Porte ouverte',
     'ic.title': 'Interphone', 'ic.prompt': 'Composez le numéro de l’appartement', 'ic.range': 'Appartements {a}–{b}', 'ic.stair': 'Dans cet immeuble', 'ic.call': 'Appeler', 'ic.del': 'Effacer',
     'ic.concierge': 'Appeler le concierge', 'ic.mine': 'Mon appartement', 'ic.calling': 'Appel de l’appartement {n}…', 'ic.callingCg': 'Appel du concierge…',
@@ -128,7 +126,6 @@ const SITE_TXT = {
   uk: { yard: 'Двір', noModel: 'Для цієї квартири 3D-інтер’єр недоступний — показано спрощений об’єм', simple: 'Спрощений вигляд' },
   en: { yard: 'Courtyard', noModel: 'No 3D interior for this apartment — a simplified volume is shown', simple: 'Simplified view' },
   he: { yard: 'חצר', noModel: 'אין פנים תלת־ממדי לדירה זו — מוצג נפח פשוט', simple: 'תצוגה פשוטה' },
-  ru: { yard: 'Двор', noModel: 'Для этой квартиры 3D-интерьер недоступен — показан упрощённый объём', simple: 'Упрощённый вид' },
   ro: { yard: 'Curte', noModel: 'Fără interior 3D pentru acest apartament — se afișează un volum simplificat', simple: 'Vedere simplificată' },
   fr: { yard: 'Cour', noModel: 'Pas d’intérieur 3D pour cet appartement — un volume simplifié est affiché', simple: 'Vue simplifiée' },
   it: { yard: 'Cortile', noModel: 'Nessun interno 3D per questo appartamento — è mostrato un volume semplificato', simple: 'Vista semplificata' },
@@ -146,13 +143,28 @@ const IDLE_FADE_MS = 4000;
 const ICON_GEAR = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 8.96 4.6H9a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.1 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9v.04a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg>';
 const ICON_MAP = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5l6-2.5 6 2.5 6-2.5v13.5l-6 2.5-6-2.5-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg>';
 const FALLBACK_STYLES = [
-  { id: 'milano', name: { he: 'מילאנו', en: 'Milano', ru: 'Милано' } },
-  { id: 'nordic', name: { he: 'נורדי', en: 'Nordic', ru: 'Нордик' } },
-  { id: 'riviera', name: { he: 'ריביירה', en: 'Riviera', ru: 'Ривьера' } },
-  { id: 'monaco', name: { he: 'מונאקו', en: 'Monaco', ru: 'Монако' } },
-  { id: 'kyoto', name: { he: 'קיוטו', en: 'Kyoto', ru: 'Киото' } }, { id: 'paris', name: { he: 'פריז', en: 'Paris', ru: 'Париж' } },
+  { id: 'milano', name: { he: 'מילאנו', en: 'Milano' } },
+  { id: 'nordic', name: { he: 'נורדי', en: 'Nordic' } },
+  { id: 'riviera', name: { he: 'ריביירה', en: 'Riviera' } },
+  { id: 'monaco', name: { he: 'מונאקו', en: 'Monaco' } },
+  { id: 'kyoto', name: { he: 'קיוטו', en: 'Kyoto' } }, { id: 'paris', name: { he: 'פריז', en: 'Paris' } },
 ];
 const OUTDOOR = new Set(['balcony', 'loggia', 'terrace']);
+// V3-ui: the finish styles offered to buyers = PROJECT.styles (ids of materials.js STYLES, in display order). Every
+// selector lists exactly these; a style that is not offered (an old stored choice, a foreign opts.styleId) → the first.
+const OFFERED = (Array.isArray(PROJECT.styles) && PROJECT.styles.length ? PROJECT.styles : FALLBACK_STYLES.map(s => s.id)).slice();
+const offeredStyle = id => (OFFERED.includes(id) ? id : OFFERED[0]);
+const offeredList = all => { const L = OFFERED.map(id => all.find(s => s.id === id)).filter(Boolean); return L.length ? L : all; };
+// Time of day: one stored preference for the walkthrough, the hero / finder 3D (app.js) and the 360° viewer.
+const TIME_KEY = 'vrc.time', TIME_MODES = ['day', 'dusk', 'night'];
+const LAMP_K = { day: 0.3, dusk: 0.9, night: 1 };            // apartment lamps: share of their full intensity
+const ROOM_AMBIENT = { day: 1, dusk: 0.75, night: 0.42 };     // interior image-based light (RoomEnvironment) per mode
+const timeModeOf = m => (TIME_MODES.includes(m) ? m : 'dusk');
+const ICON_TIME = {
+  day: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>',
+  dusk: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17h16M7 17a5 5 0 0 1 10 0M12 7v2.5M5.5 10.5l1.6 1.2M18.5 10.5l-1.6 1.2M8 20.5h8"/></svg>',
+  night: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5z"/></svg>',
+};
 
 // ---------- small helpers ----------
 const damp = (k, dt) => 1 - Math.exp(-k * dt);
@@ -178,6 +190,30 @@ function pointInPoly(p, poly) {
   return inside;
 }
 // distance from a point to an axis-aligned rect {x0,x1,z0,z1} (0 inside)
+// Geometry of a door record of apartment.js in unit-local coordinates: centre p on the wall's centre line, unit vector
+// dir along the wall, normal n (for a balcony door: pointing out), half width hw, wall thickness t. The real-interior
+// builder gives p / dir / n / w / t (any wall direction, slanted facades included); the box builder's records
+// (p0, p1, v along u — or p0 = p1, a0…a1 along v, out) are translated.
+const _doorG = new WeakMap();      // (data records are shared by all floors and must not be written to)
+function doorG(d) {
+  const c = _doorG.get(d); if (c) return c;
+  let p, dir, n;
+  if (d.p && d.dir) { p = [d.p[0], d.p[1]]; dir = [d.dir[0], d.dir[1]]; n = d.n ? [d.n[0], d.n[1]] : [-dir[1], dir[0]]; }
+  else if (d.axis === 'v' || (d.p0 === d.p1 && isFinite(d.a0) && d.a1 > d.a0)) { p = [d.p0, (d.a0 + d.a1) / 2]; dir = [0, 1]; n = [d.out < 0 ? -1 : 1, 0]; }
+  else { p = [(d.p0 + d.p1) / 2, d.v]; dir = [1, 0]; n = [0, 1]; }
+  const L = Math.hypot(dir[0], dir[1]) || 1; dir[0] /= L; dir[1] /= L;
+  const hw = d.w > 0 ? d.w / 2 : Math.abs(dir[0]) > 0.5 ? (d.p1 - d.p0) / 2 : (d.a1 - d.a0) / 2;
+  const g = { p, dir, n, hw: Math.max(0.25, hw || 0.45), t: Math.max(0, +d.t || 0.2) };
+  _doorG.set(d, g); return g;
+}
+function distToPoly(u, v, poly) {
+  let m = Infinity;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const ax = poly[j][0], az = poly[j][1], dx = poly[i][0] - ax, dz = poly[i][1] - az, k = Math.max(0, Math.min(1, ((u - ax) * dx + (v - az) * dz) / (dx * dx + dz * dz || 1)));
+    m = Math.min(m, Math.hypot(u - ax - dx * k, v - az - dz * k));
+  }
+  return m;
+}
 function rectDist(r, x, z) { return Math.hypot(Math.max(r.x0 - x, 0, x - r.x1), Math.max(r.z0 - z, 0, z - r.z1)); }
 function bboxOf(pts) { let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity; for (const [x, z] of pts) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; } return { x0, x1, z0, z1 }; }
 function polyCentroid(poly) { let x = 0, y = 0; for (const p of poly) { x += p[0]; y += p[1]; } return [x / poly.length, y / poly.length]; }
@@ -315,9 +351,10 @@ const PREBUILT = new Map();         // `${unitId}|${styleId}` → apartment buil
 let _modsP = null, _warmTok = 0;
 const idle = (timeout = 400) => new Promise(r => (typeof requestIdleCallback === 'function' ? requestIdleCallback(r, { timeout }) : setTimeout(r, 30)));
 function makeRenderer() { return new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' }); }
-function roomEnvFor(renderer) {
+function roomEnvFor(renderer, k = 1) {          // k < 1: the same room, dimmed (evening / night ambient)
   const pm = new THREE.PMREMGenerator(renderer);
   const room = new RoomEnvironment(renderer);
+  if (k !== 1) room.traverse(o => { if (o.isLight) o.intensity *= k; else if (o.material && o.material.isMeshBasicMaterial) o.material.color.multiplyScalar(k); });
   const tex = pm.fromScene(room, 0.04).texture;
   room.traverse(o => { o.geometry?.dispose(); o.material?.dispose?.(); });
   pm.dispose();
@@ -435,7 +472,7 @@ const CSS = `
 .vw-price{font-weight:500;opacity:.8;letter-spacing:0;text-transform:none}
 .vw-icon{width:34px;padding:0;justify-content:center}
 .vw-gear{display:none}
-.vw-tools{position:absolute;top:calc(58px + var(--st));right:calc(10px + var(--sr));display:flex;flex-direction:column;gap:7px;align-items:stretch;padding:7px;width:112px}
+.vw-tools{position:absolute;top:calc(58px + var(--st));right:calc(10px + var(--sr));display:flex;flex-direction:column;gap:7px;align-items:stretch;padding:7px;width:132px}
 .vw[dir=rtl] .vw-tools{right:auto;left:calc(10px + var(--sl))}
 .vw-seg{display:flex;border:1px solid var(--ln);border-radius:999px;overflow:hidden}
 .vw-seg button{flex:1;padding:6px 0;font-size:11px;letter-spacing:.04em;color:#d9ccb0;touch-action:manipulation}
@@ -570,7 +607,13 @@ const CSS = `
 .vw.phone.dim.padon .vw-pad{opacity:.55}
 .vw.phone.dim.riding .vw-bottom{opacity:.1}
 /* view-mode switch: free 3D | photoreal panoramas (always above the pano layer) */
-.vw-modes{position:absolute;top:calc(54px + var(--st));left:50%;transform:translateX(-50%);display:flex;padding:3px;gap:2px;border-radius:999px;z-index:6;transition:opacity .45s ease}
+.vw-center{position:absolute;top:calc(54px + var(--st));left:50%;transform:translateX(-50%);display:flex;align-items:flex-start;justify-content:center;gap:8px;z-index:6;max-width:calc(100% - 16px);transition:opacity .45s ease}
+.vw-modes,.vw-light{position:relative;display:flex;flex:0 0 auto;padding:3px;gap:2px;border-radius:999px}
+.vw-light button{height:28px;padding:0 11px 0 9px;border-radius:999px;display:flex;align-items:center;gap:6px;font-size:11.5px;letter-spacing:.03em;white-space:nowrap;color:#e9dfc8;touch-action:manipulation}
+.vw-light button svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.vw-light button.on{background:linear-gradient(135deg,#e6c987,#b88a3c);color:#111;font-weight:700}
+.vw-light button:hover:not(.on),.vw-modes button:hover:not(.on):not(.off){color:#fff;background:rgba(201,164,92,.14)}
+.vw-tools .vw-time{display:none}
 .vw-modes button{height:28px;padding:0 13px;border-radius:999px;font-size:11.5px;letter-spacing:.03em;white-space:nowrap;color:#e9dfc8;touch-action:manipulation;unicode-bidi:isolate}
 .vw-modes button.on{background:linear-gradient(135deg,#e6c987,#b88a3c);color:#111;font-weight:700}
 .vw-modes button.off{opacity:.45;cursor:default}
@@ -578,20 +621,28 @@ const CSS = `
 .vw-modes .soon.show{opacity:1;transform:none}
 .vw-modes[hidden]{display:none!important}
 .vw-modes .soon:before{content:"";position:absolute;top:-4px;inset-inline-end:18px;width:7px;height:7px;background:inherit;border-left:1px solid var(--ln);border-top:1px solid var(--ln);transform:rotate(45deg)}
-.vw.phone .vw-modes{top:calc(50px + var(--st))}
+.vw.phone .vw-center{top:calc(50px + var(--st));gap:6px}
 .vw.phone .vw-modes button{height:30px;padding:0 12px}
-.vw.phone.dim:not(.pano) .vw-modes{opacity:.15}
+.vw.phone .vw-light button{height:30px;width:34px;padding:0;justify-content:center}
+.vw.phone .vw-light button span{display:none}
+.vw.phone .vw-tools .vw-time{display:flex}
+.vw.phone .vw-time button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 2px 6px;font-size:10.5px;letter-spacing:.02em;line-height:1.1}
+.vw-time button svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.vw.phone.dim:not(.pano) .vw-center{opacity:.15}
 .vw-toast{top:calc(96px + var(--st))}.vw.phone .vw-toast{top:calc(92px + var(--st))}
 .vw-ucard{top:calc(96px + var(--st))}.vw.phone .vw-ucard{top:calc(90px + var(--st))}
 .vw-ucard.show~.vw-toast{top:calc(158px + var(--st))}
 .vw-pano{position:absolute;inset:0;z-index:3;background:#050505}
 .vw-carchip{position:absolute;left:50%;bottom:calc(100px + var(--sb));transform:translateX(-50%);display:none;height:42px;padding:0 18px;font-size:12.5px;z-index:2}
 .vw-carchip.show{display:inline-flex;animation:vwpop .35s ease}
+.vw-sofachip{position:absolute;left:50%;bottom:calc(100px + var(--sb));transform:translateX(-50%);display:none;height:40px;padding:0 16px;font-size:12.5px;z-index:2;gap:8px;align-items:center;unicode-bidi:plaintext}
+.vw-sofachip.show{display:inline-flex;animation:vwpop .35s ease}
+.vw.driving .vw-sofachip{display:none!important}
 @keyframes vwpop{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
 .vw-drive{display:none}
 .vw.driving .vw-drive{display:block;position:absolute;inset:0;pointer-events:none}
 .vw.driving .vw-drive>*{pointer-events:auto}
-.vw.driving :is(.vw-pad,.vw-bottom,.vw-map,.vw-mapbtn,.vw-lift,.vw-floorsbtn,.vw-modes,.vw-tools,.vw-ucard,.vw-photo,.vw-helpbtn,.vw-gear,.vw-carchip){display:none!important}
+.vw.driving :is(.vw-pad,.vw-bottom,.vw-map,.vw-mapbtn,.vw-lift,.vw-floorsbtn,.vw-center,.vw-tools,.vw-ucard,.vw-photo,.vw-helpbtn,.vw-gear,.vw-carchip){display:none!important}
 .vw-dtop{position:absolute;top:calc(56px + var(--st));right:calc(10px + var(--sr));display:flex;gap:7px}
 .vw[dir=rtl] .vw-dtop{right:auto;left:calc(10px + var(--sl))}
 .vw-dtop .vw-ico{width:40px;padding:0;justify-content:center}
@@ -627,8 +678,10 @@ const CSS = `
 .vw.phone .vw-spdo .num b{font-size:32px}
 .vw-dhint{position:absolute;left:calc(12px + var(--sl));bottom:calc(16px + var(--sb));padding:8px 12px;font-size:11px;letter-spacing:.03em;max-width:min(360px,34vw);line-height:1.45;color:#e9dfc8}
 .vw.phone .vw-dhint{display:none}
-.vw.pano .vw-hud>*:not(.vw-fade):not(.vw-modes){display:none!important}
-.vw.pano .vw-modes{opacity:1!important}
+.vw.pano .vw-hud>*:not(.vw-fade):not(.vw-center){display:none!important}
+.vw.pano .vw-center{opacity:1!important}
+.vw.phone.pano .vw-center{top:calc(64px + var(--st))}
+.vw.pano .vw-light{display:none!important}
 .vw.pano canvas.vw-gl{visibility:hidden}
 .vw-cg{box-sizing:border-box;position:absolute;left:50%;bottom:calc(14px + var(--sb));width:min(380px,calc(100% - 24px));padding:12px 12px 10px;border-radius:16px;
   background:linear-gradient(180deg,rgba(22,19,14,.9),rgba(8,8,8,.9));opacity:0;transform:translate(-50%,10px) scale(.98);transition:opacity .28s ease,transform .28s ease;pointer-events:none;
@@ -676,15 +729,15 @@ const CSS = `
 `;
 
 export class Walkthrough {
-  static get startsFromPano() { return true; }   // enter({ from: <pano-tour state> }) places the camera itself
+  static get startsFromPano() { return true; }   // enter({ from: <pano-tour state> }) places the camera itself (any state: flat, sample flat, lobby, lift hall)
   constructor(container, opts = {}) {
     this.container = container;
     this.opts = opts;
     this.i18n = opts.i18n || null;
-    this.styleId = opts.styleId || 'milano';
+    this.styleId = offeredStyle(opts.styleId || lsGet('vrc.style'));          // one of PROJECT.styles (data.js)
     // building finish of the commons: an explicit choice (HUD / opts.finish) or null = follow the apartment style
     { const f = opts.finish || lsGet('vrc.walk.finish'); this.finishId = ['classic', 'grand', 'stone'].includes(f) ? f : null; }
-    this.envMode = opts.timeMode || 'dusk';
+    this.envMode = timeModeOf(opts.timeMode || lsGet(TIME_KEY));              // day | dusk | night — shared with the hero / finder 3D
     this.mode = 'walk';
     this.disposed = false;
     this.unit = null; this.bId = null; this.floor = null;
@@ -703,6 +756,8 @@ export class Walkthrough {
     this._zoomS = 1; this._baseTanH = Math.tan(34 * D2R); this._hfov = 70;   // zoom = scale on tan(½·horizontal FOV)
     this._pinch = null; this._phone = null; this._mapOpen = null; this._popOpen = false;
     this._lastAct = performance.now(); this._dim = false; this._suppressTap = 0;
+    // a 360° state the viewer left a moment ago (pano-tour.js, "3D live" pressed in the tour opened from the unit sheet)
+    try { const L = window.VRC_TOUR_LAST; if (L && L.state && Date.now() - L.t < 30000) this._tourStash = L.state; window.VRC_TOUR_LAST = null; } catch { /* no window */ }
 
     // DOM
     if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
@@ -734,6 +789,7 @@ export class Walkthrough {
     this._buildHud();
     this._bind();
     this._resize();
+    try { Promise.resolve(window.VRC && window.VRC.photoTourReady).then(() => { if (!this.disposed) { this._modesKey = null; this._renderModes(); } }, () => {}); } catch { /* no tour */ }
     this._ready = this._init();
     this._loop = this._loop.bind(this);
     this._raf = requestAnimationFrame(this._loop);
@@ -756,12 +812,14 @@ export class Walkthrough {
     mark('modules');
     if (this.disposed) return;
     const M = this.mods;
-    this.styles = (M.materials && Array.isArray(M.materials.STYLES) && M.materials.STYLES.length) ? M.materials.STYLES : FALLBACK_STYLES;
+    this.styles = offeredList((M.materials && Array.isArray(M.materials.STYLES) && M.materials.STYLES.length) ? M.materials.STYLES : FALLBACK_STYLES);
     if (!this.styles.some(s => s.id === this.styleId)) this.styleId = this.styles[0].id;
 
     // Interior image-based lighting (RoomEnvironment), swapped with the sky env on outdoor spots.
     try { this.roomEnv = this._spareEnv || roomEnvFor(this.renderer); } catch (e) { console.warn('[walk] RoomEnvironment failed', e); this.roomEnv = null; }
     this._spareEnv = null;
+    this._roomEnvs = new Map(this.roomEnv ? [[1, this.roomEnv]] : []);     // ambient level → room IBL (see _roomEnvOf)
+    this.roomEnv = this._roomEnvOf(this.envMode);
 
     // First-frame state = final state for the shaders: fog type + the full light set (ghosts stand in for the lights
     // of the environment, the commons rig and the car headlights until those stream in; see _streamWorld).
@@ -790,7 +848,7 @@ export class Walkthrough {
       } catch (e) { console.warn('[walk] createEnvironment threw', e); this.env = null; }
     }
     if (!this.env) this._fallbackEnv();
-    this.skyEnv = (this.scene.environment !== this.roomEnv && this.scene.environment) || this.skyEnv || null;
+    this.skyEnv = (!this._isRoomEnv(this.scene.environment) && this.scene.environment) || this.skyEnv || null;
     this._syncEnvMap();
   }
   // The complex's facades (exterior.js). Streamed in after the environment.
@@ -890,16 +948,27 @@ export class Walkthrough {
       if (this.disposed || token !== this._enterToken) return;
       await this._buildApartment(); mark('apartment');
       if (this.disposed || token !== this._enterToken) return;
-    }
+    } else this._sofaReset();                              // (V5-sofa) the same flat entered again: its opening state
     this._updateTitle();
     this._renderRooms();
     this.mode = mode === '360' ? '360' : 'walk';
     // Streaming: inside the apartment the corridor/lifts are not needed for the first frame (they follow right after).
     const aptFirst = !this._worldP && !['lobby', 'corridor', 'parking', 'entrance', 'outside'].includes(start);
-    const fromPano = from && from.frame !== 'building' && isFinite(from.u) && isFinite(from.v) && (!from.unitId || from.unitId === this.unit.id);
-    if (fromPano) {   // coming from the photoreal 360°: open at the same spot, looking the same way
-      if (aptFirst) { this.floor = this.unit.floor; this.bId = this.unit.building; }
-      await this._placeFromPano(from);
+    // Coming from the 360° tour (opened from the unit sheet, then "3D live"): the viewer's last state — handed over by
+    // the page (`from`) and, in full, left by the viewer itself (window.VRC_TOUR_LAST, picked up in the constructor):
+    // the same place, view direction; a sample layout → the same kind of room, view relative to the window wall.
+    let src = this._tourStash && (!this._tourStash.unitId || this._tourStash.unitId === this.unit.id) ? this._tourStash : null;
+    this._tourStash = null;
+    if (!src && from && typeof from === 'object' && (!from.unitId || from.unitId === this.unit.id)) src = from;
+    if (src && (src.frame === 'building' ? isFinite(src.x) && isFinite(src.z) : isFinite(src.u) && isFinite(src.v))) {
+      if (aptFirst && src.frame !== 'building') { this.floor = this.unit.floor; this.bId = this.unit.building; }
+      let how = 'place';
+      try { how = await this._arriveFromTour(src, null); } catch (e) { console.warn('[walk] 360° hand-over', e); await this._goto(start, { instant: true, skipFloor: aptFirst }); }
+      this._tourArrived = performance.now();
+      { const P = this.player, uv = this._unitUV(P.pos), [lx, lz] = worldToLocal(this.bId, P.pos.x, P.pos.z);
+        this._tourLog = { open: null, close: { how, scene: src.scene || (src.frame === 'building' ? 'commons' : 'apt'), pointId: src.pointId, yawPano: src.yaw, yawLive: P.yaw,
+          dist: src.frame === 'building' ? +Math.hypot(lx - src.x, lz - src.z).toFixed(3) : uv && how === 'exact' ? +Math.hypot(uv.u - src.u, uv.v - src.v).toFixed(3) : null } }; }
+      this.player.eye = this.mode === '360' ? EYE_360 : EYE;
       this._updateHud(true);
     } else await this._goto(start, { instant: true, skipFloor: aptFirst });
     if (this.disposed || token !== this._enterToken) return;
@@ -910,17 +979,15 @@ export class Walkthrough {
     this._streamWorld();
     this.canvas.focus({ preventScroll: true });
     if (!lsGet('vrc.walk.help')) this._showHelp(true);
-    setTimeout(() => { if (!this.disposed) this._preloadPano(); }, 1200);
-    if (lsGet('vrc.walk.view') === 'photo' && this.opts.pano !== false && lsGet('vrc.walk.help')) {
-      Promise.resolve(window.VRC_PANO ? null : this._preloadPano()).then(() => {
-        if (!this.disposed && token === this._enterToken && !this._pano && this._panoAvail()) this._openPano();
-      });
-    }
+    setTimeout(() => { if (!this.disposed) this._tourLoad(); }, 500);       // 360° manifest → the "3D live / 360° real" pill
   }
 
   async setStyle(styleId) {
+    if (styleId && !(this.styles || offeredList(FALLBACK_STYLES)).some(s => s.id === styleId)) styleId = offeredStyle(styleId);
     if (!styleId || styleId === this.styleId && this.apt) { this._renderStyles(); return; }
     this.styleId = styleId;
+    lsSet('vrc.style', styleId);
+    try { this.opts.onStyle && this.opts.onStyle(styleId); } catch (e) { console.warn(e); }
     this._renderStyles();
     if (!this.unit) return;
     await this._ready;
@@ -974,11 +1041,42 @@ export class Walkthrough {
     this._renderLiftPanel(); this._updateHud(true);
   }
 
-  setTimeMode(mode) {
+  /** Day / dusk / night, live (no reload): sky, sun and fog (environment.js), the apartment lamps and the room's ambient
+   *  light (_applyLamps), exposure. The choice is remembered ('vrc.time') and shared with the hero / finder 3D and 360°. */
+  setTimeMode(mode, { save = true } = {}) {
+    mode = timeModeOf(mode);
+    const changed = mode !== this.envMode;
     this.envMode = mode;
-    try { this.env && this.env.setMode(mode); } catch (e) { console.warn(e); }
-    this.skyEnv = this.scene.environment !== this.roomEnv ? this.scene.environment : this.skyEnv;
+    if (save) lsSet(TIME_KEY, mode);
+    if (!this._culled) try { this.env && this.env.setMode(mode); } catch (e) { console.warn(e); }   // culled (deep in the car park): applied on the way out
+    if (this.scene.environment && !this._isRoomEnv(this.scene.environment)) this.skyEnv = this.scene.environment;
+    this.roomEnv = this._roomEnvOf(mode);
+    this._syncEnvMap();
+    this._applyLamps(true);
+    this._lastPlace = null; this._updateHud(true);          // exposure of the place in the new light
     this._renderTime();
+    if (changed) { try { this.opts.onTimeMode && this.opts.onTimeMode(mode); } catch (e) { console.warn(e); } }
+  }
+  // Interior light by time of day. The apartment's lamps (the fixed pool of point lights) are the evening light: full at
+  // night, nearly full at dusk, a faint fill by day, when daylight (sun + sky through the glazing, and a bright room
+  // ambient) carries the room. The ambient image light of the rooms follows the same way: bright by day, low at night,
+  // so a night room is lit by its lamps and not by a grey wash.
+  _lampK() { return LAMP_K[this.envMode] ?? 1; }
+  // The rooms' image-based light for a mode: the RoomEnvironment map at that mode's ambient level (made once per level).
+  _roomEnvOf(mode) {
+    const M = this._roomEnvs; if (!M || !M.size) return this.roomEnv || null;
+    const k = ROOM_AMBIENT[mode] ?? 1;
+    if (!M.has(k)) { try { M.set(k, roomEnvFor(this.renderer, k)); } catch (e) { console.warn('[walk] room ambient', e); return M.get(1) || this.roomEnv; } }
+    return M.get(k);
+  }
+  _isRoomEnv(tex) { if (!tex) return false; if (tex === this.roomEnv) return true; if (this._roomEnvs) for (const v of this._roomEnvs.values()) if (v === tex) return true; return false; }
+  _applyLamps(animate) {
+    const pool = this._lightPool; if (!pool) return;
+    const k = this._lampK(), token = (this._lightTok = (this._lightTok || 0) + 1);
+    const from = pool.map(l => l.intensity), to = pool.map(l => (l.userData.base || 0) * k);
+    pool.forEach((l, i) => { l.userData.to = to[i]; });
+    if (!animate) { pool.forEach((l, i) => { l.intensity = to[i]; }); return; }
+    tween(420, q => { if (token === this._lightTok) pool.forEach((l, i) => { l.intensity = from[i] + (to[i] - from[i]) * q; }); });
   }
 
   /** Capture the current view as a high-res PNG data URL → opts.onPhoto(dataUrl), else download it. */
@@ -1021,7 +1119,8 @@ export class Walkthrough {
     clearTimeout(this._soonT);
     this._unbind();
     const safe = f => { try { f(); } catch (e) { console.warn('[walk] dispose', e); } };
-    safe(() => this._engineStop());
+    safe(() => { this._carSoundsStop(); if (this._radio) this._radio.dispose(); this._radio = undefined; if (this.drive) this._mirrorDispose(this.drive); this._driveDispose(); });   // V6-cars: engine / horn / radio / mirror target
+    safe(() => this._gameDispose());                                   // V9: people / police / their audio
     safe(() => this.fleet && this.fleet.dispose());
     safe(() => this.outdoorPoles && this.outdoorPoles.dispose());
     safe(() => this.outdoor && this.outdoor.dispose());
@@ -1029,7 +1128,7 @@ export class Walkthrough {
     safe(() => this._disposeApartment());
     safe(() => this.complex && this.complex.dispose && this.complex.dispose());
     safe(() => this.env && this.env.dispose && this.env.dispose());
-    safe(() => this.roomEnv && this.roomEnv.dispose());
+    safe(() => { if (this._roomEnvs) for (const v of this._roomEnvs.values()) v.dispose(); else if (this.roomEnv) this.roomEnv.dispose(); });
     safe(() => { for (const o of this._own) disposeTree(o); this._own = []; });
     safe(() => disposeTree(this.scene));   // sweep anything left (textures of shared caches are re-uploaded if reused)
     safe(() => { this.scene.environment = null; this.scene.background = null; this.scene.clear(); });
@@ -1047,7 +1146,9 @@ export class Walkthrough {
     const bdOpen = new Map();     // balcony doors that were open (a style change keeps them open): id → auto-opened?
     if (prev) for (const d of prev.apt.balconyDoors || []) if (d.open) bdOpen.set(d.id, this._bdS(d).auto);
     this._disposeApartment();
+    const sbKeep = prev && prev.apt.sofaBed && prev._sbIntro === 'done' ? { open: !!prev.apt.sofaBed.open } : null;   // (V5-sofa)
     const e = this._loadApt(unit);
+    if (sbKeep) this._sofaInit(e, sbKeep);
     this._setCurrent(e, { quiet: true });
     if (wasOpen && e.apt.doorLeaf) this._toggleDoor(e.apt.doorLeaf, true);
     for (const d of e.apt.balconyDoors || []) if (bdOpen.has(d.id) && typeof d.toggle === 'function') {
@@ -1092,6 +1193,7 @@ export class Walkthrough {
     this.loaded.set(unit.id, e);
     this._register(apt.group, e.src);
     this._addMonitor(e);
+    this._sofaInit(e);                                     // (V5-sofa) a one-room flat is entered with the bed open
     if (this.commons) this._hideDuplicateDoor();
     return e;
   }
@@ -1104,6 +1206,7 @@ export class Walkthrough {
     if (!e.rooms) e.rooms = this._normalizeRooms(e.apt.rooms || []);
     this.rooms = e.rooms;
     this._assignLights(e);
+    this._renderModes();
     this._updateTitle(); this._renderRooms();
     this._lastPlace = null; this._lastMap = 0;
     if (this.el && this.floor != null) this._updateHud(true);
@@ -1115,9 +1218,11 @@ export class Walkthrough {
     const pool = this._lightPool; if (!pool) return;
     const token = (this._lightTok = (this._lightTok || 0) + 1);
     const from = pool.map(l => l.intensity);
+    const k = this._lampK();
     const apply = () => pool.forEach((l, i) => {
       const s = e.lights[i];
-      if (s) { l.position.copy(s.pos); l.color.copy(s.color); l.distance = s.distance; l.decay = s.decay; l.userData.to = s.intensity; } else l.userData.to = 0;
+      if (s) { l.position.copy(s.pos); l.color.copy(s.color); l.distance = s.distance; l.decay = s.decay; l.userData.base = s.intensity; } else l.userData.base = 0;
+      l.userData.to = l.userData.base * k;
       l.intensity = 0;
     });
     if (from.every(v => v === 0)) { apply(); pool.forEach(l => { l.intensity = l.userData.to; }); return; }
@@ -1162,17 +1267,25 @@ export class Walkthrough {
       if (dy < -0.6 || dy > 1.6) continue;
       const [lx, lz] = worldToLocal(u.building, pos.x, pos.z);
       const [uu, vv] = localToUnit(u, lx, lz);
+      if (e.apt.real) { if (this._aptSpace(e, uu, vv)) return e; continue; }
       const B = this._aptBox(e);
       if (uu > B.u0 + 0.02 && uu < B.u1 - 0.02 && vv > 0.12 && vv < B.v1 + 0.3) return e;
     }
     return null;
   }
 
-  // The extent of a loaded apartment in its own frame {u0, u1, v0, v1}: the fitted box, widened by its outdoor room
-  // when it has one — beyond the far wall (v > depth) or, for a flat whose facade is lateral, beside it (u < 0 or
-  // u > width). No outdoor room → the box only, so the strip outside a flat without a balcony is never taken for it.
+  // The extent of a loaded apartment in its own frame {u0, u1, v0, v1}. A flat built from its real interior gives its
+  // true extent (apt.bbox: rooms and outdoor spaces, which may lie outside 0…width / 0…depth — negative u is normal).
+  // The fitted-box builder: the box, widened by its outdoor room when it has one.
   _aptBox(e) {
     if (!e.box) {
+      const bb = e.apt.bbox;
+      if (bb && isFinite(bb.u0) && isFinite(bb.u1) && isFinite(bb.v0) && isFinite(bb.v1)) {
+        const B = { u0: bb.u0, u1: bb.u1, v0: bb.v0, v1: bb.v1, real: true };
+        for (const r of e.apt.rooms || []) for (const q of r.poly || []) { B.u0 = Math.min(B.u0, q[0]); B.u1 = Math.max(B.u1, q[0]); B.v0 = Math.min(B.v0, q[1]); B.v1 = Math.max(B.v1, q[1]); }
+        for (const k of e.apt.decks || []) for (const q of k.poly || []) { B.u0 = Math.min(B.u0, q[0]); B.u1 = Math.max(B.u1, q[0]); B.v0 = Math.min(B.v0, q[1]); B.v1 = Math.max(B.v1, q[1]); }
+        return (e.box = B);
+      }
       const u = e.unit, m = GEOM.balconyDepth * 2, B = { u0: 0, u1: u.width, v0: 0, v1: u.depth };
       const grow = (a, b, pad = 0) => { if (!isFinite(a) || !isFinite(b)) return; B.u0 = Math.min(B.u0, a - pad); B.u1 = Math.max(B.u1, a + pad); B.v1 = Math.max(B.v1, b + pad); };
       for (const r of e.apt.rooms || []) if (OUTDOOR.has(r.kind)) { if (r.poly && r.poly.length) for (const p of r.poly) grow(p[0], p[1]); else grow(u.width / 2, u.depth + GEOM.balconyDepth); }
@@ -1183,17 +1296,45 @@ export class Walkthrough {
     return e.box;
   }
 
-  _normalizeRooms(rooms) {
+  // Real-interior flats: the room (or outdoor space) of a point in unit coordinates — its polygon; in a door opening
+  // (the strip through the wall) the room on that side of the wall's centre line; on a deck bay its outdoor space;
+  // within 0.3 m of a polygon (inside a wall line, on a threshold) the nearest one. null = not in this flat (the
+  // corridor in front of the entrance included: the entrance opening counts from the middle of its wall).
+  _aptSpace(e, u, v) {
+    const rooms = e.rooms || (e.rooms = this._normalizeRooms(e.apt.rooms || [], e.unit));
+    const B = this._aptBox(e);
+    if (u < B.u0 - 0.4 || u > B.u1 + 0.4 || v < B.v0 - 0.4 || v > B.v1 + 0.4) return null;
+    for (const r of rooms) if (r.poly && pointInPoly([u, v], r.poly)) return r;
+    const byId = id => rooms.find(r => r.id === id) || null;
+    for (const d of e.apt.doors || []) {
+      const g = doorG(d), rx = u - g.p[0], rz = v - g.p[1], sa = rx * g.dir[0] + rz * g.dir[1], sn = rx * g.n[0] + rz * g.n[1];
+      if (Math.abs(sa) > g.hw || Math.abs(sn) > g.t / 2 + 0.03) continue;
+      if (d.type === 'entrance') return sn > 0 ? byId(d.rooms[1]) : null;
+      return byId(d.rooms[sn < 0 ? 0 : 1]) || byId(d.rooms[sn < 0 ? 1 : 0]);
+    }
+    for (const k of e.apt.decks || []) if (k.poly && k.poly.length >= 3 && pointInPoly([u, v], k.poly)) return byId(k.space) || rooms.find(r => OUTDOOR.has(r.kind)) || null;
+    let best = null, bd = 0.3;
+    for (const r of rooms) { if (!r.poly) continue; const dd = distToPoly(u, v, r.poly); if (dd < bd) { bd = dd; best = r; } }
+    if (best && v < 0.3) {   // by the entrance wall: the hall side of it is the corridor
+      const [lx, lz] = unitToLocal(e.unit, u, v);
+      if (corridorsOf(e.unit.building, e.unit.floor).some(c => lx > c.x0 && lx < c.x1 && lz > c.z0 && lz < c.z1)) return null;
+    }
+    return best;
+  }
+
+  _normalizeRooms(rooms, unit = this.unit) {
     const counts = {}, seen = {};
-    rooms.forEach(r => { counts[r.kind] = (counts[r.kind] || 0) + 1; });
+    // real interiors carry the plan's own room name (r.key = 'walk.room.kitchenLiving' …); same names are numbered
+    const nameOf = r => (r.key && this.t(r.key, '') ) || this.t('walk.room.' + r.kind, EN['walk.room.' + r.kind] || r.name || r.kind);
+    rooms.forEach(r => { const k = nameOf(r); counts[k] = (counts[k] || 0) + 1; });
     return rooms.map(r => {
       const poly = r.poly && r.poly.length >= 3 ? r.poly : null;
-      const center = r.center || (poly ? polyCentroid(poly) : [this.unit.width / 2, this.unit.depth / 2]);
+      const center = r.center || (poly ? polyCentroid(poly) : [unit.width / 2, unit.depth / 2]);
       const level = r.level || 0;
       const y = typeof r.y === 'number' ? r.y : 0;
-      seen[r.kind] = (seen[r.kind] || 0) + 1;
-      let label = this.t('walk.room.' + r.kind, EN['walk.room.' + r.kind] || r.name || r.kind);
-      if (counts[r.kind] > 1 && r.kind !== 'hall') label += ' ' + seen[r.kind];
+      let label = nameOf(r);
+      seen[label] = (seen[label] || 0) + 1;
+      if (counts[label] > 1) label += ' ' + seen[label];
       return { ...r, poly, center, level, y, label };
     });
   }
@@ -1519,7 +1660,7 @@ export class Walkthrough {
     }
   }
 
-  _isFree(x, y, z) {
+  _isFree(x, y, z, margin = 0.08) {
     const p = new THREE.Vector3(x, y, z);
     const solids = this._solidsNear(p, 1.0), floors = this._near(this.floors, p, 1.5);
     if (this.floorReq && this._floorAt(x, y, z, floors) === null) return false;
@@ -1528,16 +1669,16 @@ export class Walkthrough {
     const dir = new THREE.Vector3();
     for (let i = 0; i < 8; i++) {
       const a = i / 8 * Math.PI * 2; dir.set(Math.cos(a), 0, Math.sin(a));
-      for (const h of [0.3, 1.0]) if (this._cast(solids, new THREE.Vector3(x, y + h, z), dir, RADIUS + 0.08).some(q => !q.object.userData.floor)) return false;
+      for (const h of [0.3, 1.0]) if (this._cast(solids, new THREE.Vector3(x, y + h, z), dir, RADIUS + margin).some(q => !q.object.userData.floor)) return false;
     }
     return true;
   }
   // Nearest free standing spot around (x,z) — spiral search.
-  _freeSpot(x, y, z, maxR = 1.6) {
-    if (this._isFree(x, y, z)) return [x, z];
-    for (let r = 0.35; r <= maxR; r += 0.35) {
-      const n = Math.max(6, Math.round(r * 14));
-      for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r; if (this._isFree(px, y, pz)) return [px, pz]; }
+  _freeSpot(x, y, z, maxR = 1.6, margin = 0.08, accept = null) {
+    if (this._isFree(x, y, z, margin)) return [x, z];
+    for (let r = 0.15; r <= maxR; r += 0.15) {
+      const n = Math.max(8, Math.round(r * 16));
+      for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r; if ((!accept || accept(px, pz)) && this._isFree(px, y, pz, margin)) return [px, pz]; }
     }
     return [x, z];
   }
@@ -1570,6 +1711,20 @@ export class Walkthrough {
     if (where === 'lobby' || where === 'parking') return { floor: where === 'lobby' ? 1 : -1, spawn: true };
     if (where === 'corridor' || (where && where.door)) return this._doorSpot((where && where.door) || u);
     if (where === 'entrance' || where === 'outside') return { floor: 1, bId: u.building, outdoor: where };   // resolved by _outdoorSpot once the lobby is loaded
+    if (apt && apt.real && (where === 'balcony' || where === 'apartment' || !where || (typeof where === 'string' && !['lobby', 'parking', 'corridor', 'entrance', 'outside'].includes(where)))) {
+      // real interior: the builder's own standing points (clear of furniture and door swings)
+      const bp = apt.balconyPoint;
+      const r = where === 'balcony' ? (this.rooms.find(x => bp && x.id === bp.id) || this.rooms.find(x => OUTDOOR.has(x.kind) && !x.detached) || this.rooms.find(x => OUTDOOR.has(x.kind)))
+        : (this.rooms.find(x => x.kind === 'living') || this.rooms.find(x => x.kind === 'bedroom') || this.rooms.find(x => !OUTDOOR.has(x.kind)));
+      // "Apartment": the builder's own living-room viewpoint (a standing place with the long view of the room in
+      // sight, clear of furniture and door swings) when it lies in that room; else the room's standing point
+      const V = where !== 'balcony' && r && apt.views && (apt.views.living || apt.views.bedroom);
+      if (V && V.pos && V.target && r.poly && pointInPoly([V.pos[0], V.pos[2]], r.poly)) {
+        const du = V.target[0] - V.pos[0], dv = V.target[2] - V.pos[2];
+        if (Math.hypot(du, dv) > 0.5) return { floor: unitFloor, pos: this._unitPoint(V.pos[0], V.pos[2]), yaw: this._unitDirYaw(du, dv), pitch: -0.07, free: true, room: r };
+      }
+      if (r) return this._roomSpot(r);
+    }
     if (where === 'balcony') {
       const out = this.rooms.find(r => OUTDOOR.has(r.kind));
       const bp = (apt && apt.balconyPoint) || { u: out.center[0], v: out.center[1] };
@@ -1592,15 +1747,25 @@ export class Walkthrough {
   }
   // In the hall, a little to the side of a flat's entrance door, looking at it diagonally. The halls of a point tower
   // are short and cranked, so the spot is searched: first choice 1.9 m beside the door, then closer, always inside a
-  // hall rect of that floor.
+  // hall rect of that floor. A leaf that opens into the hall (most do) swings towards its hinge: the spot is on the
+  // latch side, so the open leaf never stands between the visitor and the opening.
   _doorSpot(d) {
     const halls = corridorsOf(d.building, d.floor);
     const inHall = (x, z, m = 0.32) => halls.some(r => x > r.x0 + m && x < r.x1 - m && z > r.z0 + m && z < r.z1 - m);
-    const pref = d.door.u > 1.9 ? -1 : 1;
+    let pref = d.door.u > 1.9 ? -1 : 1, outward = false;
+    try {
+      const le = this.loaded.get(d.id), rec = le && (le.apt.doors || []).find(q => q.type === 'entrance');
+      if (rec && rec.hingeAt && rec.p) { pref = rec.hingeAt[0] - rec.p[0] > 0 ? -1 : 1; outward = rec.swing === 'HALL' || (rec.swingSign != null && rec.swingSign < 0); }
+      else { const I = interiorOf(d), ed = I && I.doors.find(q => q.type === 'entrance'); if (ed && ed.dir && Math.abs(ed.dir[0]) > 0.5 && ed.hinge) { pref = ed.dir[0] > 0 ? 1 : -1; outward = ed.swing === 'HALL'; } }
+    } catch { /* no interior data */ }
     let best = null;
-    search: for (const back of [0.85, 1.2, 0.6]) for (const side of [1.9, 1.3, 0.8, 0]) for (const sg of [pref, -pref]) {
-      const [x, z] = unitToLocal(d, d.door.u + sg * side, -back);
-      if (inHall(x, z)) { best = [x, z]; break search; }
+    const tryAt = (du, back, m) => { const [x, z] = unitToLocal(d, d.door.u + du, -back); if (inHall(x, z, m)) { best = [x, z]; return true; } return false; };
+    search: {
+      for (const back of [0.85, 1.2, 0.6]) for (const side of [1.9, 1.3, 0.8]) if (tryAt(pref * side, back)) break search;
+      // no room on the latch side: straight in front of the door, beyond the reach of the open leaf
+      for (const back of [1.45, 1.2, 1.7, 1.0]) if (tryAt(pref * 0.25, back, 0.3) || tryAt(0, back, 0.3)) break search;
+      for (const back of [0.85, 1.2, 0.6]) for (const side of [1.9, 1.3, 0.8]) if (tryAt(-pref * side, back)) break search;
+      for (const back of [0.85, 0.6]) if (tryAt(0, back, 0.26)) break search;
     }
     if (!best) best = unitToLocal(d, d.door.u, -0.8);
     const [tx, tz] = unitToLocal(d, d.door.u, 0.35);
@@ -1627,6 +1792,26 @@ export class Walkthrough {
   }
   _roomSpot(r) {
     const u = this.unit;
+    if (this.apt && this.apt.real && r.center) {
+      let [pu, pv] = r.stand || r.center, look = null, pitch;
+      if (!OUTDOOR.has(r.kind) && r.kind !== 'living' && r.poly) {
+        // kitchen niche, hall, bathroom, a first bedroom: the builder's own viewpoint of that room when it has one
+        // (apt.views.<kind>: a standing place with its subject in sight); a room without daylight and without a
+        // viewpoint is looked at along its longest diagonal, not into the nearest corner
+        const V = this.apt.views && this.apt.views[r.kind];
+        if (V && V.pos && V.target && pointInPoly([V.pos[0], V.pos[2]], r.poly) && Math.hypot(V.target[0] - V.pos[0], V.target[2] - V.pos[2]) > 0.5) {
+          pu = V.pos[0]; pv = V.pos[2]; look = [V.target[0] - pu, V.target[2] - pv]; pitch = -0.1;
+        } else {
+          let I = null; try { I = interiorOf(u); } catch { I = null; }
+          if (!(I && (I.windows || []).some(w => w.room === r.id && !w.partition))) {
+            let bd = -1; for (const q of r.poly) { const d = Math.hypot(q[0] - pu, q[1] - pv); if (d > bd) { bd = d; look = [q[0] - pu, q[1] - pv]; } }
+            pitch = -0.1;
+          }
+        }
+      }
+      look = look || this._roomLook(r, [pu, pv]);
+      return { floor: u.floor, pos: this._unitPoint(pu, pv), yaw: this._unitDirYaw(look[0], look[1]), pitch, free: true, room: r };
+    }
     if (OUTDOOR.has(r.kind)) {
       const bp = this.apt && this.apt.balconyPoint;
       const useBp = bp && r.level === (bp.level || 0) && (!r.poly || pointInPoly([bp.u, bp.v], r.poly));
@@ -1637,6 +1822,33 @@ export class Walkthrough {
     const vs = r.poly ? r.poly.map(p => p[1]) : [r.center[1]];
     const v = Math.max(Math.min(...vs) + 0.8, Math.min(r.center[1], Math.min(...vs) + 1.4));
     return { floor: u.floor, pos: this._unitPoint(r.center[0], this.mode === '360' ? r.center[1] : v), yaw: this._unitDirYaw(0, 1), free: true, room: r };
+  }
+  // Where to look when put into a room of a real-interior flat (unit-local direction): an outdoor space — out over
+  // the railing (the normal of its door); a room — towards the middle of its largest window, else of its balcony
+  // door; a room without daylight (hall, bathroom) — into the room as one enters it through its door.
+  _roomLook(r, at = r.stand || r.center, unit = this.unit, doors = (this.apt && this.apt.doors) || null) {
+    const nrm = (x, z) => { const L = Math.hypot(x, z); return L > 1e-3 ? [x / L, z / L] : null; };
+    let I = null; try { I = interiorOf(unit); } catch { I = null; }
+    doors = doors || (I && I.doors) || [];
+    if (OUTDOOR.has(r.kind) || r.outdoor) {
+      const d = doors.find(q => (q.type === 'balcony' || !q.type) && Array.isArray(q.rooms) && q.rooms[1] === r.id);
+      if (d) { const g = doorG(d); return [g.n[0], g.n[1]]; }
+      const c = I && I.rooms && I.rooms.length ? polyCentroid(I.rooms.map(q => q.c || polyCentroid(q.poly))) : [unit.width / 2, unit.depth / 2];
+      return nrm(at[0] - c[0], at[1] - c[1]) || [0, 1];
+    }
+    let best = null, bl = 0;
+    for (const w of (I && I.windows) || []) {
+      if (w.room !== r.id || !w.pts || w.pts.length < 2 || w.partition) continue;
+      let L = 0; for (let i = 1; i < w.pts.length; i++) L += Math.hypot(w.pts[i][0] - w.pts[i - 1][0], w.pts[i][1] - w.pts[i - 1][1]);
+      if (L > bl) { bl = L; const a = w.pts[0], b = w.pts[w.pts.length - 1], m = w.pts[Math.floor(w.pts.length / 2)]; best = w.pts.length > 2 ? m : [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; }
+    }
+    if (best) { const v = nrm(best[0] - at[0], best[1] - at[1]); if (v) return v; }
+    const bd = doors.find(q => q.type === 'balcony' && Array.isArray(q.rooms) && q.rooms[0] === r.id);
+    if (bd) { const g = doorG(bd), v = nrm(g.p[0] - at[0], g.p[1] - at[1]); if (v) return v; }
+    const ed = doors.find(q => q.type !== 'balcony' && Array.isArray(q.rooms) && q.rooms.includes(r.id) && (q.type === 'entrance' || q.type === 'interior'))
+      || doors.find(q => q.type === 'passage' && Array.isArray(q.rooms) && q.rooms.includes(r.id));
+    if (ed) { const g = doorG(ed), v = nrm(at[0] - g.p[0], at[1] - g.p[1]); if (v) return v; }
+    return [0, 1];
   }
 
   async _goto(where, { instant = false, skipFloor = false } = {}) {
@@ -1658,11 +1870,15 @@ export class Walkthrough {
       if (s.free) {
         const fy = this._floorAt(pos.x, pos.y + 0.3, pos.z, this._near(this.floors, pos, 2));
         if (fy !== null) pos.y = fy;
-        const [fx, fz] = this._freeSpot(pos.x, pos.y, pos.z); pos.x = fx; pos.z = fz;
+        // a room of a real interior: the builder's standing point (0.27 m clear) — if it is tight, a free place of
+        // the SAME room, never the neighbouring one
+        const cur = s.room && this.unit && this.loaded.get(this.unit.id), real = !!(cur && cur.apt.real);
+        const same = real ? (x, z) => { const [lx, lz] = worldToLocal(this.unit.building, x, z), [uu, vv] = localToUnit(this.unit, lx, lz); return this._aptSpace(cur, uu, vv) === s.room; } : null;
+        const [fx, fz] = this._freeSpot(pos.x, pos.y, pos.z, 1.6, real ? 0.02 : 0.08, same); pos.x = fx; pos.z = fz;
       }
       this._place(pos, s.yaw, s.pitch);
       if (where === 'apartment' && this.loaded.get(this.unit.id)?.fallback && this.el) this._toast(this.t('walk.noModel'), 3200);
-      if (where === 'balcony' || (where && where.room && OUTDOOR.has(where.room.kind))) this._openBalconyDoorAt(pos);
+      if (where === 'balcony' || (where && where.room && OUTDOOR.has(where.room.kind)) || (s.room && OUTDOOR.has(s.room.kind))) this._openBalconyDoorAt(pos, s.room || (where && where.room) || null);
       this.player.eye = this.mode === '360' ? EYE_360 : EYE;
       this._lastPlace = null;
       this._updateHud(true);
@@ -1690,64 +1906,100 @@ export class Walkthrough {
     this.el.modeSeg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.m === this.mode));
   }
 
-  // ======================= photoreal mode (pano-tour.js) =======================
-  // The photoreal tour is another module (pano-tour.js): pre-rendered panoramas per apartment type × design style.
-  // It is available when window.VRC_PANO.has(typeId, styleId) says so (or a module was injected via opts.modules.panoTour).
-  // Unit-local hand-over: {unitId, u, v, level, yaw}; yaw is the three.js camera yaw in the apartment group's frame
-  // (x = u, z = v; yaw 0 looks toward −v, i.e. the corridor; world yaw = yaw + unitYaw(unit)).
-  _panoApi() {
-    const inj = this.mods && this.mods.panoTour;
-    const reg = typeof window !== 'undefined' ? window.VRC_PANO : null;
-    return { inj, reg };
+  // ======================= "3D live" ↔ "360° real" (js/pano-tour.js) =======================
+  // The 360° tour (pre-rendered panoramas per layout × design × light mode, plus lobbies and lift halls) is shown by
+  // js/pano-tour.js in a layer INSIDE the walkthrough: the pill at the top centre stays where it is in both modes, so
+  // one press goes to the panorama point nearest to where the visitor stands, looking the same way, in the same
+  // design and light; the other press comes back to that point's position in the live 3D with the view kept.
+  //   · same layout: unit-local position of the point, yaw in the flat's frame (camera rotation.y; 0 looks to −v);
+  //   · a layout shown through a representative layout's panoramas ("sample apartment" badge in the viewer): the same
+  //     kind of room, the view direction kept RELATIVE TO THE WINDOW WALL of that room (_roomLook);
+  //   · lobby / lift hall: building-local x, z and yaw; a lift hall rendered on another floor of the same plate is
+  //     exact, one of another plate is a sample (first point, compass direction kept).
+  // The pill is visible whenever panoramas exist for the place the visitor is in; nowhere else (lift car, car park,
+  // courtyard, another tower's lobby).
+  _tourOn() { return this.opts.pano !== false && !!(PROJECT.features && PROJECT.features.photoTour) && !this._panoFailed; }
+  _tourLoad() {
+    if (this._tourP) return this._tourP;
+    if (!this._tourOn()) return (this._tourP = Promise.resolve(null));
+    return (this._tourP = (async () => {
+      try {
+        const inj = this.mods && this.mods.panoTour;
+        const mod = inj && typeof (inj.openPanoTour || inj.default) === 'function' ? inj : await import('../pano-tour.js');
+        const man = await mod.tourReady;
+        this._tour = { mod, man: man && man.types ? man : { types: {} } };
+      } catch (e) { console.info('[walk] 360° tour unavailable', e && e.message); this._panoFailed = true; this._tour = null; }
+      this._modesKey = null; if (!this.disposed) this._renderModes();
+      return this._tour;
+    })());
   }
-  _panoAvail() {
-    if (!this.unit || this._panoFailed || !PROJECT.features || !PROJECT.features.photoTour) return false;
-    const { inj, reg } = this._panoApi(), T = this.unit.type, S = this.styleId;
-    if (reg && typeof reg.available === 'function') { try { return !!reg.available(this.unit.id, S); } catch { return false; } }
-    for (const src of [reg, inj, inj && inj.VRC_PANO]) {
-      if (src && typeof src.has === 'function') { try { if (src.has(T, S)) return true; } catch { /* registry optional */ } }
+  // points of a manifest entry (a style of a layout, or a common area) in a light mode, else in any mode it has
+  _tourPts(e, mode = this.envMode) {
+    if (!e) return [];
+    const M = e.modes || {};
+    return (M[mode] && M[mode].points) || (Object.values(M).find(x => x && x.points && x.points.length) || {}).points || e.points || [];
+  }
+  // What the 360° tour has for the place the visitor stands in, or null.
+  _tourAt() {
+    const T = this._tour; if (!T || !this.unit || this.riding || this.drive || this.floor == null || this.busy) return null;
+    const P = this.player.pos;
+    if (this._carOf(P)) return null;
+    const room = this._currentRoom();
+    if (room) {
+      const r = typeof T.mod.tourTypeFor === 'function' ? T.mod.tourTypeFor(this.unit.type) : null;
+      return r && T.man.types[r.type] ? { scene: 'apt', type: r.type, foreign: r.type !== this.unit.type, room } : null;
     }
-    return false;
+    if (this.floor < 1 || this.bId !== this.unit.building || this._isOutside(P) || this._aptAt(P)) return null;
+    const C = typeof T.mod.tourCommons === 'function' ? T.mod.tourCommons(this.bId) : null, key = isGround(this.floor) ? 'lobby' : 'corridor', entry = C && C[key];
+    if (!entry || !this._tourPts(entry).length) return null;
+    const pl = plateOf(this.bId, this.floor);
+    return { scene: key, entry, exact: key === 'lobby' ? entry.floor === this.floor : !!pl && pl === plateOf(this.bId, entry.floor) };
   }
-  // The site's photo tour (app.js): window.VRC.openPhotoTour({unitId, styleId, room:{kind, index}}). Preferred over the
-  // legacy in-walk pano layer; when neither exists the Live 3D ↔ Photo-real toggle is hidden.
-  // PROJECT.features.photoTour is false for this project (no panoramas rendered): no toggle, no "coming soon".
-  _photoTourFn() { if (!PROJECT.features || !PROJECT.features.photoTour) return null; const V = typeof window !== 'undefined' ? window.VRC : null; return V && typeof V.openPhotoTour === 'function' ? V.openPhotoTour : null; }
-  // Where the walker is, as the photo tour understands it: a room kind + its 0-based index among rooms of that kind
-  // (apartment), or a commons place ('corridor' | 'lobby' | 'parking' | 'lift').
-  _roomRef() {
-    const r = !this.riding && !this._carOf(this.player.pos) ? this._currentRoom() : null;
-    if (r) {
-      const same = (this.rooms || []).filter(x => x.kind === r.kind);
-      return { kind: r.kind, index: Math.max(0, same.indexOf(r)), level: 0 };
-    }
-    const kind = this.riding || this._carOf(this.player.pos) ? 'lift' : this.floor === -1 ? 'parking' : isGround(this.floor) ? 'lobby' : 'corridor';
-    return { kind, index: 0, level: 0 };
+  // rooms + outdoor spaces of a layout from the data (unit coordinates), and the one a point lies in
+  _typeRooms(type) {
+    let I = null; try { I = interiorOf(type); } catch { I = null; }
+    return I ? [...I.rooms.map(r => ({ id: r.id, kind: r.kind, poly: r.poly, c: r.c })), ...(I.outdoor || []).map(r => ({ id: r.id, kind: r.kind, poly: r.poly, c: r.c, outdoor: true }))] : [];
   }
-  _openPhotoTour() {
-    const fn = this._photoTourFn();
-    if (!fn || !this.unit || this.riding) return;
-    const room = this._roomRef();
-    this._setPopover(false); this._hideUnitCard();
-    this.keys.clear(); this.pad = { u: 0, d: 0, l: 0, r: 0 }; this.glide = null; this.player.vel.set(0, 0, 0);
-    let res;
-    try {
-      res = fn({ unitId: this.unit.id, styleId: this.styleId, room, roomKind: room.kind, roomIndex: room.index,
-        onBack: (kind, index) => this.jumpToRoom(kind ?? room.kind, index ?? room.index) });
-    } catch (e) { console.warn('[walk] openPhotoTour failed', e); return; }
-    // The tour covers the page: pause the live renderer until we are shown again (jumpToRoom / any touch on the live view).
-    this._photoPaused = true;
-    if (res && typeof res.then === 'function') res.catch(e => { console.warn('[walk] openPhotoTour failed', e); this._resumeLive(); });
+  _typeRoomAt(type, u, v) {
+    const R = this._typeRooms(type);
+    let best = R.find(r => r.poly && pointInPoly([u, v], r.poly)) || null, bd = Infinity;
+    if (!best) for (const r of R) { const d = r.poly ? distToPoly(u, v, r.poly) : Infinity; if (d < bd) { bd = d; best = r; } }
+    return best;
+  }
+  // camera yaw, in the flat's own frame, of a room's "look" direction (towards its window wall — see _roomLook)
+  _lookYaw(type, room, at) {
+    let doors = null; try { const I = interiorOf(type); doors = I && I.doors; } catch { doors = null; }
+    const d = this._roomLook(room, at, type, doors || []);
+    return Math.atan2(-d[0], -d[1]);
+  }
+  _soonTip() {
+    const s = this.el.soon; s.classList.add('show');
+    clearTimeout(this._soonT); this._soonT = setTimeout(() => s.classList.remove('show'), 2200);
+  }
+  _renderModes() {
+    if (!this.el || !this.el.modes) return;
+    const real = !!this._pano, show = real || !!this._tourAt();
+    const key = `${show}|${real}`;
+    if (key === this._modesKey) return;
+    this._modesKey = key;
+    this.el.modes.hidden = !show;
+    this.root.classList.toggle('nomodes', !show);
+    const [b3, bR] = this.el.modes.children;
+    b3.classList.toggle('on', !real); bR.classList.toggle('on', real);
+    b3.setAttribute('aria-pressed', String(!real)); bR.setAttribute('aria-pressed', String(real));
+    bR.classList.remove('off'); bR.setAttribute('aria-disabled', 'false'); bR.title = '';
   }
   _resumeLive() { if (!this._photoPaused) return; this._photoPaused = false; this.clock.getDelta(); }
 
   /** Jump into the live 3D at a room of the current apartment: kind ('living', 'bedroom', 'balcony'…, or 'corridor',
-   *  'lobby', 'parking', 'apartment'), index = 0-based among rooms of that kind. Used by the photo-real tour to come back. */
+   *  'lobby', 'parking', 'apartment'), index = 0-based among rooms of that kind. */
   async jumpToRoom(kind, index = 0) {
     if (kind && typeof kind === 'object') ({ kind, index = 0 } = kind);
     this._resumeLive();
     await this._ready;
     if (this.disposed || !this.unit) return false;
+    // just placed from a 360° state (enter): that placement — same room kind, view direction kept — stands
+    if (this._tourArrived && performance.now() - this._tourArrived < 5000) { this._tourArrived = 0; return true; }
     if (this._pano) await this._closePano(null);
     if (this.riding) return false;
     kind = String(kind || 'living').toLowerCase();
@@ -1758,181 +2010,172 @@ export class Walkthrough {
       || (OUTDOOR.has(kind) ? (this.rooms || []).find(x => OUTDOOR.has(x.kind)) : null)
       || (this.rooms || []).find(x => x.kind === 'living');
     if (!r) { await this._goto('apartment'); return true; }
-    // Switching back into another loaded apartment? _goto uses this.unit, which is the current one — fine.
     await this._goto({ room: r });
     return true;
   }
 
-  // Has the photo tour renders for this unit (type × any style)? Unknown (no helper / manifest not loaded yet) → assume yes.
-  _tourHas() {
-    const V = window.VRC; if (!V || typeof V.hasPhotoTour !== 'function' || !this.unit) return true;
-    try { return V.hasPhotoTour(this.unit.id) !== false; } catch { return true; }
-  }
-  _renderModes() {
-    if (!this.el || !this.el.modes) return;
-    const tour = !!this._photoTourFn(), real = !!this._pano;
-    const show = tour || real || this._panoAvail();          // no photo tour anywhere → no toggle
-    const avail = tour ? this._tourHas() : show;             // shown but not rendered for this unit → "coming soon"
-    const key = `${show}|${avail}|${real}|${tour}`;
-    if (key === this._modesKey) return;
-    this._modesKey = key;
-    this.el.modes.hidden = !show;
-    this.root.classList.toggle('nomodes', !show);
-    const [b3, bR] = this.el.modes.children;
-    b3.classList.toggle('on', !real); bR.classList.toggle('on', real);
-    b3.setAttribute('aria-pressed', String(!real)); bR.setAttribute('aria-pressed', String(real));
-    bR.classList.toggle('off', !avail && !real);
-    bR.setAttribute('aria-disabled', String(!avail && !real));
-    bR.title = !avail && !real ? this.t('walk.soon') : '';
-  }
-  _soonTip() {
-    const s = this.el.soon; s.classList.add('show');
-    clearTimeout(this._soonT); this._soonT = setTimeout(() => s.classList.remove('show'), 2200);
-  }
-  // Load pano-tour.js in the background (it registers window.VRC_PANO and reads assets/pano/index.json) so the switch
-  // knows early whether this type × style has been rendered. A missing module simply leaves the switch on "coming soon".
-  _preloadPano() {
-    // Legacy in-walk pano layer: opt-in only (opts.pano === true or a registry already on the page). The site's photo
-    // tour (window.VRC.openPhotoTour) replaced it; probing for undeployed pano assets would only log 404s.
-    if (this._panoProbe || this.opts.pano !== true && !window.VRC_PANO) return this._panoProbe;
-    this._panoProbe = (async () => {
-      try {
-        const inj = this.mods && this.mods.panoTour;
-        if (!window.VRC_PANO && !inj) this.mods.panoTour = await import('../pano-tour.js');
-        const reg = window.VRC_PANO;
-        if (reg && reg.ready && typeof reg.ready.then === 'function') await reg.ready;
-      } catch (e) { console.info('[walk] photoreal tour not deployed yet', e && e.message); this._panoFailed = true; }
-      this._modesKey = null; if (!this.disposed) this._renderModes();
-    })();
-    return this._panoProbe;
-  }
-  // The pano manifest (same file pano-tour.js reads) — fetched only once a type/style is known to exist.
-  async _panoManifest() {
-    if (!this._panoMan) {
-      const url = new URL('../../assets/pano/index.json', import.meta.url);
-      this._panoMan = fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null);
-    }
-    return this._panoMan;
-  }
-  // Pano points of this type/style: [{id, pos:[u, v, y], level?}] (or {id, u, v}) from the module, registry or manifest.
-  async _panoPoints(mod) {
-    const T = this.unit.type, S = this.styleId, reg = window.VRC_PANO;
-    for (const [o, fn] of [[mod, 'panoPoints'], [mod, 'points'], [reg, 'points'], [reg, 'panoPoints']]) {
-      if (o && typeof o[fn] === 'function') { try { const p = await o[fn](T, S); if (Array.isArray(p) && p.length) return p; } catch { /* next source */ } }
-    }
-    const m = await this._panoManifest();
-    const e = m && m.types && m.types[T] && m.types[T].styles && m.types[T].styles[S];
-    return e && Array.isArray(e.points) && (e.frame || 'unit') === 'unit' ? e.points : [];
-  }
-  async _nearestPanoPoint(mod, uv) {
-    const pts = await this._panoPoints(mod);
-    if (!pts.length || !uv) return pts[0] || null;
-    let best = null, bd = Infinity;
-    for (const p of pts) {
-      const pu = p.u ?? (p.pos && p.pos[0]), pv = p.v ?? (p.pos && p.pos[1]);
-      if (!isFinite(pu) || !isFinite(pv)) continue;
-      const d = Math.hypot(pu - uv.u, pv - uv.v) + ((p.level || 0) !== uv.level ? 50 : 0);
-      if (d < bd) { bd = d; best = p; }
-    }
-    return best || pts[0];
-  }
+  // Live 3D → 360°: the panorama point nearest to where the visitor stands, same view direction, design and light.
   async _openPano() {
     if (this._pano || this._panoBusy || !this.unit || this.riding || this.busy) return;
-    if (!this._panoAvail()) { this._soonTip(); return; }
-    const reg = window.VRC_PANO;
-    if (reg && typeof reg.available === 'function' && typeof reg.open === 'function') return this._openPanoHook(reg);
     this._panoBusy = true;
-    let mod = this.mods.panoTour;
-    try {
-      if (!mod || typeof (mod.openPanoTour || mod.default) !== 'function') mod = this.mods.panoTour = await import('../pano-tour.js');
-    } catch (e) {
-      console.warn('[walk] pano-tour.js unavailable', e);
-      this._panoFailed = true; this._panoBusy = false; this._renderModes(); this._soonTip(); return;
+    let T = null, place = null;
+    try { T = await this._tourLoad(); place = T && this._tourAt(); } catch (e) { console.warn(e); }
+    if (!T || !place || this.disposed) { this._panoBusy = false; this._renderModes(); if (!this.disposed) this._soonTip(); return; }
+    const open = T.mod.openPanoTour || T.mod.default;
+    const P = this.player, unit = this.unit;
+    const back = { pos: P.pos.clone(), yaw: P.yaw, pitch: P.pitch, floor: this.floor, bId: this.bId, room: place.room || null };
+    const o = { unitId: unit.id, styleId: this.styleId, mode: this.envMode, timeMode: this.envMode, pitch: P.pitch, embedded: true, exit: true, i18n: this.i18n, lang: this.lang, dir: this.dir };
+    const entry = { scene: place.scene, foreign: !!place.foreign, exact: place.scene === 'apt' ? !place.foreign : !!place.exact, dist: null, yawLive: P.yaw };
+    if (place.scene === 'apt') {
+      const TT = T.man.types[place.type], st = (TT.styles && (TT.styles[this.styleId] || Object.values(TT.styles).find(x => this._tourPts(x).length))) || null, pts = this._tourPts(st);
+      const uv = this._unitUV(P.pos) || { u: 0, v: 0 }, yawA = wrapPi(P.yaw - unitYaw(unit) - BUILDINGS[unit.building].rotY);
+      let pt = null, yaw = yawA;
+      if (!place.foreign) {
+        // the nearest point of the room the visitor stands in; a room without a point of its own → the nearest of all
+        const rid = place.room && place.room.id, own = rid ? pts.filter(q => (this._typeRoomAt(place.type, q.pos[0], q.pos[1]) || {}).id === rid) : [];
+        let bd = Infinity;
+        for (const q of own.length ? own : pts) { const d = Math.hypot(q.pos[0] - uv.u, q.pos[1] - uv.v); if (d < bd) { bd = d; pt = q; } }
+        entry.dist = pt ? +bd.toFixed(3) : null; entry.sameRoom = own.length > 0;
+      } else {
+        // sample layout: the same kind of room (same index among rooms of that kind where it exists)
+        const live = place.room, kind = live.kind, idx = Math.max(0, (this.rooms || []).filter(r => r.kind === kind).indexOf(live));
+        const RR = this._typeRooms(place.type), same = RR.filter(r => r.kind === kind);
+        const tr = same[Math.min(idx, same.length - 1)] || (OUTDOOR.has(kind) ? RR.find(r => r.outdoor) : null) || RR.find(r => r.kind === 'living') || RR[0] || null;
+        const inRoom = tr ? pts.filter(q => (this._typeRoomAt(place.type, q.pos[0], q.pos[1]) || {}).id === tr.id) : [];
+        const pool = inRoom.length ? inRoom : pts.filter(q => q.room === kind).length ? pts.filter(q => q.room === kind) : pts.filter(q => q.room === 'living').length ? pts.filter(q => q.room === 'living') : pts;
+        const c = (tr && tr.c) || [0, 0]; let bd = Infinity;
+        for (const q of pool) { const d = Math.hypot(q.pos[0] - c[0], q.pos[1] - c[1]); if (d < bd) { bd = d; pt = q; } }
+        if (pt) {
+          const pr = this._typeRoomAt(place.type, pt.pos[0], pt.pos[1]) || tr;
+          const rel = wrapPi(yawA - this._lookYaw(unit.type, live, [uv.u, uv.v]));
+          yaw = wrapPi(this._lookYaw(place.type, pr, [pt.pos[0], pt.pos[1]]) + rel);
+          entry.rel = rel; entry.room = kind; entry.repRoom = pr ? pr.kind : null;
+        }
+      }
+      o.room = { kind: pt ? pt.room : place.room.kind, index: pt ? (pt.roomIndex | 0) : 0 }; o.pointId = pt ? pt.id : undefined; o.yaw = yaw;
+    } else {
+      const pts = this._tourPts(place.entry), [lx, lz] = worldToLocal(this.bId, P.pos.x, P.pos.z);
+      let pt = pts[0], bd = Infinity;
+      if (place.exact) for (const q of pts) { const d = Math.hypot(q.pos[0] - lx, q.pos[1] - lz); if (d < bd) { bd = d; pt = q; } }
+      entry.dist = place.exact && pt ? +bd.toFixed(3) : null;
+      o.room = place.scene; o.pointId = pt ? pt.id : undefined; o.yaw = wrapPi(P.yaw - BUILDINGS[this.bId].rotY); o.corridorSample = place.scene === 'corridor' && !place.exact;
     }
-    const open = mod.openPanoTour || mod.default;
-    if (typeof open !== 'function') { this._panoFailed = true; this._panoBusy = false; this._renderModes(); this._soonTip(); return; }
-    const P = this.player, uv = this._unitUV(P.pos);
-    const pt = await this._nearestPanoPoint(mod, uv);
-    const yaw = wrapPi(P.yaw - unitYaw(this.unit) - BUILDINGS[this.unit.building].rotY);
+    entry.pointId = o.pointId; entry.yaw = o.yaw;
     await this._fade(true);
     const host = document.createElement('div'); host.className = 'vw-pano';
     this.root.appendChild(host);
     this.keys.clear(); this.pad = { u: 0, d: 0, l: 0, r: 0 }; this.glide = null; P.vel.set(0, 0, 0);
     this._setPopover(false); this._hideUnitCard();
-    const pano = this._pano = { host, handle: null, last: pt ? { u: pt.u ?? (pt.pos && pt.pos[0]), v: pt.v ?? (pt.pos && pt.pos[1]), level: pt.level || 0, yaw } : null };
+    const pano = this._pano = { host, handle: null, back, entry, place };
+    this._tourLog = { open: entry, close: null };
     this.root.classList.add('pano'); this._renderModes();
-    lsSet('vrc.walk.view', 'photo');
     try {
-      pano.handle = await open(host, {
-        unitId: this.unit.id, typeId: this.unit.type, styleId: this.styleId, pointId: pt ? pt.id : undefined, yaw,
-        i18n: this.i18n, lang: this.lang, dir: this.dir,
-        onExit: s => { this._closePano(s && typeof s === 'object' ? s : null); },   // leave photoreal → live 3D at the same place
-        onSwitchTo3D: s => { this._closePano(s || null); },
+      pano.handle = await open(host, { ...o,
+        onExit: () => { this._closePano(null, { exit: true }); },                 // ✕ in the viewer = leave the walkthrough
+        onSwitchTo3D: st => { this._closePano(st || null); },
+        onReserve: id => { this._closePano(null).then(() => this.opts.onReserve && this.opts.onReserve(id || unit.id)); },
       });
-      if (pano.handle && pano.handle.ok === false) { this._panoFailed = true; this._closePano(null).then(() => this._soonTip()); }   // nothing rendered for it after all
+      if (this._pano !== pano) { try { pano.handle && pano.handle.dispose && pano.handle.dispose(); } catch { /* closed meanwhile */ } }
+      else if (!pano.handle || pano.handle.ok === false) { await this._closePano(null, { restore: true }); this._soonTip(); }
     } catch (e) {
       console.warn('[walk] openPanoTour failed', e);
-      this._panoFailed = true; this._closePano(null); this._soonTip();
+      this._panoFailed = true; await this._closePano(null, { restore: true }); this._soonTip();
     } finally { this._panoBusy = false; this._fade(false); }
   }
-  // Photoreal via the pano hook: window.VRC_PANO.open(host, {unitId, styleId, startRoom, i18n, onExit}).
-  // The live renderer is paused (the frame loop skips while this._pano is set) and resumes at the same spot on exit.
-  async _openPanoHook(reg) {
-    this._panoBusy = true;
-    const P = this.player, room = this._currentRoom();
-    const back = { pos: P.pos.clone(), yaw: P.yaw, pitch: P.pitch, floor: this.floor, bId: this.bId, unit: this.unit };
-    await this._fade(true);
-    const host = document.createElement('div'); host.className = 'vw-pano';
-    this.root.appendChild(host);
-    this.keys.clear(); this.pad = { u: 0, d: 0, l: 0, r: 0 }; this.glide = null; P.vel.set(0, 0, 0);
-    this._setPopover(false); this._hideUnitCard();
-    const pano = this._pano = { host, handle: null, back, hook: true };
-    this.root.classList.add('pano'); this._renderModes();
-    lsSet('vrc.walk.view', 'photo');
-    try {
-      pano.handle = await reg.open(host, {
-        unitId: this.unit.id, typeId: this.unit.type, styleId: this.styleId, startRoom: (room && room.kind) || 'living',
-        i18n: this.i18n, lang: this.lang, dir: this.dir,
-        onExit: () => { this._closePano(null); },
-      });
-      if (pano.handle && pano.handle.ok === false) { this._closePano(null).then(() => this._soonTip()); }
-    } catch (e) {
-      console.warn('[walk] VRC_PANO.open failed', e);
-      this._closePano(null); this._soonTip();
-    } finally { this._panoBusy = false; this._fade(false); }
-  }
-  async _closePano(state, { exit = false } = {}) {
+  // 360° → live 3D (the pill, or the viewer itself). `state` = the viewer's state; without one it is asked for it.
+  async _closePano(state, { exit = false, restore = false } = {}) {
     const p = this._pano; if (!p) return;
     this._pano = null;
-    let s = state;
-    if (!s && p.handle && typeof p.handle.getState === 'function') { try { s = p.handle.getState(); } catch { /* optional */ } }
-    s = s || p.last;
+    let s = state && typeof state === 'object' ? state : null;
+    if (!s && !restore && p.handle && typeof p.handle.getState === 'function') { try { s = p.handle.getState(); } catch { /* optional */ } }
     await this._fade(true);
-    for (const fn of ['close', 'dispose', 'destroy']) { if (p.handle && typeof p.handle[fn] === 'function') { try { p.handle[fn](); } catch (e) { console.warn(e); } break; } }
+    for (const fn of ['dispose', 'close', 'destroy']) { if (p.handle && typeof p.handle[fn] === 'function') { try { p.handle[fn](); } catch (e) { console.warn(e); } break; } }
     p.host.remove();
     this.root.classList.remove('pano');
     this.clock.getDelta();
-    this._renderModes();
-    if (!this.disposed) lsSet('vrc.walk.view', 'live');
-    if (exit) { this._fade(false); return this.opts.onExit && this.opts.onExit(); }
-    if (p.hook && !state) {   // resume exactly where we left the live view
-      const b = p.back;
-      try { if (b.floor !== this.floor || b.bId !== this.bId) await this._setFloor(b.bId, b.floor); } catch (e) { console.warn(e); }
-      this._place(b.pos, b.yaw, b.pitch);
-      this.player.eye = this.mode === '360' ? EYE_360 : EYE;
-      this._lastPlace = null;
-    } else try { if (s) await this._placeFromPano(s); } catch (e) { console.warn('[walk] pano hand-over', e); }
-    this._updateHud(true);
+    if (exit) { this._renderModes(); this._fade(false); return this.opts.onExit && this.opts.onExit(); }
+    let how = 'restored';
+    try {
+      if (s && !restore) {
+        // design and light chosen IN the viewer come along (a style / mode it merely fell back to does not)
+        if (TIME_MODES.includes(s.mode) && s.mode !== this.envMode && s.mode !== s.mode0) this.setTimeMode(s.mode);
+        if (s.styleId && s.styleId !== this.styleId && s.styleId !== s.style0 && OFFERED.includes(s.styleId)) await this.setStyle(s.styleId);
+        how = await this._arriveFromTour(s, p);
+      } else {
+        const b = p.back;
+        if (b.floor !== this.floor || b.bId !== this.bId) await this._setFloor(b.bId, b.floor);
+        this._place(b.pos, b.yaw, b.pitch);
+      }
+    } catch (e) { console.warn('[walk] 360° hand-over', e); }
+    this.player.eye = this.mode === '360' ? EYE_360 : EYE;
+    this._lastPlace = null;
+    if (this._tourLog) {
+      const P = this.player, uv = this._unitUV(P.pos), [lx, lz] = worldToLocal(this.bId, P.pos.x, P.pos.z);
+      this._tourLog.close = { how, scene: s && (s.scene || (s.frame === 'building' ? 'commons' : 'apt')), pointId: s && s.pointId, yawPano: s && s.yaw, yawLive: P.yaw,
+        dist: !s ? null : s.frame === 'building' ? +Math.hypot(lx - s.x, lz - s.z).toFixed(3) : uv && how === 'exact' ? +Math.hypot(uv.u - s.u, uv.v - s.v).toFixed(3) : null };
+    }
+    this._renderModes(); this._updateHud(true);
     this._fade(false);
   }
-  // Put the walker where the photoreal tour left off (pano point position + view yaw), in the right apartment.
+  // Put the walker where a 360° state says: 'exact' (the panorama point's own position and view), 'room' (sample
+  // layout: same kind of room, view kept relative to the window wall) or 'place' (a common area of another plate).
+  async _arriveFromTour(s, p = null) {
+    const unit = this.unit, back = p && p.back;
+    // opened on a floor whose lift hall is only a SAMPLE of the rendered one (another plate): back where the visitor
+    // stood, turned by as much as they turned in the panorama
+    if (p && p.place && p.place.scene !== 'apt' && !p.place.exact && s.frame === 'building' && s.scene === p.place.scene) {
+      if (back.floor !== this.floor || back.bId !== this.bId) await this._setFloor(back.bId, back.floor);
+      this._place(back.pos, back.yaw + wrapPi(s.yaw - p.entry.yaw), isFinite(s.pitch) ? Math.max(-0.6, Math.min(0.6, s.pitch)) : back.pitch);
+      return 'place';
+    }
+    if (s.frame === 'building') {
+      const bId = s.building;
+      if (!BUILDINGS[bId] || bId !== unit.building) { await this._goto(isGround(s.floor) ? 'lobby' : 'corridor', { instant: true }); return 'place'; }
+      let fl = null;
+      if (s.scene === 'lobby' || isGround(s.floor)) fl = s.floor;
+      else {
+        const pl = plateOf(bId, s.floor), same = f => f >= 1 && !!pl && plateOf(bId, f) === pl;
+        fl = back && back.bId === bId && !isGround(back.floor) && same(back.floor) ? back.floor : same(unit.floor) ? unit.floor : null;
+      }
+      if (fl == null) { await this._goto('corridor', { instant: true }); return 'place'; }
+      await this._placeFromPano({ ...s, floor: fl });
+      return 'exact';
+    }
+    if (!isFinite(s.u) || !isFinite(s.v)) { await this._goto('apartment', { instant: true }); return 'place'; }
+    if (!s.type || s.type === unit.type) { await this._placeFromPano({ ...s, unitId: unit.id }); return 'exact'; }
+    // a sample layout's panorama: its coordinates mean nothing in this flat
+    if (this.floor !== unit.floor || this.bId !== unit.building) await this._setFloor(unit.building, unit.floor);
+    const pr = this._typeRoomAt(s.type, s.u, s.v), kind = (pr && pr.kind) || (s.room && s.room.kind) || 'living';
+    const idx = pr ? Math.max(0, this._typeRooms(s.type).filter(r => r.kind === kind).indexOf(pr)) : 0;
+    const same = (this.rooms || []).filter(r => r.kind === kind && !r.detached);
+    const stay = back && back.room && back.room.kind === kind && p.entry && p.entry.pointId === s.pointId && back.floor === this.floor && back.bId === this.bId;
+    const r = stay ? back.room : same[Math.min(idx, same.length - 1)] || (OUTDOOR.has(kind) ? (this.rooms || []).find(x => OUTDOOR.has(x.kind) && !x.detached) : null) || (this.rooms || []).find(x => x.kind === 'living') || (this.rooms || [])[0];
+    if (!r) { await this._goto('apartment', { instant: true }); return 'place'; }
+    const rel = pr ? wrapPi(s.yaw - this._lookYaw(s.type, pr, [s.u, s.v])) : 0;
+    let pos, at;
+    if (stay) { pos = back.pos.clone(); const uv = this._unitUV(pos) || { u: r.center[0], v: r.center[1] }; at = [uv.u, uv.v]; }
+    else {
+      at = r.stand || r.center; pos = this._unitPoint(at[0], at[1]);
+      const fy = this._floorAt(pos.x, pos.y + 0.3, pos.z, this._near(this.floors, pos, 2)); if (fy !== null) pos.y = fy;
+      const [fx, fz] = this._freeSpot(pos.x, pos.y, pos.z, 1.0, 0.02); pos.x = fx; pos.z = fz;
+    }
+    const yaw = this._lookYaw(unit.type, r, at) + rel + unitYaw(unit) + BUILDINGS[unit.building].rotY;
+    this._place(pos, yaw, isFinite(s.pitch) ? Math.max(-0.6, Math.min(0.6, s.pitch)) : -0.04);
+    if (OUTDOOR.has(r.kind)) this._openBalconyDoorAt(pos, r);
+    return 'room';
+  }
+  // Put the walker at a panorama point (position + view yaw): unit-local u, v in the right apartment, or
+  // building-local x, z on a common floor.
   async _placeFromPano(s) {
+    const pitch = isFinite(s.pitch) ? Math.max(-0.6, Math.min(0.6, s.pitch)) : -0.04;
     if (s.frame === 'building' && isFinite(s.x) && isFinite(s.z) && BUILDINGS[s.building || this.bId]) {   // commons panoramas
       const bId = s.building || this.bId, fl = isFinite(s.floor) ? s.floor : this.floor;
       if (this.floor !== fl || this.bId !== bId) await this._setFloor(bId, fl);
       const [wx, wz] = localToWorldXZ(bId, s.x, s.z), pos = new THREE.Vector3(wx, floorY(bId, fl), wz);
-      const [fx, fz] = this._freeSpot(pos.x, pos.y, pos.z, 1.0); pos.x = fx; pos.z = fz;
-      this._place(pos, isFinite(s.yaw) ? s.yaw + BUILDINGS[bId].rotY : this.player.yaw);
+      const fy = this._floorAt(pos.x, pos.y + 0.3, pos.z, this._near(this.floors, pos, 2)); if (fy !== null) pos.y = fy;
+      const [fx, fz] = this._freeSpot(pos.x, pos.y, pos.z, 1.0, 0.02); pos.x = fx; pos.z = fz;
+      this._place(pos, isFinite(s.yaw) ? s.yaw + BUILDINGS[bId].rotY : this.player.yaw, pitch);
+      this._lastPlace = null;
       return;
     }
     if (!isFinite(s.u) || !isFinite(s.v)) return;
@@ -1948,9 +2191,10 @@ export class Walkthrough {
     const pos = new THREE.Vector3(x, floorY(unit.building, unit.floor), z);
     const fy = this._floorAt(pos.x, pos.y + 0.3, pos.z, this._near(this.floors, pos, 2));
     if (fy !== null) pos.y = fy;
-    const [fx, fz] = this._freeSpot(pos.x, pos.y, pos.z, 1.0); pos.x = fx; pos.z = fz;
+    const [fx, fz] = this._freeSpot(pos.x, pos.y, pos.z, 1.0, 0.02); pos.x = fx; pos.z = fz;
     const yaw = isFinite(s.yaw) ? s.yaw + unitYaw(unit) + BUILDINGS[unit.building].rotY : this.player.yaw;
-    this._place(pos, yaw, isFinite(s.pitch) ? Math.max(-0.6, Math.min(0.6, s.pitch)) : -0.04);
+    this._place(pos, yaw, pitch);
+    const r = this._currentRoom(); if (r && OUTDOOR.has(r.kind)) this._openBalconyDoorAt(pos, r);
     this.player.eye = this.mode === '360' ? EYE_360 : EYE;
     this._lastPlace = null;
   }
@@ -1985,6 +2229,7 @@ export class Walkthrough {
     const act = a.action;
     if (act.type === 'aptDoor' && act.part === 'balconyDoor') return this._tapBalconyDoor(a);
     if (act.type === 'aptDoor') return act.part ? (this._click?.(0.35), this._toggleDoor(a.obj)) : this._onAptDoor(act.unitId, a.obj);
+    if (act.type === 'sofaBed') return this._sofaToggle(act.unitId);
     if (act.type === 'doorbell') return this._ringBell(a);
     if (act.type === 'aptMonitor') return this._monitorOpen(act.unitId);
     if (act.type === 'intercom') return this._icShow(act);
@@ -2062,8 +2307,8 @@ export class Walkthrough {
     });
     this.el.ureserve.style.display = avail ? '' : 'none';
   }
-  // "34,50 м²" in uk / ru (decimal comma), "34.50 m²" elsewhere — the printed total area of the plans
-  _area(n) { const cyr = ['uk', 'ru'].includes(String(this.lang).slice(0, 2)); return cyr ? `${n.toFixed(2).replace('.', ',')} м²` : `${n.toFixed(2)} m²`; }
+  // "34,50 м²" in uk (decimal comma), "34.50 m²" elsewhere — the printed total area of the plans
+  _area(n) { const cyr = String(this.lang).slice(0, 2) === 'uk'; return cyr ? `${n.toFixed(2).replace('.', ',')} м²` : `${n.toFixed(2)} m²`; }
   _showUnitCard(u, ms = 7000) {
     if (!this.el || !u) return;
     this._cardUnit = u; this._fillUnitCard(u);
@@ -2658,7 +2903,7 @@ export class Walkthrough {
   // ======================= glide =======================
   // Glide target; a closed apartment door on the way shortens it to a comfortable spot ~0.7 m in front of the leaf.
   _glideTo(x, z, direct = false) {
-    if (!direct && this._glideViaBalconyDoor(x, z)) return;
+    if (!direct && (this._glideNav(x, z) || this._glideViaBalconyDoor(x, z))) return;
     const P = this.player.pos, dx = x - P.x, dz = z - P.z, L = Math.hypot(dx, dz);
     let door = false;
     if (L > 0.3) {
@@ -2828,7 +3073,7 @@ export class Walkthrough {
     if (typeof speechSynthesis === 'undefined' || typeof SpeechSynthesisUtterance === 'undefined' || !text) return;
     try {
       const l2 = String(this.lang).slice(0, 2).toLowerCase();
-      const LC = { he: 'he-IL', en: 'en-GB', ro: 'ro-RO', ru: 'ru-RU', uk: 'uk-UA', fr: 'fr-FR', it: 'it-IT', de: 'de-DE' };
+      const LC = { he: 'he-IL', en: 'en-GB', ro: 'ro-RO', uk: 'uk-UA', fr: 'fr-FR', it: 'it-IT', de: 'de-DE' };
       speechSynthesis.cancel();
       const ut = new SpeechSynthesisUtterance(text);
       ut.lang = LC[l2] || 'en-GB'; ut.rate = 0.97; ut.pitch = 1.05;
@@ -2860,6 +3105,7 @@ export class Walkthrough {
     this._update(dt);
     if (this.apt && this.apt.game) this.apt.game.frame(this, dt);   // snooker table (snooker.js): "Play" prompt; in play mode it owns the camera (walking is held by this.busy)
     try { this.env && this.env.update && this.env.update(dt, this.camera); } catch (e) { if (!this._envErr) { console.warn(e); this._envErr = true; } }
+    if (this._game) this._gameTick(dt);                              // V9: people + police, after the cars moved (drive-game.js)
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -2898,8 +3144,8 @@ export class Walkthrough {
       } else if (this.glide) {
         const g = this.glide, dx = g.x - P.pos.x, dz = g.z - P.pos.z, L = Math.hypot(dx, dz);
         g.t += dt;
-        if ((L < 0.12 || (g.next && g.next.length && L < 0.3)) && g.next && g.next.length) { const n = g.next.shift(); g.x = n[0]; g.z = n[1]; g.stuck = 0; }
-        else if (L < 0.12 || g.t > 12) { this.glide = null; if (g.door) this._doorHint(true); }
+        if ((L < 0.12 || (g.next && g.next.length && L < (g.nav ? 0.16 : 0.3))) && g.next && g.next.length) { const n = g.next.shift(); g.x = n[0]; g.z = n[1]; g.stuck = 0; }
+        else if (L < 0.12 || g.t > (g.nav ? 30 : 12)) { this.glide = null; if (g.door) this._doorHint(true); }
         else want.set(dx / L, 0, dz / L).multiplyScalar(Math.min(1.9, (g.next && g.next.length ? 1.2 : 0) + L * 1.8 + 0.25) * Math.min(1, 0.35 + g.t * 2.2));
       }
       P.vel.lerp(want, damp(want.lengthSq() ? 7 : 10, dt));
@@ -2919,6 +3165,7 @@ export class Walkthrough {
       this._autoDoor(f > 0);
       this._carWatch();
       this._carChipWatch();
+      this._sofaWatch();
       this._outdoorWatch();
     }
     this._autoDoors(dt);
@@ -2928,7 +3175,7 @@ export class Walkthrough {
     this._intercomTick();
     this._aptEnterWatch();
     this._cullWorld();
-    if (this.fleet) this.fleet.update(this.camera);
+    if (this.fleet) { this.fleet.update(this.camera); this._carsTick(dt); }   // V6-cars: shoved cars, alarms, smoke (drive.js)
     if (this._expT) { const r = this.renderer; r.toneMappingExposure += (this._expT - r.toneMappingExposure) * damp(2.5, dt); }
 
     const now = performance.now();
@@ -2951,7 +3198,7 @@ export class Walkthrough {
   // Interior IBL indoors, sky IBL outdoors (balcony, street) for correct glass/metal reflections.
   _syncEnvMap() {
     const cur = this.scene.environment;
-    if (cur && cur !== this.roomEnv) this.skyEnv = cur;
+    if (cur && !this._isRoomEnv(cur)) this.skyEnv = cur;
     const outside = this._placeKind === 'outdoor';
     const want = (!outside && this.roomEnv) ? this.roomEnv : this.skyEnv;
     if (want && cur !== want) this.scene.environment = want;
@@ -2995,9 +3242,15 @@ export class Walkthrough {
   // Walker position (or any world point) in an apartment's unit-local frame: x = u, y above its floor, z = v.
   _bdLocal(e, pos, out) { return e.apt.group.worldToLocal((out || new THREE.Vector3()).copy(pos)); }
   _bdDist(d, lp) {
-    if (Math.abs(lp.y - d.y) > 1.3) return Infinity;
-    const cu = Math.max(d.p0, Math.min(d.p1, lp.x));
-    return Math.hypot(cu - lp.x, d.v - lp.z);
+    if (Math.abs(lp.y - (d.y || 0)) > 1.3) return Infinity;
+    const g = doorG(d), rx = lp.x - g.p[0], rz = lp.z - g.p[1], sa = Math.max(-g.hw, Math.min(g.hw, rx * g.dir[0] + rz * g.dir[1]));
+    return Math.hypot(rx - sa * g.dir[0], rz - sa * g.dir[1]);
+  }
+  // unit vector from the walker to the nearest point of the door's opening (unit-local x / z), or null when on it
+  _bdToward(d, lp) {
+    const g = doorG(d), rx = lp.x - g.p[0], rz = lp.z - g.p[1], sa = Math.max(-g.hw, Math.min(g.hw, rx * g.dir[0] + rz * g.dir[1]));
+    const dx = g.p[0] + sa * g.dir[0] - lp.x, dz = g.p[1] + sa * g.dir[1] - lp.z, L = Math.hypot(dx, dz);
+    return L > 1e-4 ? [dx / L, dz / L] : null;
   }
   _bdOpen(e, d, auto, instant = false) {
     const s = this._bdS(d);
@@ -3022,15 +3275,15 @@ export class Walkthrough {
       vl.applyQuaternion(q);
       for (const d of doors) {
         if (typeof d.toggle !== 'function') continue;
-        const s = this._bdS(d), dist = this._bdDist(d, lp);
+        const s = this._bdS(d), dist = this._bdDist(d, lp) - doorG(d).t / 2 + 0.1;
         if (s.hold && dist > BD_REARM_R) s.hold = false;
         if (!d.open) s.auto = false;
         if (!d.open || (dist < BD_OPEN_R && this._bdCur(e, d).some(c => !c.open))) {
           if (!walk || s.hold || dist > BD_HINT_R) continue;
-          let toward = dist < 0.35;
+          let toward = dist < 0.35 + doorG(d).t / 2;
           if (!toward) {
-            const cu = Math.max(d.p0, Math.min(d.p1, lp.x)), nx = (cu - lp.x) / dist, nz = (d.v - lp.z) / dist;
-            toward = fw.x * nx + fw.z * nz > 0.3 || vl.x * nx + vl.z * nz > 0.25;
+            const tw = this._bdToward(d, lp);
+            toward = !tw || fw.x * tw[0] + fw.z * tw[1] > 0.3 || vl.x * tw[0] + vl.z * tw[1] > 0.25;
           }
           if (!toward) continue;
           if (d.open) { this._bdCurtains(e, d); continue; }      // open door behind a drawn curtain: draw it back
@@ -3050,7 +3303,7 @@ export class Walkthrough {
     if (act.part === 'balconyDoor') { const d = e.apt.balconyDoors.find(x => x.id === act.door); return d ? { e, d } : null; }
     if (!act.curtain || act.part === 'curtainSwitch' || !hit) return null;
     const lp = this._bdLocal(e, hit.point);
-    const d = e.apt.balconyDoors.find(x => Math.abs(lp.y - x.y - 1.2) < 1.6 && lp.x > x.p0 - 0.7 && lp.x < x.p1 + 0.7 && Math.abs(lp.z - x.v) < 0.6);
+    const d = e.apt.balconyDoors.find(x => { if (Math.abs(lp.y - (x.y || 0) - 1.2) > 1.6) return false; const g = doorG(x), rx = lp.x - g.p[0], rz = lp.z - g.p[1]; return Math.abs(rx * g.dir[0] + rz * g.dir[1]) < g.hw + 0.7 && Math.abs(rx * g.n[0] + rz * g.n[1]) < g.t / 2 + 0.6; });
     return d ? { e, d } : null;
   }
   // Tap on a leaf / the glass / the handle, from the room or from the balcony: toggle. A door the user opened stays open.
@@ -3062,53 +3315,362 @@ export class Walkthrough {
     if (d.open) { s.auto = false; s.far = 0; s.hold = true; return d.toggle(false); }
     this._bdOpen(e, d, false);
   }
-  // Teleported onto the balcony / terrace (start=balcony, room chips): the nearest door of that level is open.
-  _openBalconyDoorAt(pos) {
+  // Teleported onto the balcony / terrace (start=balcony, room chips): the door of that outdoor space (else the nearest
+  // door of that level) is open.
+  _openBalconyDoorAt(pos, room = null) {
     const e = this._aptAt(pos) || (this.unit && this.loaded.get(this.unit.id));
     if (!e || !e.apt.balconyDoors || !e.apt.balconyDoors.length) return;
     const lp = this._bdLocal(e, pos);
     let best = null, bd = Infinity;
-    for (const d of e.apt.balconyDoors) { if (typeof d.toggle !== 'function') continue; const k = this._bdDist(d, lp); if (k < bd) { bd = k; best = d; } }
+    for (const d of e.apt.balconyDoors) {
+      if (typeof d.toggle !== 'function') continue;
+      const own = room && room.id && Array.isArray(d.rooms) && d.rooms.includes(room.id);
+      const k = this._bdDist(d, lp) - (own ? 100 : 0); if (k < bd) { bd = k; best = d; }
+    }
     if (best) this._bdOpen(e, best, false, true);
     else if (typeof e.apt.openBalconyDoor === 'function') { try { e.apt.openBalconyDoor(0); } catch (err) { console.warn('[walk] balcony door', err); } }
   }
-  // Glide through door d of apartment e towards the other side (hit = world point tapped on the door).
+  // Glide through door d of apartment e towards the other side (hit = world point tapped on the door). Any wall
+  // direction: the way points lie on the door's own normal.
   _glideThroughDoor(e, d, hit) {
-    const lp = this._bdLocal(e, this.player.pos), side = lp.z < d.v ? 1 : -1;
-    const hu = hit ? this._bdLocal(e, hit).x : lp.x, m = Math.min(0.42, (d.p1 - d.p0) / 2 - 0.05);
-    const cu = Math.max(d.p0 + m, Math.min(d.p1 - m, hu));
+    const g = doorG(d), lp = this._bdLocal(e, this.player.pos);
+    const al = q => (q.x - g.p[0]) * g.dir[0] + (q.z - g.p[1]) * g.dir[1], ac = q => (q.x - g.p[0]) * g.n[0] + (q.z - g.p[1]) * g.n[1];
+    const side = ac(lp) < 0 ? 1 : -1, m = Math.max(0, g.hw - Math.min(0.42, g.hw - 0.05));
+    const sa = Math.max(-m, Math.min(m, hit ? al(this._bdLocal(e, hit)) : al(lp)));
     this._bdOpen(e, d, !d.open ? true : this._bdS(d).auto);
-    const w = (u, v) => { const p = e.apt.group.localToWorld(new THREE.Vector3(u, d.y, v)); return [p.x, p.z]; };
+    const w = (a, c) => { const p = e.apt.group.localToWorld(new THREE.Vector3(g.p[0] + g.dir[0] * a + g.n[0] * c, d.y || 0, g.p[1] + g.dir[1] * a + g.n[1] * c)); return [p.x, p.z]; };
     const pts = [];
-    if (Math.abs(lp.z - d.v) > 0.6 && Math.abs(lp.x - cu) > 0.2) pts.push(w(cu, d.v - side * 0.5));
-    pts.push(w(cu, d.v + side * 0.85));
+    if (Math.abs(ac(lp)) > g.t / 2 + 0.45 && Math.abs(al(lp) - sa) > 0.2) pts.push(w(sa, -side * (g.t / 2 + 0.32)));
+    pts.push(w(sa, side * (g.t / 2 + 0.6)));
     this.glide = { x: pts[0][0], z: pts[0][1], t: 0, stuck: 0, door: false, next: pts.slice(1) };
   }
-  // A glide whose target lies across the glazing line (room → balcony or back) is routed through the best door
-  // of that level, which opens on the way. Returns true when it took the glide over.
+  // A glide whose target lies on the other side of a balcony / terrace door (room → outdoor space or back) is routed
+  // through that door, which opens on the way. Box-built flats only — a flat with a real interior plans its routes on
+  // its walkable grid (_glideNav). Returns true when it took the glide over.
   _glideViaBalconyDoor(x, z) {
     const P = this.player.pos;
     const e = this._aptAt(P); if (!e || !e.apt.balconyDoors || !e.apt.balconyDoors.length) return false;
     const lp = this._bdLocal(e, P), lt = this._bdLocal(e, new THREE.Vector3(x, P.y, z));
-    let best = null, cost = Infinity, bu = 0;
+    let best = null, cost = Infinity, bs = 0;
     for (const d of e.apt.balconyDoors) {
-      if (typeof d.toggle !== 'function' || Math.abs(lp.y - d.y) > 1.3) continue;
-      if ((lp.z - d.v) * (lt.z - d.v) >= 0) continue;                       // same side: no door involved
-      const k = (d.v - lp.z) / (lt.z - lp.z), iu = lp.x + (lt.x - lp.x) * k, m = Math.min(0.42, (d.p1 - d.p0) / 2 - 0.05);
-      const cu = Math.max(d.p0 + m, Math.min(d.p1 - m, iu));
-      const c = Math.hypot(cu - lp.x, d.v - lp.z) + Math.hypot(lt.x - cu, lt.z - d.v);
-      if (c < cost) { cost = c; best = d; bu = cu; }
+      if (typeof d.toggle !== 'function' || Math.abs(lp.y - (d.y || 0)) > 1.3) continue;
+      const g = doorG(d), c0 = (lp.x - g.p[0]) * g.n[0] + (lp.z - g.p[1]) * g.n[1], c1 = (lt.x - g.p[0]) * g.n[0] + (lt.z - g.p[1]) * g.n[1];
+      if (c0 * c1 >= 0) continue;                                          // same side: no door involved
+      const k = c0 / (c0 - c1), ix = lp.x + (lt.x - lp.x) * k, iz = lp.z + (lt.z - lp.z) * k;
+      const m = Math.max(0, g.hw - Math.min(0.42, g.hw - 0.05)), ia = (ix - g.p[0]) * g.dir[0] + (iz - g.p[1]) * g.dir[1], sa = Math.max(-m, Math.min(m, ia));
+      if (Math.abs(ia) > g.hw + 3.5) continue;                             // the wall line is crossed far from this door
+      const cu = g.p[0] + g.dir[0] * sa, cv = g.p[1] + g.dir[1] * sa;
+      const c = Math.hypot(cu - lp.x, cv - lp.z) + Math.hypot(lt.x - cu, lt.z - cv);
+      if (c < cost) { cost = c; best = d; bs = sa; }
     }
     if (!best) return false;
-    const d = best, side = lp.z < d.v ? 1 : -1;
+    const d = best, g = doorG(d), c0 = (lp.x - g.p[0]) * g.n[0] + (lp.z - g.p[1]) * g.n[1], side = c0 < 0 ? 1 : -1;
     this._bdOpen(e, d, !d.open ? true : this._bdS(d).auto);
-    const w = (u, v) => { const p = e.apt.group.localToWorld(new THREE.Vector3(u, d.y, v)); return [p.x, p.z]; };
+    const w = (a, c) => { const p = e.apt.group.localToWorld(new THREE.Vector3(g.p[0] + g.dir[0] * a + g.n[0] * c, d.y || 0, g.p[1] + g.dir[1] * a + g.n[1] * c)); return [p.x, p.z]; };
     const pts = [];
-    if (Math.abs(lp.z - d.v) > 0.6) pts.push(w(bu, d.v - side * 0.5));
-    pts.push(w(bu, d.v + side * 0.5));
-    if (Math.abs(lt.z - d.v) > 0.55) pts.push([x, z]);
+    if (Math.abs(c0) > g.t / 2 + 0.45) pts.push(w(bs, -side * (g.t / 2 + 0.32)));
+    pts.push(w(bs, side * (g.t / 2 + 0.35)));
+    if (Math.abs((lt.x - g.p[0]) * g.n[0] + (lt.z - g.p[1]) * g.n[1]) > g.t / 2 + 0.4) pts.push([x, z]);
     this.glide = { x: pts[0][0], z: pts[0][1], t: 0, stuck: 0, door: false, next: pts.slice(1) };
     return true;
+  }
+
+  // ======================= routes inside a flat (real interiors) =======================
+  // A walkable grid of one loaded flat, in its unit frame: for every 8 cm cell the distance to the nearest solid
+  // (the builder's collider boxes: walls, glazing, railings, furniture — NOT the doors, which open) and whether a
+  // walkable floor lies under it. Routes are planned on it (A*, straightened), so a tap on any floor of the flat, a
+  // room chip or a tap on a door leads there through the real openings, whatever the direction of the walls.
+  _navOf(e) {
+    if (e.nav !== undefined) return e.nav;
+    e.nav = null;
+    const apt = e.apt; if (!apt || !apt.group || !apt.real) return null;
+    const B = this._aptBox(e), c = NAV_CELL, u0 = B.u0 - 0.3, v0 = Math.min(B.v0, 0) - 0.3;
+    const nu = Math.ceil((B.u1 + 0.3 - u0) / c), nv = Math.ceil((B.v1 + 0.3 - v0) / c);
+    if (!(nu > 2 && nv > 2) || nu * nv > 400000) return null;
+    const clr = new Float32Array(nu * nv).fill(0.8), ok = new Uint8Array(nu * nv);
+    apt.group.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(apt.group.matrixWorld).invert(), M = new THREE.Matrix4(), cc = new THREE.Vector3(), ex = new THREE.Vector3(), ey = new THREE.Vector3(), ez = new THREE.Vector3(), hs = new THREE.Vector3();
+    for (const s of this.solids) {
+      if (s.src !== e.src) continue;
+      const o = s.o, ud = o.userData || {};
+      if (ud.balconyDoor || ud.interiorDoor || ud.doorLeaf || typeof ud.toggle === 'function' || ud.solid === false) continue;
+      if (apt.sofaBed && o === apt.sofaBed.bedCollider) continue;          // (the floor of the opened bed: a mover, stamped by _navNow)
+      const geo = o.geometry; if (!geo) continue;
+      if (!geo.boundingBox) geo.computeBoundingBox();
+      M.multiplyMatrices(inv, o.matrixWorld);
+      geo.boundingBox.getCenter(cc).applyMatrix4(M); geo.boundingBox.getSize(hs).multiplyScalar(0.5);
+      ex.set(hs.x, 0, 0).transformDirection(M); ey.set(0, 1, 0).transformDirection(M); ez.set(0, 0, 1).transformDirection(M);
+      const sx = Math.hypot(M.elements[0], M.elements[1], M.elements[2]) * hs.x, sy = Math.hypot(M.elements[4], M.elements[5], M.elements[6]) * hs.y, sz = Math.hypot(M.elements[8], M.elements[9], M.elements[10]) * hs.z;
+      // half extents of the box projected on the floor plane (the colliders are upright boxes turned about y)
+      const y0 = cc.y - (Math.abs(ey.y) * sy + Math.abs(ex.y) * sx + Math.abs(ez.y) * sz), y1 = 2 * cc.y - y0;
+      if (!RAY_HEIGHTS.some(h => h >= y0 && h <= y1)) continue;            // the walker's rays (0.3 / 1.0 / 1.6 m) pass over or under it
+      const ax = ex.x, az = ex.z, bx = ez.x, bz = ez.z, R = Math.abs(ax) * sx + Math.abs(bx) * sz + 0.8, Rz = Math.abs(az) * sx + Math.abs(bz) * sz + 0.8;
+      const i0 = Math.max(0, Math.floor((cc.x - R - u0) / c)), i1 = Math.min(nu - 1, Math.ceil((cc.x + R - u0) / c)), j0 = Math.max(0, Math.floor((cc.z - Rz - v0) / c)), j1 = Math.min(nv - 1, Math.ceil((cc.z + Rz - v0) / c));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const rx = u0 + (i + 0.5) * c - cc.x, rz = v0 + (j + 0.5) * c - cc.z;
+        const da = Math.max(0, Math.abs(rx * ax + rz * az) - sx), db = Math.max(0, Math.abs(rx * bx + rz * bz) - sz), dd = Math.hypot(da, db), k = j * nu + i;
+        if (dd < clr[k]) clr[k] = dd;
+      }
+    }
+    // walkable floor under the cell (the flat's own floor colliders: rooms, thresholds, decks)
+    const floors = this.floors.filter(f => f.src === e.src).map(f => f.o), y = floorY(e.unit.building, e.unit.floor), wp = new THREE.Vector3();
+    const rmin = NAV_R[NAV_R.length - 1];
+    for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
+      const k = j * nu + i; if (clr[k] < rmin) continue;
+      wp.set(u0 + (i + 0.5) * c, 0, v0 + (j + 0.5) * c).applyMatrix4(apt.group.matrixWorld);
+      if (this._floorAt(wp.x, y, wp.z, floors) !== null) ok[k] = 1;
+    }
+    return (e.nav = { u0, v0, nu, nv, c, clr, ok, cur: clr });
+  }
+  // nearest walkable cell (clearance ≥ R) to a unit-local point, within `far` metres; −1 when none
+  // The entrance leaf is the one solid of a flat that moves: where it stands NOW (shut in its opening, or open — into
+  // the hall, or into the flat's entrance room for the layouts drawn that way) is stamped on a copy of the clearances.
+  _navNow(e, N) {
+    N.cur = N.clr;
+    const leaf = e.apt.doorLeaf, sb = e.apt.sofaBed, movers = [];
+    if (leaf && leaf.geometry && leaf.userData.solid !== false) movers.push(leaf);
+    // … and the floor an opened sofa-bed takes (its collider is solid only while the bed is open)
+    if (sb && sb.bedCollider && sb.bedCollider.userData.solid !== false) movers.push(sb.bedCollider);
+    let cur = null;
+    for (const o of movers) {
+      const g = o.geometry; if (!g.boundingBox) g.computeBoundingBox();
+      o.updateWorldMatrix(true, false);
+      const M = new THREE.Matrix4().copy(e.apt.group.matrixWorld).invert().multiply(o.matrixWorld);
+      const cc = g.boundingBox.getCenter(new THREE.Vector3()).applyMatrix4(M), hs = g.boundingBox.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+      const ex = new THREE.Vector3(1, 0, 0).transformDirection(M), ez = new THREE.Vector3(0, 0, 1).transformDirection(M);
+      const sx = Math.hypot(M.elements[0], M.elements[1], M.elements[2]) * hs.x, sz = Math.hypot(M.elements[8], M.elements[9], M.elements[10]) * hs.z;
+      const R = Math.abs(ex.x) * sx + Math.abs(ez.x) * sz + 0.8, Rz = Math.abs(ex.z) * sx + Math.abs(ez.z) * sz + 0.8, c = N.c, nu = N.nu, nv = N.nv;
+      const i0 = Math.max(0, Math.floor((cc.x - R - N.u0) / c)), i1 = Math.min(nu - 1, Math.ceil((cc.x + R - N.u0) / c)), j0 = Math.max(0, Math.floor((cc.z - Rz - N.v0) / c)), j1 = Math.min(nv - 1, Math.ceil((cc.z + Rz - N.v0) / c));
+      if (i1 < i0 || j1 < j0) continue;
+      cur = cur || (N.cur = N.clr.slice());
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const rx = N.u0 + (i + 0.5) * c - cc.x, rz = N.v0 + (j + 0.5) * c - cc.z;
+        const dd = Math.hypot(Math.max(0, Math.abs(rx * ex.x + rz * ex.z) - sx), Math.max(0, Math.abs(rx * ez.x + rz * ez.z) - sz)), k = j * nu + i;
+        if (dd < cur[k]) cur[k] = dd;
+      }
+    }
+  }
+  // ---- the sofa-bed of a one-room flat (apt.sofaBed). A flat is entered with the bed OPEN (e._sbIntro = 'open'); when
+  // the visitor first stands in its living room the bed folds by itself into the sofa ('folding' → 'done', a hint
+  // follows); from then on a tap / the action key toggles it, a chip names the action when near. Leaving the flat
+  // (or a new enter()) brings the opening state back. Capture tools (opts.pano === false) and opts.sofaIntro === false
+  // keep the builder's default: a closed sofa. Tests: walk._sofaAuto = false holds the bed open.
+  _sofaIntroOn() { return this.opts.sofaIntro !== false && this.opts.pano !== false; }
+  _sofaInit(e, keep = null) {
+    const sb = e && e.apt && e.apt.sofaBed;
+    if (!sb || sb.fixed || typeof sb.toggle !== 'function') return;
+    e._sbAway = 0; e._sbT = 0; e._sbElse = false;
+    try {
+      if (keep) { sb.toggle(!!keep.open, { instant: true }); e._sbIntro = 'done'; }          // (a style change: as it was)
+      else if (!this._sofaIntroOn()) e._sbIntro = 'done';
+      else { sb.toggle(true, { instant: true }); e._sbIntro = 'open'; }
+    } catch (err) { console.warn('[walk] sofa-bed', err); e._sbIntro = 'done'; }
+  }
+  // every loaded sofa-bed back to its opening state (a fresh enter())
+  _sofaReset() { for (const e of this.loaded.values()) this._sofaInit(e); if (this._sofaNear) this._sofaChipText(this._sofaNear); }
+  // the self-folding: once, slowly (1.8 s), then the hint
+  _sofaFold(e, sb) {
+    e._sbIntro = 'folding';
+    Promise.resolve(sb.toggle(false, { dur: 1800 })).then(() => {
+      if (this.disposed || e._sbIntro !== 'folding' || this.loaded.get(e.unit.id) !== e) return;
+      e._sbIntro = 'done';
+      if (this._sofaNear === sb) this._sofaChipText(sb);
+      if (!sb.open && this.el && !this._pano && this._aptAt(this.player.pos) === e) this._toast(this.t('walk.sofa.hint'), 4200);
+    });
+  }
+  _sofaToggle(unitId, open) {
+    const e = this.loaded.get(unitId), sb = e && e.apt.sofaBed;
+    if (!sb || typeof sb.toggle !== 'function' || sb.fixed) return;
+    const want = open === undefined ? !sb.open : !!open;
+    e._sbIntro = 'done';                                   // the visitor took over: no self-folding any more
+    if (want === sb.open) return;
+    this._click?.(0.3);
+    const p = sb.toggle(want);
+    this._sofaChipText(sb);
+    if (want) { try { this._sofaClear(e, sb); } catch (err) { console.warn('[walk] sofa-bed', err); } }
+    return p;
+  }
+  // The bed opens where the visitor stands (or shuts them into a corner behind it): move them to the nearest free
+  // place of the flat from which the rest of it can still be walked to.
+  _sofaClear(e, sb) {
+    const P = this.player, uv = e.apt.group.worldToLocal(P.pos.clone());
+    if (Math.abs(uv.y) > 1.2 || !this._aptAt(P.pos)) return;
+    const inR = (R, x, z, pad) => { const rx = x - R.c[0], rz = z - R.c[1]; return Math.abs(rx * R.d[0] + rz * R.d[1]) < R.hl + pad && Math.abs(-rx * R.d[1] + rz * R.d[0]) < R.hw + pad; };
+    const N = this._navOf(e), room = (e.apt.rooms || []).find(r => r.id === sb.room), goal = room && (room.stand || room.center);
+    const routed = (x, z) => !N || !goal || !!this._navRoute(e, [x, z], goal, 0.5);
+    const onBed = inR(sb.bed, uv.x, uv.z, RADIUS + 0.04);
+    if (!onBed && (this.glide || routed(uv.x, uv.z))) return;
+    this.glide = null;
+    let best = null, bd = Infinity;
+    if (N) {
+      this._navNow(e, N);
+      const R = NAV_R[1], m = Math.ceil(3.2 / N.c), ci = Math.floor((uv.x - N.u0) / N.c), cj = Math.floor((uv.z - N.v0) / N.c);
+      const cand = [];
+      for (let dj = -m; dj <= m; dj++) for (let di = -m; di <= m; di++) {
+        const i = ci + di, j = cj + dj; if (i < 0 || j < 0 || i >= N.nu || j >= N.nv) continue;
+        const k = j * N.nu + i; if (!N.ok[k] || N.cur[k] < R) continue;
+        cand.push([di * di + dj * dj, N.u0 + (i + 0.5) * N.c, N.v0 + (j + 0.5) * N.c]);
+      }
+      cand.sort((a, b) => a[0] - b[0]);
+      let tries = 0;
+      for (const [d2, x, z] of cand) { if (inR(sb.bed, x, z, RADIUS + 0.06)) continue; if (++tries > 40) break; if (routed(x, z)) { best = [x, z]; bd = d2; break; } }
+    }
+    if (!best && goal) best = [goal[0], goal[1]];
+    if (!best) return;
+    const w = e.apt.group.localToWorld(new THREE.Vector3(best[0], uv.y, best[1])), from = P.pos.clone();
+    P.vel.set(0, 0, 0);
+    tween(260, k => { if (this.disposed) return; P.pos.x = from.x + (w.x - from.x) * k; P.pos.z = from.z + (w.z - from.z) * k; });
+  }
+  _sofaChipText(sb) { const el = this.el && this.el.sofaChip; if (el) el.querySelector('.lbl').textContent = this.t(sb.open ? 'walk.sofa.close' : 'walk.sofa.open'); }
+  // every ¼ s: the self-folding of the bed the flat is entered with; the chip while the visitor stands near the sofa
+  // and looks its way; the opening state comes back once the visitor has left the flat
+  _sofaWatch() {
+    const now = performance.now(); if (now - (this._sfT || 0) < 250) return; this._sfT = now;
+    const el = this.el && this.el.sofaChip; if (!el) return;
+    let show = null;
+    const P = this.player, inApt = !this.drive && !this.riding ? this._aptAt(P.pos) : null, here = this.mode === 'walk' && !this._pano ? inApt : null;
+    const seen = !this._pano && !!this.el.loading && this.el.loading.classList.contains('hide') && !(this.el.help && this.el.help.classList.contains('show'));
+    for (const e of this.loaded.values()) {
+      const sb = e.apt.sofaBed; if (!sb || sb.fixed) continue;
+      if (e !== inApt) {
+        // the visitor is gone for 1.5 s: the bed opens again for the next entry (out of sight at once, else as a movement)
+        if (e._sbIntro && e._sbIntro !== 'open' && this._sofaIntroOn() && now - (e._sbAway || (e._sbAway = now)) > 1500) {
+          const c = e.apt.group.localToWorld(new THREE.Vector3(sb.footprint.c[0], 0, sb.footprint.c[1]));
+          e._sbAway = 0; e._sbT = 0; e._sbElse = false; e._sbIntro = 'open';
+          sb.toggle(true, { instant: Math.hypot(c.x - P.pos.x, c.z - P.pos.z) > 5 || Math.abs(c.y - P.pos.y) > 1.6 });
+        }
+        continue;
+      }
+      e._sbAway = 0;
+      const uv = e.apt.group.worldToLocal(P.pos.clone());
+      if (e._sbIntro === 'open' && this._sofaAuto !== false) {
+        // in the living room (walked in: a short beat; placed there: 1.2 s, so that the bed is seen) → it folds
+        const sp = e.apt.real ? this._aptSpace(e, uv.x, uv.z) : null;
+        if (!sp || sp.id !== sb.room) { e._sbElse = true; e._sbT = 0; }
+        else if (seen) { if (!e._sbT) e._sbT = now + (e._sbElse ? 450 : 1200); else if (now >= e._sbT) this._sofaFold(e, sb); }
+      }
+      if (e !== here) continue;
+      const R = sb.open ? sb.footprint : sb.closed;
+      const rx = uv.x - R.c[0], rz = uv.z - R.c[1], a = rx * R.d[0] + rz * R.d[1], b = -rx * R.d[1] + rz * R.d[0];
+      const dx = Math.max(0, Math.abs(a) - R.hl), dz = Math.max(0, Math.abs(b) - R.hw), dist = Math.hypot(dx, dz);
+      if (dist > 1.5) continue;
+      // looking towards it (the flat is only turned about y)
+      const q = e.apt.group.quaternion.clone().invert(), fw = new THREE.Vector3(-Math.sin(P.yaw), 0, -Math.cos(P.yaw)).applyQuaternion(q);
+      const L = Math.hypot(rx, rz) || 1;
+      if (dist > 0.05 && -(fw.x * rx + fw.z * rz) / L < 0.35) continue;
+      show = { e, sb };
+    }
+    if (show) { if (this._sofaNear !== show.sb) { this._sofaNear = show.sb; this._sofaUnit = show.e.unit.id; this._sofaChipText(show.sb); el.classList.add('show'); } }
+    else if (this._sofaNear) { this._sofaNear = null; this._sofaUnit = null; el.classList.remove('show'); }
+  }
+  _navSnap(N, u, v, R, far = 0.7) {
+    const ci = Math.floor((u - N.u0) / N.c), cj = Math.floor((v - N.v0) / N.c), m = Math.ceil(far / N.c);
+    let best = -1, bd = Infinity;
+    for (let dj = -m; dj <= m; dj++) for (let di = -m; di <= m; di++) {
+      const i = ci + di, j = cj + dj; if (i < 0 || j < 0 || i >= N.nu || j >= N.nv) continue;
+      const k = j * N.nu + i; if (!N.ok[k] || N.cur[k] < R) continue;
+      const d = di * di + dj * dj; if (d < bd) { bd = d; best = k; }
+    }
+    return best;
+  }
+  // Route between two unit-local points → [[u, v], …] (the start excluded), or null. Tried with a comfortable body
+  // radius first, then tighter ones (NAV_R).
+  _navRoute(e, from, to, snapFar = 0.7) {
+    const N = this._navOf(e); if (!N) return null;
+    this._navNow(e, N);
+    // the goal itself first (a tight place — a 0.95 m wide WC — is reached with the tighter radius rather than
+    // "reached" at its door with the comfortable one); only then a goal up to snapFar away
+    for (const far of [0.17, snapFar]) for (const R of NAV_R) {
+      const a = this._navSnap(N, from[0], from[1], R, 0.5), b = this._navSnap(N, to[0], to[1], R, far);
+      if (a < 0 || b < 0) continue;
+      const path = this._navAstar(N, a, b, R); if (!path) continue;
+      const P = k => [N.u0 + (k % N.nu + 0.5) * N.c, N.v0 + (Math.floor(k / N.nu) + 0.5) * N.c];
+      // straighten: keep a node only where the straight line to the next kept one would leave the free cells
+      const free = (p, q) => { const L = Math.hypot(q[0] - p[0], q[1] - p[1]), n = Math.max(1, Math.ceil(L / (N.c * 0.5))); for (let s = 1; s < n; s++) { const x = p[0] + (q[0] - p[0]) * s / n, z = p[1] + (q[1] - p[1]) * s / n, k = Math.floor((z - N.v0) / N.c) * N.nu + Math.floor((x - N.u0) / N.c); if (!N.ok[k] || N.cur[k] < R) return false; } return true; };
+      const pts = path.map(P), out = [];
+      let cur = [from[0], from[1]], i = 0;
+      if (!free(cur, pts[0])) { out.push(pts[0]); cur = pts[0]; }
+      while (i < pts.length - 1) {
+        let j = pts.length - 1;
+        while (j > i + 1 && !free(cur, pts[j])) j--;
+        out.push(pts[j]); cur = pts[j]; i = j;
+      }
+      if (!out.length) out.push(pts[pts.length - 1]);
+      const last = out[out.length - 1];
+      const tk = Math.floor((to[1] - N.v0) / N.c) * N.nu + Math.floor((to[0] - N.u0) / N.c);
+      if (N.ok[tk] && N.cur[tk] >= R && free(last, to)) { if (Math.hypot(last[0] - to[0], last[1] - to[1]) < 0.25) out[out.length - 1] = [to[0], to[1]]; else out.push([to[0], to[1]]); }
+      return { pts: out, R };
+    }
+    return null;
+  }
+  _navAstar(N, a, b, R) {
+    if (a === b) return [b];
+    const { nu, nv, ok } = N, clr = N.cur || N.clr, n = nu * nv;
+    const g = new Float32Array(n).fill(Infinity), from = new Int32Array(n).fill(-1), closed = new Uint8Array(n);
+    const bi = b % nu, bj = Math.floor(b / nu), h = k => { const di = Math.abs(k % nu - bi), dj = Math.abs(Math.floor(k / nu) - bj); return (di + dj) + (Math.SQRT2 - 2) * Math.min(di, dj); };
+    const heap = [], hk = [];                         // binary heap of [f, cell]
+    const push = (f, k) => { let i = heap.length; heap.push(f); hk.push(k); while (i > 0) { const p = (i - 1) >> 1; if (heap[p] <= f) break; heap[i] = heap[p]; hk[i] = hk[p]; i = p; } heap[i] = f; hk[i] = k; };
+    const pop = () => { const k = hk[0], lf = heap.pop(), lk = hk.pop(), m = heap.length; if (m) { let i = 0; for (;;) { let c1 = 2 * i + 1; if (c1 >= m) break; if (c1 + 1 < m && heap[c1 + 1] < heap[c1]) c1++; if (heap[c1] >= lf) break; heap[i] = heap[c1]; hk[i] = hk[c1]; i = c1; } heap[i] = lf; hk[i] = lk; } return k; };
+    g[a] = 0; push(h(a), a);
+    const DI = [1, -1, 0, 0, 1, 1, -1, -1], DJ = [0, 0, 1, -1, 1, -1, 1, -1];
+    while (heap.length) {
+      const k = pop(); if (closed[k]) continue; closed[k] = 1;
+      if (k === b) { const path = []; for (let q = b; q !== -1; q = from[q]) path.push(q); return path.reverse(); }
+      const i = k % nu, j = Math.floor(k / nu);
+      for (let d = 0; d < 8; d++) {
+        const x = i + DI[d], y = j + DJ[d]; if (x < 0 || y < 0 || x >= nu || y >= nv) continue;
+        const q = y * nu + x; if (closed[q] || !ok[q] || clr[q] < R) continue;
+        if (d > 3 && (!ok[j * nu + x] || clr[j * nu + x] < R || !ok[y * nu + i] || clr[y * nu + i] < R)) continue;   // no cutting of corners
+        const cost = g[k] + (d > 3 ? Math.SQRT2 : 1) * (1 + Math.max(0, R + 0.2 - clr[q]) * 4);                     // keep off the walls where there is room
+        if (cost < g[q]) { g[q] = cost; from[q] = k; push(cost + h(q), q); }
+      }
+    }
+    return null;
+  }
+  // Glide to a world point of the flat we stand in along a planned route (doors on the way open). true = taken over.
+  _glideNav(x, z) {
+    const P = this.player.pos, e = this._aptAt(P);
+    if (!e || !e.apt.real) return false;
+    const lp = this._bdLocal(e, P), lt = this._bdLocal(e, new THREE.Vector3(x, P.y, z));
+    const B = this._aptBox(e);
+    if (lt.x < B.u0 - 0.3 || lt.x > B.u1 + 0.3 || lt.z < Math.min(B.v0, 0.05) || lt.z > B.v1 + 0.3) return false;
+    const r = this._navRoute(e, [lp.x, lp.z], [lt.x, lt.z]);
+    if (!r || !r.pts.length) return false;
+    // doors whose opening the route crosses open now (a closed leaf is no obstacle of the grid)
+    const chain = [[lp.x, lp.z], ...r.pts];
+    for (const d of [...(e.apt.balconyDoors || []), ...(e.apt.interiorDoors || [])]) {
+      if (d.open || typeof d.toggle !== 'function') continue;
+      const g = doorG(d);
+      for (let i = 1; i < chain.length; i++) {
+        const c0 = (chain[i - 1][0] - g.p[0]) * g.n[0] + (chain[i - 1][1] - g.p[1]) * g.n[1], c1 = (chain[i][0] - g.p[0]) * g.n[0] + (chain[i][1] - g.p[1]) * g.n[1];
+        if (c0 * c1 > 0) continue;
+        const k = Math.abs(c0) / (Math.abs(c0) + Math.abs(c1) || 1), ia = (chain[i - 1][0] + (chain[i][0] - chain[i - 1][0]) * k - g.p[0]) * g.dir[0] + (chain[i - 1][1] + (chain[i][1] - chain[i - 1][1]) * k - g.p[1]) * g.dir[1];
+        if (Math.abs(ia) <= g.hw + 0.05) { if (d.type === 'balcony' || !d.type) this._bdOpen(e, d, true); else { try { d.toggle(true); } catch (err) { console.warn('[walk] door', err); } } break; }
+      }
+    }
+    const W = r.pts.map(q => { const p = e.apt.group.localToWorld(new THREE.Vector3(q[0], 0, q[1])); return [p.x, p.z]; });
+    this.glide = { x: W[0][0], z: W[0][1], t: 0, stuck: 0, door: false, next: W.slice(1), nav: true };
+    return true;
+  }
+
+  // Test hook (tools/test-site.py): walk to a world point with the real frame update (movement, collisions, slide,
+  // doors) run synchronously at 30 fps — no rendering. Returns how the walk ended.
+  _simWalk(x, z, { direct = false, maxS = 40, tol = 0.3 } = {}) {
+    const P = this.player, dt = 1 / 30;
+    this.keys.clear(); P.vel.set(0, 0, 0);
+    this._glideTo(x, z, direct);
+    const routed = !!(this.glide && this.glide.nav);
+    let steps = 0, len = 0, px = P.pos.x, pz = P.pos.z;
+    const hud = this._lastHud, map = this._lastMap;
+    while (this.glide && steps < maxS * 30) {
+      this._lastHud = this._lastMap = performance.now();          // no HUD / minimap work while simulating
+      this._update(dt); steps++;
+      len += Math.hypot(P.pos.x - px, P.pos.z - pz); px = P.pos.x; pz = P.pos.z;
+    }
+    this._lastHud = hud; this._lastMap = map;
+    const left = Math.hypot(P.pos.x - x, P.pos.z - z);
+    P.vel.set(0, 0, 0); this.glide = null;
+    return { ok: left <= tol, left: +left.toFixed(3), steps, len: +len.toFixed(2), routed };
   }
   // Blocked by a closed apartment door → tell the user to tap it (throttled).
   _doorHint(known = false) {
@@ -3151,7 +3713,9 @@ export class Walkthrough {
   _currentRoom() {
     const uv = this._unitUV(this.player.pos);
     if (!uv || !this.rooms) return null;
-    const cur = this.loaded.get(this.unit.id), B = cur ? this._aptBox(cur) : { u0: 0, u1: this.unit.width, v1: this.unit.depth };
+    const cur = this.loaded.get(this.unit.id);
+    if (cur && cur.apt.real) return this._aptSpace(cur, uv.u, uv.v);
+    const B = cur ? this._aptBox(cur) : { u0: 0, u1: this.unit.width, v1: this.unit.depth };
     if (uv.u < B.u0 - 0.05 || uv.u > B.u1 + 0.05 || uv.v < 0.02 || uv.v > B.v1 + 0.6) return null;
     const cand = this.rooms;
     const hit = cand.find(r => r.poly && pointInPoly([uv.u, uv.v], r.poly));
@@ -3194,7 +3758,7 @@ export class Walkthrough {
       </div>
       <div class="vw-tools vw-panel col">
         <div class="vw-seg" data-k="mode"><button data-m="walk"></button><button data-m="360"></button></div>
-        <div class="vw-seg vw-time" data-k="time"><button data-t="day" title="">☀\uFE0E</button><button data-t="dusk">◐</button><button data-t="night">☾</button></div>
+        <div class="vw-seg vw-time" data-k="time" role="group">${TIME_MODES.map(m => `<button data-t="${m}">${ICON_TIME[m]}<span></span></button>`).join('')}</div>
         <div class="vw-seg vw-zoom" data-k="zoom"><button data-z="-1">−</button><span class="zv"></span><button data-z="1">+</button></div>
         <button class="vw-tlabel st" data-k="dlabel"></button>
         <div class="vw-styles"></div>
@@ -3211,9 +3775,13 @@ export class Walkthrough {
         <button class="r" data-p="r" aria-label="turn right">▶</button><button class="d" data-p="d" aria-label="back">▼</button>
       </div>
       <div class="vw-bottom"><div class="vw-row vw-rooms"></div><div class="vw-row vw-tp"></div></div>
-      <div class="vw-modes vw-panel" role="group"><button data-vm="3d" aria-pressed="true"></button><button data-vm="real" aria-pressed="false"></button><span class="soon" role="status"></span></div>
+      <div class="vw-center">
+        <div class="vw-modes vw-panel" role="group" hidden><button data-vm="3d" aria-pressed="true"></button><button data-vm="real" aria-pressed="false"></button><span class="soon" role="status"></span></div>
+        <div class="vw-light vw-panel" role="group">${TIME_MODES.map(m => `<button data-t="${m}">${ICON_TIME[m]}<span></span></button>`).join('')}</div>
+      </div>
       <div class="vw-ucard vw-panel"><div class="ut"><div class="u1"></div><div class="u2"></div></div><button class="vw-btn vw-gold" data-k="ureserve"></button></div>
       <button class="vw-carchip vw-btn vw-gold" data-k="carenter"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M3.5 15.5v-3l2.2-4.6A2 2 0 0 1 7.5 6.8h9a2 2 0 0 1 1.8 1.1l2.2 4.6v3"/><path d="M2.8 15.5h18.4v2.4H2.8z"/><circle cx="7" cy="18.3" r="1.6"/><circle cx="17" cy="18.3" r="1.6"/><path d="M5.2 12.3h13.6"/></svg><span class="lbl"></span></button>
+      <button class="vw-sofachip vw-btn vw-gold" data-k="sofabed"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M3 18v-6.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2V18"/><path d="M3 15h18"/><path d="M6.5 9.5V8a1.5 1.5 0 0 1 1.5-1.5h8A1.5 1.5 0 0 1 17.5 8v1.5"/><path d="M5 18v1.5M19 18v1.5"/></svg><span class="lbl"></span></button>
       <div class="vw-drive">
         <div class="vw-dtop"><button class="vw-btn vw-ghost vw-ico" data-k="carlights"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 5.5C8 5.5 6 8.6 6 12s2 6.5 6.5 6.5c1.6 0 2.5-2.9 2.5-6.5s-.9-6.5-2.5-6.5z"/><path d="M17.5 8h4M17.5 12h4M17.5 16h4"/></svg></button><button class="vw-btn vw-ghost vw-ico" data-k="carsound"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path class="on" d="M15.5 9.2a4 4 0 0 1 0 5.6M18 7a7 7 0 0 1 0 10"/><path class="off" d="M16 9.5l5 5M21 9.5l-5 5"/></svg></button><button class="vw-btn vw-ghost" data-k="carview"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span class="lbl"></span></button><button class="vw-btn vw-gold" data-k="carexit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M3.5 15.5v-3l2.2-4.6A2 2 0 0 1 7.5 6.8h9a2 2 0 0 1 1.8 1.1l2.2 4.6v3"/><path d="M2.8 15.5h18.4v2.4H2.8z"/><circle cx="7" cy="18.3" r="1.6"/><circle cx="17" cy="18.3" r="1.6"/><path d="M5.2 12.3h13.6"/></svg><span class="lbl"></span></button></div>
         <div class="vw-spdo"><svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="vwgold" x1="0" x2="1"><stop offset="0" stop-color="#b88a3c"/><stop offset="1" stop-color="#f0d596"/></linearGradient></defs><circle class="bg" cx="50" cy="50" r="30"/><circle class="arc" cx="50" cy="50" r="30"/></svg><div class="num"><b class="spd">0</b><i>km/h</i></div><span class="gear">P</span><span class="lim" role="img"></span></div>
@@ -3234,8 +3802,8 @@ export class Walkthrough {
       pad: q('.vw-pad'), rooms: q('.vw-rooms'), tp: q('.vw-tp'), toast: q('.vw-toast'), fade: q('.vw-fade'),
       help: q('.vw-help'), loading: q('.vw-loading'),
       gear: q('[data-k=gear]'), zoom: q('.vw-zoom'), zv: q('.vw-zoom .zv'), mapBtn: q('.vw-mapbtn'), prow: q('.vw-prow span'),
-      modes: q('.vw-modes'), soon: q('.vw-modes .soon'),
-      carChip: q('.vw-carchip'), drive: q('.vw-drive'), carView: q('[data-k=carview]'), carExit: q('[data-k=carexit]'), carLights: q('[data-k=carlights]'), carSound: q('[data-k=carsound]'),
+      modes: q('.vw-modes'), soon: q('.vw-modes .soon'), light: q('.vw-light'),
+      carChip: q('.vw-carchip'), sofaChip: q('.vw-sofachip'), drive: q('.vw-drive'), carView: q('[data-k=carview]'), carExit: q('[data-k=carexit]'), carLights: q('[data-k=carlights]'), carSound: q('[data-k=carsound]'),
       spdo: q('.vw-spdo'), spd: q('.vw-spdo .spd'), gear: q('.vw-spdo .gear'), lim: q('.vw-spdo .lim'), arc: q('.vw-spdo .arc'),
       steerPad: q('.vw-steer'), knob: q('.vw-steer .knob'), gas: q('.vw-pedals .gas'), brake: q('.vw-pedals .brake'), dhint: q('.vw-dhint'),
       floorsBtn: q('[data-k=floors]'), ucard: q('.vw-ucard'), u1: q('.vw-ucard .u1'), u2: q('.vw-ucard .u2'), ureserve: q('[data-k=ureserve]'),
@@ -3271,7 +3839,8 @@ export class Walkthrough {
     e.photo.setAttribute('aria-label', this.t('walk.photo'));
     e.modeSeg.children[0].textContent = this.t('walk.walk');
     e.modeSeg.children[1].textContent = this.t('walk.360');
-    for (const b of e.timeSeg.children) { b.title = this.t('walk.' + b.dataset.t); b.setAttribute('aria-label', b.title); }
+    for (const b of e.hud.querySelectorAll('button[data-t]')) { const n = this.t('walk.' + b.dataset.t); b.title = n; b.setAttribute('aria-label', n); b.querySelector('span').textContent = n; }
+    e.light.setAttribute('aria-label', this.t('walk.light')); e.timeSeg.setAttribute('aria-label', this.t('walk.light'));
     e.dlabel.textContent = this.t('walk.design');
     e.flabel.textContent = this.t('walk.finish');
     e.liftT.textContent = this.t('walk.lift');
@@ -3330,15 +3899,15 @@ export class Walkthrough {
     const n = s.name;
     if (typeof n === 'string') return n;
     const lang = String(this.lang).slice(0, 2);
-    return (n && n[lang]) || this.t('walk.style.' + id, (n && n.en) || id);
+    return this.t('walk.style.' + id, (n && (n[lang] || n.en)) || id);
   }
   _renderStyles() {
     if (!this.el) return;
     const box = this.el.styles; box.innerHTML = '';
     this._renderFinish();   // an auto finish follows the style
-    for (const s of this.styles || FALLBACK_STYLES) {
+    for (const s of this.styles || offeredList(FALLBACK_STYLES)) {
       const b = document.createElement('button'); b.textContent = this._styleName(s.id); b.dataset.s = s.id;
-      b.classList.toggle('on', s.id === this.styleId); box.appendChild(b);
+      b.classList.toggle('on', s.id === this.styleId); b.setAttribute('aria-pressed', String(s.id === this.styleId)); box.appendChild(b);
     }
   }
   // Building finish of the common areas (commons.js COMMON_FINISHES): one chip per finish, the active one lit.
@@ -3350,7 +3919,7 @@ export class Walkthrough {
       b.classList.toggle('on', id === cur); b.setAttribute('aria-pressed', String(id === cur)); box.appendChild(b);
     }
   }
-  _renderTime() { if (this.el) for (const b of this.el.timeSeg.children) b.classList.toggle('on', b.dataset.t === this.envMode); }
+  _renderTime() { if (this.el) for (const b of this.el.hud.querySelectorAll('button[data-t]')) { const on = b.dataset.t === this.envMode; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); } }
   // Jump chips. 'balcony' only when the current flat has an outdoor room; 'parking' goes once its build failed twice;
   // 'entrance' / 'outside' need the tower's ground entrance.
   _renderTeleports() {
@@ -3360,7 +3929,12 @@ export class Walkthrough {
     const hasOut = !u || !this.apt || !!this.apt.balconyPoint || (this.rooms || []).some(r => OUTDOOR.has(r.kind));
     for (const k of ['outside', 'entrance', 'lobby', 'corridor', 'apartment', 'balcony', 'parking']) {
       if ((k === 'balcony' && !hasOut) || (k === 'parking' && (this._parkFail || 0) >= 2) || ((k === 'entrance' || k === 'outside') && !hasEnt)) continue;
-      const b = document.createElement('button'); b.className = 'vw-chip tp'; b.dataset.tp = k; b.textContent = this.t(k === 'outside' ? 'walk.yard' : 'walk.' + k); box.appendChild(b);
+      const b = document.createElement('button'); b.className = 'vw-chip tp'; b.dataset.tp = k; b.textContent = this.t(k === 'outside' ? 'walk.yard' : 'walk.' + k);
+      if (k === 'balcony' && this.apt && this.apt.real) {   // the flat's main outdoor space by its own kind: "Тераса" for a terrace
+        const bp = this.apt.balconyPoint, r = (this.rooms || []).find(x => bp && x.id === bp.id) || (this.rooms || []).find(x => OUTDOOR.has(x.kind));
+        if (r && r.kind === 'terrace') b.textContent = this.t('walk.room.terrace', b.textContent);
+      }
+      box.appendChild(b);
     }
   }
   _renderRooms() {
@@ -3466,13 +4040,13 @@ export class Walkthrough {
     if (!BUILDINGS[bId]) return;
     const [plx, plz] = worldToLocal(bId, P.x, P.z);
     const uv = this._unitUV(P), cur = this.loaded.get(u.id), B = cur ? this._aptBox(cur) : { u0: 0, u1: u.width, v0: 0, v1: u.depth };
-    const inUnit = !this._mapWide && uv && uv.u > B.u0 - 0.3 && uv.u < B.u1 + 0.3 && uv.v > -0.1 && uv.v < B.v1 + 0.3 && u.building === bId && fl === u.floor;
+    const inUnit = !this._mapWide && uv && u.building === bId && fl === u.floor && (B.real ? !!this._aptSpace(cur, uv.u, uv.v) : uv.u > B.u0 - 0.3 && uv.u < B.u1 + 0.3 && uv.v > -0.1 && uv.v < B.v1 + 0.3);
     const uRect = (unit, d = unit.depth) => [[0, 0], [unit.width, 0], [unit.width, d], [0, d]].map(([a, b]) => unitToLocal(unit, a, b));
     const rect = r => [[r.x0, r.z0], [r.x1, r.z0], [r.x1, r.z1], [r.x0, r.z1]];
     const toL = pts => pts.map(([x, z]) => worldToLocal(bId, x, z));
     const fp = footprintOf(bId, park ? 1 : fl);
     let bb;
-    if (inUnit) { bb = bboxOf([[B.u0, 0], [B.u1, 0], [B.u1, B.v1], [B.u0, B.v1]].map(([a, b]) => unitToLocal(u, a, b))); bb.x0 -= 0.8; bb.x1 += 0.8; bb.z0 -= 0.8; bb.z1 += 0.8; }
+    if (inUnit) { const bv0 = Math.min(0, B.v0 || 0); bb = bboxOf([[B.u0, bv0], [B.u1, bv0], [B.u1, B.v1], [B.u0, B.v1]].map(([a, b]) => unitToLocal(u, a, b))); bb.x0 -= 0.8; bb.x1 += 0.8; bb.z0 -= 0.8; bb.z1 += 0.8; }
     else if (park) { bb = bboxOf(toL(PARKING.poly)); bb.x0 -= 2; bb.x1 += 2; bb.z0 -= 2; bb.z1 += 2; }
     else { bb = bboxOf(fp.length ? fp : rect({ x0: plx - 15, x1: plx + 15, z0: plz - 15, z1: plz + 15 })); bb.x0 -= 2; bb.x1 += 2; bb.z0 -= 2; bb.z1 += 2; }
     const sc = Math.min(W / (bb.x1 - bb.x0), H / (bb.z1 - bb.z0)), ox = W / 2 - (bb.x0 + bb.x1) / 2 * sc, oz = H / 2 - (bb.z0 + bb.z1) / 2 * sc;
@@ -3480,7 +4054,15 @@ export class Walkthrough {
     const poly = (pts, fill, stroke, lw = 1) => { if (!pts || pts.length < 3) return; ctx.beginPath(); pts.forEach(([x, z], i) => i ? ctx.lineTo(X(x), Z(z)) : ctx.moveTo(X(x), Z(z))); ctx.closePath(); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke(); } };
     if (park) {
       poly(toL(PARKING.poly), '#17140f', 'rgba(201,164,92,.55)', 1);
-      for (const r of RAMPS) poly(toL(rect(r)), '#2b261d', 'rgba(201,164,92,.3)', 0.6);
+      // (V6-parking) the level as on the working drawing: ramps, places, walls and columns
+      for (const r of RAMPS) poly(toL(r.poly || rect(r)), '#2b261d', 'rgba(201,164,92,.3)', 0.6);
+      if (PARKING.bays) {
+        ctx.lineWidth = 0.5;
+        for (const b of PARKING.bays) poly(toL(b.poly), b.accessible ? 'rgba(70,120,200,.35)' : b.ev ? 'rgba(60,150,100,.22)' : 'rgba(201,164,92,.07)', 'rgba(230,220,200,.28)', 0.5);
+        ctx.fillStyle = '#6f6452';
+        for (const w of PARKING.walls || []) { ctx.beginPath(); for (const ring of [w.poly, ...(w.holes || [])]) { toL(ring).forEach(([x, z], i) => i ? ctx.lineTo(X(x), Z(z)) : ctx.moveTo(X(x), Z(z))); ctx.closePath(); } ctx.fill('evenodd'); }
+        for (const c of PARKING.columns || []) if (c.kind === 'red') poly(toL(c.poly), '#8a7a5c');
+      }
       for (const id of B_IDS) {   // the towers above, with their lift cores
         poly(footprintOf(id, 1).map(([x, z]) => worldToLocal(bId, ...localToWorldXZ(id, x, z))), id === bId ? 'rgba(201,164,92,.10)' : null, 'rgba(201,164,92,.25)', 0.6);
         const c = coresOf(id, 1)[0];
@@ -3777,10 +4359,13 @@ export class Walkthrough {
     if (tgt && tgt.closest && tgt.closest('input,textarea,select,[contenteditable="true"]')) return;
     const code = ev.code;
     if (down && code === 'Escape' && this.el.help.classList.contains('show')) { this._showHelp(false); return; }
+    if (this.drive && this._driveKey(ev, down, code)) return;   // R gear / reset, H horn, E exit (drive.js)
     if (down && !ev.repeat && (code === 'KeyF' || code === 'Enter')) {
       if (this.drive) { ev.preventDefault(); return this._exitCar(); }
       if (this._chipRec) { ev.preventDefault(); return this._enterCar(this._chipRec); }
+      if (this._sofaNear && this._sofaUnit) { ev.preventDefault(); return this._sofaToggle(this._sofaUnit); }
     }
+    if (down && !ev.repeat && code === 'KeyE' && this._sofaNear && this._sofaUnit && !this.drive) { ev.preventDefault(); return this._sofaToggle(this._sofaUnit); }
     if (down && !ev.repeat && code === 'KeyC' && this.drive) return this._toggleCarView();
     if (down && !ev.repeat && code === 'KeyL' && this.drive) return this._toggleHeadlights();
     if (down && !ev.repeat && code === 'KeyM' && this.drive) return this._toggleCarSound();
@@ -3843,7 +4428,7 @@ export class Walkthrough {
     const C = this.mods.cars;
     if (!PROJECT.features || PROJECT.features.drive === false || !C || !C.createFleet || !C.CarController) { this.fleet = null; return; }
     try {
-      this.fleet = C.createFleet({ maxDetailed: this._isTouch ? 4 : 6, detailRadius: 26 });
+      this.fleet = C.createFleet({ maxDetailed: this._isTouch ? 2 : 4, detailRadius: 24, maxMid: this._isTouch ? 6 : 10 });
       this.scene.add(this.fleet.group);
       // one headlight spot, present from the start so the light count never changes (no shader recompiles later)
       this.headSpot = new THREE.SpotLight(0xfff1dc, 0, 42, 0.62, 0.6, 1.3); this.headSpot.name = 'walk-car-headlights';
@@ -3852,13 +4437,7 @@ export class Walkthrough {
     } catch (e) { console.warn('[walk] cars unavailable', e); try { this.fleet && this.fleet.dispose && this.fleet.dispose(); } catch { /* */ } this.fleet = null; }
   }
   _registerCars() { this._unregister('cars'); if (this.fleet) this._register(this.fleet.colliders, 'cars'); }
-  _adoptParking(c) {
-    if (!this.fleet || !c || !Array.isArray(c.parkedCars)) return;
-    try {
-      if (this.fleet.add(c.parkedCars, 'parking').length) this._registerCars();
-      if (c.carInstances && c.carInstances.group) c.carInstances.group.visible = false;   // the fleet draws them now
-    } catch (e) { console.warn('[walk] parked cars', e); }
-  }
+  // _adoptParking(c): drive.js (bays of the car park → fleet)
   _adoptOutdoorCars() {
     const C = this.mods.cars;
     if (!this.fleet || !this.env || !this.env.group || !C) return;
@@ -3889,7 +4468,7 @@ export class Walkthrough {
     for (const o of cands) if (o.geometry === old) {
       for (let i = 0; i < o.count; i++) {
         o.getMatrixAt(i, m); p.setFromMatrixPosition(m);
-        if (Math.hypot(p.x - SITE_CENTER[0], p.z - SITE_CENTER[1]) > 190) continue;
+        if (Math.hypot(p.x - SITE_CENTER[0], p.z - SITE_CENTER[1]) > 300) continue;
         // the streets framing the site are kept clear (their kerb parking would leave too narrow a lane to drive)
         if (nearPlot(p.x, p.z, 16)) { o.setMatrixAt(i, zero); continue; }
         const e = m.elements, yawX = Math.atan2(-e[2], e[0]);
@@ -3901,19 +4480,15 @@ export class Walkthrough {
     this.fleet.add(kerb, 'kerb', c => this._spotFree(c));
     this._registerCars();
   }
-  // a parked car at c = {kind, x, y, z, yaw} touches no wall / building / car collider
-  _spotFree(c) {
-    const S = this.mods.cars.carSpec(c.kind), ctl = { S, rec: { collider: null }, v: 1 };
-    for (const v of [1, -1]) { ctl.v = v; if (this._carBlocked(ctl, c.x, c.z, c.yaw, c.y)) return false; }
-    return true;
-  }
+  // _spotFree(c): drive.js
   // ---- where are we?
   // Inside the ground-floor outline of a tower (the lobby level decides what "outside" is).
   _inFootprint(x, z) {
     for (const id of B_IDS) { const [lx, lz] = worldToLocal(id, x, z); if (pointInPoly([lx, lz], footprintOf(id, 1))) return id; }
     return null;
   }
-  _isOutside(p = this.player.pos) { return p.y > -0.75 && p.y < 2.5 && !this._inFootprint(p.x, p.z); }
+  // (a ground-floor flat's terrace lies outside the tower's outline: standing on it is being in that flat, not "outdoors")
+  _isOutside(p = this.player.pos) { return p.y > -0.75 && p.y < 2.5 && !this._inFootprint(p.x, p.z) && !(this.loaded.size && this._aptAt(p)); }
   _nearestBuilding(x, z) {
     let best = B_IDS[0], bd = Infinity;
     for (const id of B_IDS) { const [cx, cz] = buildingCenter(id), d = Math.hypot(x - cx, z - cz); if (d < bd) { bd = d; best = id; } }
@@ -3986,270 +4561,19 @@ export class Walkthrough {
     const wall = this._cast(solids, ray.ray.origin, ray.ray.direction, hit.distance).find(h => !h.object.userData.floor);
     return wall && wall.distance < hit.distance - 0.3 ? null : hit.rec;
   }
-  _showCarChip(rec, ms = 7000) {
-    this._chipRec = rec; this.el.carChip.classList.add('show');
-    clearTimeout(this._chipT); if (ms) this._chipT = setTimeout(() => { if (!this._chipNear) this._hideCarChip(); }, ms);
-  }
   _hideCarChip() { this._chipRec = null; this._chipNear = false; this.el && this.el.carChip.classList.remove('show'); }
   _carChipWatch() {
     const now = performance.now(); if (now - (this._ccT || 0) < 250) return; this._ccT = now;
     if (!this.fleet || this.drive || this.mode !== 'walk') return;
-    const n = this.fleet.nearest(this.player.pos, 1.5);
+    const n = this.fleet.nearest(this.player.pos, 1.5, [-Math.sin(this.player.yaw), -Math.cos(this.player.yaw)]);   // the car the visitor faces
     if (n) { this._chipNear = true; if (this._chipRec !== n.rec) this._showCarChip(n.rec, 0); }
     else if (this._chipNear) { this._chipNear = false; this._hideCarChip(); }
   }
 
-  // ---- entering / leaving
-  async _enterCar(rec = this._chipRec) {
-    if (!rec || !this.fleet || this.drive || this.riding || this.busy) return;
-    this.busy = true; this._hideCarChip();
-    try {
-      await this._fade(true);
-      this.fleet.setFocus(rec); this.fleet.update(this.camera, true);
-      const car = this.fleet.carOf(rec);
-      if (!car) return;
-      const ctl = new this.mods.cars.CarController(rec);
-      this._fovWalk = this.camera.fov;
-      this.drive = { rec, car, ctl, view: lsGet('vrc.walk.carView') === 'chase' ? 'chase' : 'fp', look: { yaw: 0, pitch: 0 }, pad: { gas: 0, brake: 0, steer: 0 }, cam: null, lights: null };
-      this.glide = null; this.player.vel.set(0, 0, 0); this.keys.clear();
-      car.setInside(this.drive.view === 'fp');
-      this.root.classList.add('driving');
-      this._renderDriveHud(true);
-      if (lsGet('vrc.walk.carSound') === 'on') this._engineStart(rec.kind);   // engine sound is opt-in (muted by default)
-      this._driveUpdate(0);
-    } finally { this.busy = false; await this._fade(false); }
-  }
-  async _exitCar() {
-    const D = this.drive; if (!D || this.busy) return;
-    this.busy = true;
-    try {
-      await this._fade(true);
-      const { rec, car, ctl } = D, S = ctl.S;
-      Object.assign(rec, { x: ctl.x, y: ctl.y, z: ctl.z, yaw: ctl.yaw, pitch: ctl.pitch, roll: 0 });
-      this._engineStop();
-      car.setInside(false); car.setLights(false); if (this.headSpot) this.headSpot.intensity = 0;
-      this.fleet.setFocus(null); this.fleet.moved(rec);
-      for (const e of this.solids) if (e.o === rec.collider) e.box = null;
-      this.drive = null;
-      this.root.classList.remove('driving');
-      this._applyFov();
-      // stand next to the driver's door (left, +x), else the other side, else behind / in front
-      const c = Math.cos(ctl.yaw), s = Math.sin(ctl.yaw), toW = (lx, lz) => [ctl.x + lx * c + lz * s, ctl.z - lx * s + lz * c];
-      const spots = [[S.W / 2 + 0.55, S.seat], [-(S.W / 2 + 0.55), S.seat], [0, S.zR - 0.8], [0, S.zF + 0.8], [S.W / 2 + 1.2, S.seat]];
-      let pos = null;
-      for (const [lx, lz] of spots) {
-        const [x, z] = toW(lx, lz);
-        const fy = this._floorAt(x, ctl.y + 0.3, z, this._near(this.floors, new THREE.Vector3(x, ctl.y, z), 2));
-        if (fy == null) continue;
-        if (this._isFree(x, fy, z)) { pos = new THREE.Vector3(x, fy, z); break; }
-      }
-      if (!pos) { const [x, z] = toW(S.W / 2 + 0.55, S.seat); const [fx, fz] = this._freeSpot(x, ctl.y, z, 3); pos = new THREE.Vector3(fx, ctl.y, fz); }
-      this._place(pos, ctl.yaw + Math.PI - 0.5);
-      this.player.eye = EYE;
-      this._lastPlace = null; this._updateHud(true);
-    } finally { this.busy = false; await this._fade(false); }
-  }
-  // headlights: automatic (dusk / night / underground) until toggled; the sound button starts / stops the engine synth
-  _toggleHeadlights() {
-    const D = this.drive; if (!D) return;
-    D.lights = !this._lightsOn(D);
-    this._renderDriveHud(true);
-  }
-  _lightsOn(D = this.drive) { return D ? (D.lights != null ? D.lights : this.envMode !== 'day' || D.ctl.y < -0.8) : false; }
-  _toggleCarSound() {
-    const D = this.drive; if (!D) return;
-    const on = !this._eng;
-    lsSet('vrc.walk.carSound', on ? 'on' : 'off');
-    if (on) this._engineStart(D.rec.kind); else this._engineStop();
-    this._renderDriveHud(true);
-  }
-  _toggleCarView() {
-    const D = this.drive; if (!D) return;
-    D.view = D.view === 'fp' ? 'chase' : 'fp'; D.cam = null; D.look.yaw = D.look.pitch = 0;
-    D.car.setInside(D.view === 'fp'); lsSet('vrc.walk.carView', D.view);
-    this._renderDriveHud(true);
-  }
-
-  // ---- the physics world for CarController
-  _groundAt(x, y, z) {
-    const o = this._v1.set(x, y + 0.9, z);
-    const hits = this._cast(this._near(this.floors, o, 3), o, this._v2.set(0, -1, 0), 2.0);
-    for (const h of hits) if (h.point.y <= y + 0.62) return h.point.y;
-    return null;
-  }
-  _carBlocked(ctl, x, z, yaw, y) {
-    const S = ctl.S, hw = S.W / 2 + 0.02, zf = S.zF + 0.04, zr = S.zR - 0.04, zc = (zf + zr) / 2;
-    const c = Math.cos(yaw), s = Math.sin(yaw), W = (lx, lz) => [x + lx * c + lz * s, z - lx * s + lz * c];
-    const [cx, cz] = W(0, zc);
-    const center = this._v1.set(cx, y + 0.6, cz);
-    const own = ctl.rec.collider;
-    const onRamp = this._rampDist(x, z) < 0.3;   // a ramp through a tower: the tower's street-level shell must not close it
-    const solids = this._near(this.solids, center, S.L / 2 + 1.2).filter(o => o !== own && !o.userData.floor && !(onRamp && o.name === 'outdoor-solid'));
-    if (!solids.length) return false;
-    const pts = [], fwd = ctl.v >= 0;
-    for (const k of [-1, -0.5, 0, 0.5, 1]) pts.push([k * hw, fwd ? zf : zr]);
-    for (const k of [0.2, 0.5, 0.8]) for (const sx of [-1, 1]) pts.push([sx * hw, fwd ? lerpN(zc, zf, k) : lerpN(zc, zr, k)]);
-    for (const sx of [-1, 1]) pts.push([sx * hw, fwd ? zr + 0.3 : zf - 0.3]);   // the swinging far end while turning
-    const o = new THREE.Vector3(), d = new THREE.Vector3();
-    for (const h of [0.42, 0.95]) {
-      o.set(cx, y + h, cz);
-      for (const [lx, lz] of pts) {
-        const [px, pz] = W(lx, lz); d.set(px - cx, 0, pz - cz); const L = d.length(); if (L < 1e-3) continue; d.divideScalar(L);
-        const hit = this._cast(solids, o, d, L).find(q => !q.object.userData.floor);
-        if (hit) return true;
-      }
-    }
-    return false;
-  }
-  _driveArea() {
-    const C = this.mods.cars;
-    if (this._dArea || !this.env || !this.env.group || !C || !C.createDriveArea) return this._dArea || null;
-    if (!this.env.group.getObjectByName('road-strips')) return null;   // streets not built yet
-    try { this._dArea = C.createDriveArea(this.env.group, { center: SITE_CENTER }); } catch (e) { console.warn('[walk] drive area', e); this._dArea = null; }
-    return this._dArea;
-  }
-  _driveWorld() {
-    if (this._dw) return this._dw;
-    return (this._dw = {
-      ground: (x, y, z) => this._groundAt(x, y, z),
-      blocked: (ctl, x, z, yaw, y) => this._carBlocked(ctl, x, z, yaw, y),
-      limit: (x, y) => (y < -0.8 ? 20 : 50) / 3.6,
-      // underground: the car-park walls bound it; above ground: the site and the streets around it (cars.js drive
-      // area, centred on the site); without one, a 300 m circle around the courtyard
-      drivable: (x, z) => {
-        if (this.drive && this.drive.ctl.y < -1) return true;
-        const A = this._driveArea();
-        if (A ? A.test(x, z) : Math.hypot(x - SITE_CENTER[0], z - SITE_CENTER[1]) < 300) return true;
-        const now = performance.now(); if (now - (this._edgeT || 0) > 4000) { this._edgeT = now; this._toast && this._toast(this.t('walk.car.edge')); }
-        return false;
-      },
-    });
-  }
-
-  // ---- per-frame driving
-  _driveUpdate(dt) {
-    const D = this.drive, { ctl, car, rec } = D, k = this.keys, pad = D.pad;
-    const gas = Math.max(k.has('KeyW') || k.has('ArrowUp') ? 1 : 0, pad.gas);
-    const brake = Math.max(k.has('KeyS') || k.has('ArrowDown') || k.has('Space') ? 1 : 0, pad.brake);
-    let steer = (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) - (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0);
-    if (Math.abs(pad.steer) > Math.abs(steer)) steer = pad.steer;
-    const inp = { gas, brake, steer }, world = this._driveWorld();
-    const n = Math.min(6, Math.max(1, Math.ceil(dt / (1 / 60))));
-    const hit0 = ctl.hit; ctl.hit = 0;
-    for (let i = 0; i < n; i++) ctl.step(dt / n, inp, world);
-    if (ctl.hit > 1.2 && !hit0) this._thud(Math.min(1, ctl.hit / 6));
-    // car pose
-    Object.assign(rec, { x: ctl.x, y: ctl.y, z: ctl.z, yaw: ctl.yaw, pitch: ctl.pitch, roll: ctl.roll });
-    const g = car.group;
-    g.position.set(ctl.x, ctl.y + ctl.bump * Math.sin(performance.now() / 30), ctl.z);
-    g.rotation.set(-ctl.pitch, ctl.yaw, ctl.roll, 'YXZ');
-    g.updateMatrixWorld(true);
-    car.setWheels(ctl.spin, ctl.steer);
-    this.player.pos.set(ctl.x, ctl.y, ctl.z);
-    // lights: on at dusk/night and underground; brake lights while braking or holding the brake at a standstill
-    const under = ctl.y < -0.8, on = this._lightsOn(D);
-    car.setLights(on, ctl.braking || (brake > 0 && Math.abs(ctl.v) < 0.3 && !ctl.reversing), ctl.reversing);
-    const fx = Math.sin(ctl.yaw), fz = Math.cos(ctl.yaw);
-    const S = ctl.S;
-    this.headSpot.intensity = on ? (under ? 55 : 90) : 0;
-    this.headSpot.position.set(ctl.x + fx * (S.zF - 0.3), ctl.y + 0.72, ctl.z + fz * (S.zF - 0.3));
-    this.headSpot.target.position.set(ctl.x + fx * (S.zF + 14), ctl.y - 0.6, ctl.z + fz * (S.zF + 14));
-    this.headSpot.target.updateMatrixWorld(true);
-    // camera
-    const cam = this.camera, L = D.look;
-    if (!this._dragging) { L.yaw *= 1 - damp(2.2, dt); L.pitch *= 1 - damp(2.2, dt); }
-    const vf = D.view === 'fp' ? Math.min(this._fovWalk || cam.fov, cam.aspect < 1 ? 92 : 70) : Math.min(this._fovWalk || cam.fov, cam.aspect < 1 ? 100 : 72);
-    if (Math.abs(cam.fov - vf) > 0.01) { cam.fov = vf; cam.updateProjectionMatrix(); }
-    if (D.view === 'fp') {
-      const e = car.group.localToWorld(car.eye.clone());
-      cam.position.copy(e);
-      cam.rotation.set(ctl.pitch * 0.9 - 0.05 + L.pitch, ctl.yaw + Math.PI + L.yaw, -ctl.roll * 0.6, 'YXZ');
-    } else {
-      const dist = under ? 5.4 : 6.6, h = under ? 1.75 : 2.5;
-      const a = ctl.yaw + L.yaw;
-      const want = new THREE.Vector3(ctl.x - Math.sin(a) * dist, ctl.y + h, ctl.z - Math.cos(a) * dist);
-      // keep the camera on our side of walls/columns and under the car-park ceiling
-      const from = new THREE.Vector3(ctl.x, ctl.y + 1.3, ctl.z), dir = want.clone().sub(from), len = dir.length(); dir.divideScalar(len);
-      const sol = this._near(this.solids, from, len + 1).filter(o => o !== rec.collider && !o.userData.carId);
-      const hit = this._cast(sol, from, dir, len).find(q => !q.object.userData.floor);
-      if (hit) want.copy(from).addScaledVector(dir, Math.max(0.6, hit.distance - 0.35));
-      if (!D.cam) D.cam = want.clone(); else D.cam.lerp(want, damp(dt ? 7 : 1000, dt || 1));
-      cam.position.copy(D.cam);
-      cam.lookAt(ctl.x + fx * 1.6, ctl.y + 1.0 + L.pitch * 3, ctl.z + fz * 1.6);
-    }
-    this._syncEnvMap();
-    this._engineUpdate(ctl, gas, dt);
-    if (this.fleet) this.fleet.update(cam);
-    this._renderDriveHud(false);
-  }
-  _renderDriveHud(force) {
-    const D = this.drive, e = this.el; if (!D || !e) return;
-    const kmh = Math.round(Math.abs(D.ctl.v) * 3.6), lim = D.ctl.y < -0.8 ? 20 : 50;
-    if (force || kmh !== this._lastKmh) { this._lastKmh = kmh; e.spd.textContent = String(kmh); e.gear.textContent = D.ctl.v < -0.1 || D.ctl.reversing ? 'R' : kmh ? 'D' : 'P'; const f = Math.min(1, Math.abs(D.ctl.v) * 3.6 / 60); e.arc.style.strokeDasharray = `${(141.4 * f).toFixed(1)} 200`; }
-    if (force || lim !== this._lastLim) { this._lastLim = lim; e.lim.textContent = String(lim); }
-    e.spdo.classList.toggle('over', kmh > lim + 1);
-    if (force) {
-      e.carLights.classList.toggle('on', this._lightsOn(D)); e.carSound.classList.toggle('on', !!this._eng);
-      e.carView.querySelector('.lbl').textContent = this.t(D.view === 'fp' ? 'walk.car.chase' : 'walk.car.cockpit');
-      e.carExit.querySelector('.lbl').textContent = this.t('walk.car.exit');
-    }
-  }
-
-  // ---- sound: engine synth (pitch follows speed), road noise, bump thud — only after a user gesture
-  _engineStart(kind) {
-    const ac = this._audio(); if (!ac) return;
-    try {
-      const t = ac.currentTime, ev = kind === 'ev';
-      const out = ac.createGain(); out.gain.value = 0; out.connect(ac.destination);
-      const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = ev ? 2400 : 520; lp.Q.value = 0.8; lp.connect(out);
-      const o1 = ac.createOscillator(), o2 = ac.createOscillator(), g1 = ac.createGain(), g2 = ac.createGain();
-      o1.type = ev ? 'sine' : 'sawtooth'; o2.type = ev ? 'triangle' : 'square';
-      g1.gain.value = ev ? 0.35 : 0.55; g2.gain.value = ev ? 0.12 : 0.28;
-      o1.connect(g1).connect(lp); o2.connect(g2).connect(lp);
-      const len = ac.sampleRate * 2, buf = ac.createBuffer(1, len, ac.sampleRate), d = buf.getChannelData(0);
-      let b = 0; for (let i = 0; i < len; i++) { b = 0.97 * b + 0.03 * (Math.random() * 2 - 1); d[i] = b * 3; }
-      const ns = ac.createBufferSource(); ns.buffer = buf; ns.loop = true;
-      const nf = ac.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 380; nf.Q.value = 0.6;
-      const ng = ac.createGain(); ng.gain.value = 0; ns.connect(nf).connect(ng).connect(ac.destination);
-      o1.start(t); o2.start(t); ns.start(t);
-      out.gain.setTargetAtTime(ev ? 0.03 : 0.06, t, 0.25);
-      if (!ev) { o1.frequency.setValueAtTime(18, t); o1.frequency.setTargetAtTime(38, t + 0.05, 0.12); }   // starter → idle
-      this._eng = { ac, out, lp, o1, o2, ng, ns, ev, rpm: 750 };
-    } catch (e) { console.warn('[walk] engine sound', e); this._eng = null; }
-  }
-  _engineUpdate(ctl, gas, dt) {
-    const E = this._eng; if (!E) return;
-    const t = E.ac.currentTime, v = Math.abs(ctl.v) * 3.6;
-    if (E.ev) {
-      const f = 140 + v * 22;
-      E.o1.frequency.setTargetAtTime(f, t, 0.06); E.o2.frequency.setTargetAtTime(f * 2.01, t, 0.06);
-      E.out.gain.setTargetAtTime(0.012 + Math.min(0.03, v * 0.0008) + gas * 0.012, t, 0.1);
-    } else {
-      const gears = [0, 18, 34, 52, 75], gi = Math.max(0, gears.findIndex((g, i) => v < (gears[i + 1] ?? 999)));
-      const lo = gears[gi], hi = gears[gi + 1] ?? 120, frac = (v - lo) / (hi - lo);
-      const target = 750 + frac * 2600 + gas * 500;
-      E.rpm += (target - E.rpm) * damp(5, dt || 0.016);
-      const f = E.rpm / 60 * 2;   // V8: 4 firing pulses per rev, heard an octave down
-      E.o1.frequency.setTargetAtTime(f, t, 0.05); E.o2.frequency.setTargetAtTime(f / 2, t, 0.05);
-      E.lp.frequency.setTargetAtTime(260 + E.rpm * 0.22 + gas * 500, t, 0.08);
-      E.out.gain.setTargetAtTime(0.045 + gas * 0.035, t, 0.1);
-    }
-    E.ng.gain.setTargetAtTime(Math.min(0.06, v * 0.0012), t, 0.2);
-  }
-  _engineStop() {
-    const E = this._eng; if (!E) return; this._eng = null;
-    try { const t = E.ac.currentTime; E.out.gain.setTargetAtTime(0, t, 0.12); E.ng.gain.setTargetAtTime(0, t, 0.12); for (const n of [E.o1, E.o2, E.ns]) n.stop(t + 0.8); } catch { /* optional */ }
-  }
-  _thud(k = 1) {
-    const ac = this._audio(); if (!ac) return;
-    try {
-      const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain(); o.type = 'sine';
-      o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.18);
-      g.gain.setValueAtTime(0.25 * k, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
-      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 0.3);
-    } catch { /* optional */ }
-    if (navigator.vibrate) try { navigator.vibrate(30); } catch { /* optional */ }
-  }
+  // ---- entering / leaving a car, the vehicle's physics world, the per-frame driving update, the driving HUD and the
+  // engine / horn sounds are in drive.js (driveMixin): _showCarChip, _enterCar, _exitCar, _toggleHeadlights, _lightsOn,
+  // _toggleCarSound, _toggleCarView, _groundAt, _carBlocked, _driveArea, _driveWorld, _driveUpdate, _renderDriveHud,
+  // _engineStart / _engineUpdate / _engineStop, _thud, plus gears, reset, horn, tilt steering, ramp barriers, traffic.
 
   // Underground (away from the ramp) nothing above grade is visible: skip drawing the exterior and the city.
   _cullWorld() {
@@ -4285,20 +4609,17 @@ export class Walkthrough {
     if (k === 'ureserve') { const id = this._cardUnit ? this._cardUnit.id : this.unit && this.unit.id; this._hideUnitCard(); return this.opts.onReserve && this.opts.onReserve(id); }
     if (k === 'floors') { this._liftGridOpen = !this._liftGridOpen; return this._renderLiftPanel(); }
     if (k === 'carenter') return this._enterCar(this._chipRec);
+    if (k === 'sofabed') return this._sofaUnit && this._sofaToggle(this._sofaUnit);
     if (k === 'carexit') return this._exitCar();
     if (k === 'carview') return this._toggleCarView();
     if (k === 'carlights') return this._toggleHeadlights();
     if (k === 'carsound') return this._toggleCarSound();
-    if (k === 'exit') { if (this.drive) this._engineStop(); return this.opts.onExit && this.opts.onExit(); }
+    if (k === 'exit') { if (this.drive) { this._carSoundsStop(); this._radioStop(); } return this.opts.onExit && this.opts.onExit(); }
     if (k === 'help') { this._setPopover(false); return this._showHelp(true); }
     if (k === 'photo') return this.takePhoto();
     if (k === 'helpok') return this._showHelp(false);
     if (k === 'dlabel') return this.el.tools.classList.toggle('col');
-    if (b.dataset.vm) {
-      if (b.dataset.vm !== 'real') return this._closePano();
-      if (this._photoTourFn()) return this._tourHas() ? this._openPhotoTour() : this._soonTip();
-      return this._openPano();
-    }
+    if (b.dataset.vm) return b.dataset.vm === 'real' ? (this._pano ? undefined : this._openPano()) : this._closePano();
     if (b.dataset.m) return this.setMode(b.dataset.m);
     if (b.dataset.t) return this.setTimeMode(b.dataset.t);
     if (b.dataset.s) { this.el.tools.classList.add('col'); return this.setStyle(b.dataset.s); }
@@ -4307,3 +4628,4 @@ export class Walkthrough {
     if (b.dataset.f != null && b.parentElement === this.el.liftGrid) { const inf = this._carOf(this.player.pos); if (inf) this._pressKey(inf, +b.dataset.f); }   // _pressKey ignores stops this tower does not have
   }
 }
+Object.assign(Walkthrough.prototype, driveMixin, gameMixin);

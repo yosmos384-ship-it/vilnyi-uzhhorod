@@ -3,7 +3,7 @@
 export default {
   // ── meta ──
   'meta.title': 'VILNYI — business-class apartments in Uzhhorod, Ukraine',
-  'meta.desc': '1-, 2- and 3-room apartments at VILNYI, 4A Hrushevskoho St, Uzhhorod: four buildings, a closed car-free courtyard, underground parking, a supermarket and a fitness club with a swimming pool. Indicative prices from 47,450 UAH per m², instalments up to 17 months.',
+  'meta.desc': '1-, 2- and 3-room apartments at VILNYI, 4A Hrushevskoho St, Uzhhorod: four buildings, a closed car-free courtyard, underground parking, a supermarket and a fitness club with a swimming pool. Price: {usdM2} $ per m², in hryvnias at the National Bank of Ukraine rate; instalments up to 17 months.',
 
   // ── hero ──
   'hero.eyebrow': 'Uzhhorod · Novyi district · business class',
@@ -15,7 +15,7 @@ export default {
   'hero.stat.units': 'apartments',
   'hero.stat.parking': 'underground parking places',
   'hero.stat.buildings': 'buildings',
-  'hero.stat.price': 'per m², indicative',
+  'hero.stat.price': 'per m² · {usdM2} $',
   'hero.mode': 'Light',
   'hero.day': 'Day',
   'hero.dusk': 'Dusk',
@@ -48,7 +48,7 @@ export default {
   'terms.title': 'Clear purchase terms',
   'terms.lead': 'Full payment or instalments from the developer for up to 17 months with a first payment of 30–50%. A 5% discount for military personnel and medical workers.',
   'terms.price': 'Price per m²',
-  'terms.priceD': 'One-room apartments from 47,450 to 52,000 UAH per m², two-room 56,500 UAH per m², three-room 52,000 UAH per m². Prices are indicative, as of 28.09.2026.',
+  'terms.priceD': 'One price for every apartment: {usdM2} $ per m² — in hryvnias at the National Bank of Ukraine rate of {rateDate}.',
   'terms.instT': 'Instalments',
   'terms.instD': 'From the developer, for up to 17 months. The first payment is 30–50% of the price; the balance is paid over the instalment period.',
   'terms.discT': '5% discount',
@@ -111,7 +111,7 @@ export default {
   'facts.permitV': 'No. {n} of {d} — per the public listing',
   'facts.contractor': 'General contractor',
   'facts.cadastral': 'Cadastral number',
-  'facts.disclaimer': 'The visualisations and plans on this site are taken from the architectural concept; areas, layouts and apartment numbering may change. Prices are indicative and do not constitute a public offer.',
+  'facts.disclaimer': 'The visualisations and plans on this site are taken from the architectural concept; areas, layouts and apartment numbering may change. The information on this site does not constitute a public offer.',
   'facts.partner': 'About the developer',
 
   // ── view ──
@@ -143,4 +143,7 @@ export default {
   'brand.city': 'UZHHOROD',
   'facts.perListing': 'per the public listing',
   'facts.customer': 'Customer',
+
+  // v0.3 (V4-page): floating WhatsApp button — the prefilled greeting
+  'wa.greeting': 'Hello! I am interested in an apartment at the VILNYI residential complex in Uzhhorod.',
 };

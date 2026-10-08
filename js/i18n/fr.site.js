@@ -4,7 +4,7 @@
 export default {
   // ── meta ──
   'meta.title': 'VILNYI — appartements de standing à Oujhorod, Ukraine',
-  'meta.desc': 'Appartements de 1, 2 et 3 pièces à la résidence VILNYI, 4A, rue Hrouchevskoho à Oujhorod : quatre bâtiments, cour fermée sans voitures, parking souterrain, supermarché, club de fitness avec piscine. Prix indicatifs à partir de 47 450 ₴/m², paiement échelonné jusqu’à 17 mois.',
+  'meta.desc': 'Appartements de 1, 2 et 3 pièces à la résidence VILNYI, 4A, rue Hrouchevskoho à Oujhorod : quatre bâtiments, cour fermée sans voitures, parking souterrain, supermarché, club de fitness avec piscine. Prix : {usdM2} $ par m², en hryvnias au cours de la Banque nationale d’Ukraine ; paiement échelonné jusqu’à 17 mois.',
 
   // ── hero ──
   'hero.eyebrow': 'Oujhorod · quartier Novyi · classe business',
@@ -16,7 +16,7 @@ export default {
   'hero.stat.units': 'appartements',
   'hero.stat.parking': 'places de parking souterrain',
   'hero.stat.buildings': 'bâtiments',
-  'hero.stat.price': 'par m², indicatif',
+  'hero.stat.price': 'par m² · {usdM2} $',
   'hero.mode': 'Éclairage',
   'hero.day': 'Jour',
   'hero.dusk': 'Crépuscule',
@@ -49,7 +49,7 @@ export default {
   'terms.title': 'Des conditions d’achat claires',
   'terms.lead': 'Paiement comptant ou paiement échelonné proposé par le promoteur, jusqu’à 17 mois, avec un premier versement de 30–50 %. Remise de 5 % pour les militaires et les professionnels de santé.',
   'terms.price': 'Prix au m²',
-  'terms.priceD': '1 pièce — de 47 450 à 52 000 ₴/m², 2 pièces — 56 500 ₴/m², 3 pièces — 52 000 ₴/m². Prix indicatifs au 28/09/2026.',
+  'terms.priceD': 'Un prix unique pour tous les appartements : {usdM2} $ par m² — en hryvnias, au cours de la Banque nationale d’Ukraine du {rateDate}.',
   'terms.instT': 'Paiement échelonné',
   'terms.instD': 'Proposé par le promoteur, jusqu’à 17 mois. Premier versement de 30–50 % du prix, le solde étant réglé pendant la durée de l’échelonnement.',
   'terms.discT': 'Remise de 5 %',
@@ -112,7 +112,7 @@ export default {
   'facts.permitV': 'n° {n} du {d} — selon l’annonce publique',
   'facts.contractor': 'Entreprise générale',
   'facts.cadastral': 'Numéro cadastral',
-  'facts.disclaimer': 'Les visualisations et les plans du site sont issus du concept architectural ; les surfaces, les plans et la numérotation des appartements peuvent évoluer. Les prix sont indicatifs et ne constituent pas une offre contractuelle.',
+  'facts.disclaimer': 'Les visualisations et les plans du site sont issus du concept architectural ; les surfaces, les plans et la numérotation des appartements peuvent évoluer. Les informations du site ne constituent pas une offre contractuelle.',
   'facts.partner': 'À propos du promoteur',
 
   // ── view (orientation de l’appartement) ──
@@ -144,4 +144,7 @@ export default {
   'brand.city': 'OUJHOROD',
   'facts.perListing': 'selon l’annonce publique',
   'facts.customer': 'Maître d’ouvrage',
+
+  // v0.3 (V4-page): floating WhatsApp button — the prefilled greeting
+  'wa.greeting': 'Bonjour ! Je suis intéressé(e) par un appartement à la résidence VILNYI à Oujhorod.',
 };

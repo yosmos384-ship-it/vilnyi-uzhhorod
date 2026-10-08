@@ -3,8 +3,8 @@
 // Nothing here knows how many buildings there are, how tall they are or what a flat costs: everything comes from
 // data.js. Sibling modules (plan.js, booking.js, hero3d.js) are imported dynamically, so a broken or missing one
 // degrades its own feature only (CONTRACT §0 rule 6, §8) — the page, the list and the unit sheet keep working.
-import { PROJECT, TYPES, UNITS, BUILDINGS, B_IDS, DEFAULT_SEL, TOP_FLOOR, PLOT, STREETS, PODIUM, CONTEXT_BLOCKS, COMPASS, PRICE_RANGE,
-  floorsOf, topFloor, floorY, roofY, floorLabel, unitsOn, blocksOn, unitById, localToWorld, footprintOf, money } from './data.js';
+import { PROJECT, TYPES, UNITS, BUILDINGS, B_IDS, DEFAULT_SEL, TOP_FLOOR, PLOT, STREETS, PODIUM, CONTEXT_BLOCKS, COMPASS, UAH_PER_M2,
+  floorsOf, topFloor, floorY, roofY, floorLabel, unitsOn, blocksOn, unitById, localToWorld, footprintOf, money, usd, usdOf } from './data.js';
 import { t, pick, planText, num, setLang, lang, dir, onLangChange, initialLang, i18nApi, LANGS, langInfo, unitLabelL } from './i18n.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -60,50 +60,30 @@ function breakdown(price, plan, discountPct = 0) {
 const LX = {
   uk: {
     'price.from': 'від {v}', 'finder.area': 'Площа', 'finder.minArea': 'Площа від', 'finder.maxArea': 'Площа до', 'finder.status': 'Статус',
-    'unit.priceSrc.table': 'Ціна орієнтовна: її розраховано за вартістю м² із публічного оголошення про продаж. Точну вартість уточнюйте у відділі продажу.',
-    'unit.priceSrc.list': 'Ціна за прайс-листом відділу продажу.',
     'facts.perListing': 'за даними публічного оголошення', 'facts.customer': 'Замовник будівництва',
   },
   en: {
     'price.from': 'from {v}', 'finder.area': 'Area', 'finder.minArea': 'Area from', 'finder.maxArea': 'Area to', 'finder.status': 'Status',
-    'unit.priceSrc.table': 'Indicative price: calculated from the price per m² in the public sales listing. Please confirm the exact price with the sales office.',
-    'unit.priceSrc.list': 'Price from the sales office price list.',
     'facts.perListing': 'per the public listing', 'facts.customer': 'Customer',
   },
   he: {
     'price.from': 'החל מ-{v}', 'finder.area': 'שטח', 'finder.minArea': 'שטח מ-', 'finder.maxArea': 'שטח עד', 'finder.status': 'סטטוס',
-    'unit.priceSrc.table': 'מחיר משוער: מחושב לפי המחיר למ״ר מהמודעה הפומבית למכירה. את המחיר המדויק יש לברר במשרד המכירות.',
-    'unit.priceSrc.list': 'מחיר לפי מחירון משרד המכירות.',
     'facts.perListing': 'לפי המודעה הפומבית', 'facts.customer': 'מזמין הבנייה',
-  },
-  ru: {
-    'price.from': 'от {v}', 'finder.area': 'Площадь', 'finder.minArea': 'Площадь от', 'finder.maxArea': 'Площадь до', 'finder.status': 'Статус',
-    'unit.priceSrc.table': 'Цена ориентировочная: рассчитана по стоимости м² из публичного объявления о продаже. Точную стоимость уточняйте в отделе продаж.',
-    'unit.priceSrc.list': 'Цена по прайс-листу отдела продаж.',
-    'facts.perListing': 'по данным публичного объявления', 'facts.customer': 'Заказчик строительства',
   },
   ro: {
     'price.from': 'de la {v}', 'finder.area': 'Suprafață', 'finder.minArea': 'Suprafață de la', 'finder.maxArea': 'Suprafață până la', 'finder.status': 'Stare',
-    'unit.priceSrc.table': 'Preț orientativ: calculat după prețul pe m² din anunțul public de vânzare. Prețul exact se confirmă la biroul de vânzări.',
-    'unit.priceSrc.list': 'Preț conform listei de prețuri a biroului de vânzări.',
     'facts.perListing': 'conform anunțului public', 'facts.customer': 'Beneficiar',
   },
   de: {
     'price.from': 'ab {v}', 'finder.area': 'Fläche', 'finder.minArea': 'Fläche ab', 'finder.maxArea': 'Fläche bis', 'finder.status': 'Status',
-    'unit.priceSrc.table': 'Richtpreis: berechnet nach dem Quadratmeterpreis aus dem öffentlichen Verkaufsinserat. Den genauen Preis nennt Ihnen das Verkaufsbüro.',
-    'unit.priceSrc.list': 'Preis laut Preisliste des Verkaufsbüros.',
     'facts.perListing': 'laut öffentlichem Inserat', 'facts.customer': 'Bauherr',
   },
   fr: {
     'price.from': 'dès {v}', 'finder.area': 'Surface', 'finder.minArea': 'Surface min.', 'finder.maxArea': 'Surface max.', 'finder.status': 'Statut',
-    'unit.priceSrc.table': 'Prix indicatif : calculé d’après le prix au m² de l’annonce publique de vente. Le prix exact est à confirmer auprès du bureau de vente.',
-    'unit.priceSrc.list': 'Prix selon la grille tarifaire du bureau de vente.',
     'facts.perListing': 'selon l’annonce publique', 'facts.customer': 'Maître d’ouvrage',
   },
   it: {
     'price.from': 'da {v}', 'finder.area': 'Superficie', 'finder.minArea': 'Superficie da', 'finder.maxArea': 'Superficie fino a', 'finder.status': 'Stato',
-    'unit.priceSrc.table': 'Prezzo indicativo: calcolato in base al prezzo al m² dell’annuncio pubblico di vendita. Il prezzo esatto va confermato con l’ufficio vendite.',
-    'unit.priceSrc.list': 'Prezzo da listino dell’ufficio vendite.',
     'facts.perListing': 'secondo l’annuncio pubblico', 'facts.customer': 'Committente',
   },
 };
@@ -116,9 +96,9 @@ const has = key => t(key) !== key;                       // is the key in a dict
 const roomsText = n => (n === 1 ? t('rooms.1') : t('rooms.n', { n }));
 const floorText = f => t('unit.floor', { n: floorLabel(f) });
 const bldText = b => `${t('ul.building')} ${BUILDINGS[b].no}`;
-const commaLang = () => lang === 'uk' || lang === 'ru';
+const commaLang = () => lang === 'uk';
 const m2 = () => (commaLang() ? 'м²' : 'm²');
-// CONTRACT §2: "34,50 м²" in uk and ru (decimal comma), "34.50 m²" otherwise
+// CONTRACT §2: "34,50 м²" in uk (decimal comma), "34.50 m²" otherwise
 const fmtArea = n => { const s = (+n).toFixed(2); return (commaLang() ? s.replace('.', ',') : s) + ' ' + m2(); };
 const facingText = u => (u.facings?.length ? u.facings : [u.facing]).map(c => t('face.' + c)).join(' / ');
 const unitCode = u => `${BUILDINGS[u.building].no}-${floorLabel(u.floor)}-${pad2(u.index)}`;
@@ -128,19 +108,40 @@ function deliveryText(b, tbc = true) {
 }
 const fmtPhone = p => { const m = String(p).match(/^\+380(\d{2})(\d{3})(\d{2})(\d{2})$/); return m ? `+38 0${m[1]} ${m[2]} ${m[3]} ${m[4]}` : String(p); };
 const fmtDate = iso => { const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}.${m[2]}.${m[1]}` : String(iso || ''); };
+// WhatsApp chat with the sales number (PROJECT.contact.whatsapp) and a short greeting in the page language.
+const waHref = () => `https://wa.me/${String(PROJECT.contact?.whatsapp || '').replace(/\D/g, '')}?text=${encodeURIComponent(t('wa.greeting'))}`;
 const clampFloor = (b, f) => Math.max(1, Math.min(topFloor(b) || 1, Math.round(+f) || 1));
 
 // ---------------------------------------------------------------- state
 const reserved = new Set();
 const fltDefault = () => ({ rooms: '', facing: '', status: '', pmin: 0, pmax: 0, amin: 0, amax: 0, fmin: 1, fmax: TOP_FLOOR });
+// The interior finish styles offered to buyers: PROJECT.styles (data.js), in that order. Every selector on the site lists
+// exactly these. The visitor's choice is remembered ('vrc.style'); a stored style that is no longer offered → the first.
+const STYLES = Array.isArray(PROJECT.styles) && PROJECT.styles.length ? PROJECT.styles.slice() : ['milano', 'nordic', 'riviera', 'monaco', 'kyoto', 'paris'];
+const offeredStyle = id => (STYLES.includes(id) ? id : STYLES[0]);
+// Day / dusk / night: one preference ('vrc.time') for the hero and finder 3D, the walkthrough and the 360° viewer.
+const TIME_MODES = ['day', 'dusk', 'night'];
+const timeModeOf = m => (TIME_MODES.includes(m) ? m : 'dusk');
 const S = {
   b: BUILDINGS[DEFAULT_SEL.b] ? DEFAULT_SEL.b : B_IDS[0], f: DEFAULT_SEL.f, view: 'plan', sort: 'price', limit: 30,
   flt: fltDefault(),
-  styleId: lsGet('vrc.style', 'milano'),
-  unit: null, calcPlan: PROJECT.terms.plans[0]?.id, calcDisc: '', timeMode: 'dusk',
+  styleId: offeredStyle(lsGet('vrc.style', '')),
+  unit: null, calcPlan: PROJECT.terms.plans[0]?.id, calcDisc: '', timeMode: timeModeOf(lsGet('vrc.time', '')),
 };
 const statusOf = u => (reserved.has(u.id) ? 'reserved' : u.status);
-const STYLES = ['milano', 'nordic', 'riviera', 'monaco', 'kyoto', 'paris'];
+function setStyleId(id, { fromWalk = false } = {}) {
+  id = offeredStyle(id); if (id === S.styleId) return;
+  S.styleId = id; lsSet('vrc.style', id);
+  const inp = dlgU()?.querySelector?.(`input[name="style"][value="${id}"]`); if (inp) inp.checked = true;
+  if (!fromWalk) { try { walk?.setStyle?.(id); } catch (e) { /* the walkthrough keeps its style */ } }
+}
+// Sets the light mode everywhere it is shown; `from` names the control that already changed itself.
+function setTimeMode(m, from) {
+  m = timeModeOf(m); S.timeMode = m; lsSet('vrc.time', m);
+  $$('#modeCtl button').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === m));
+  if (from !== 'hero') { try { hero?.setMode(m); } catch (e) { /* hero not built */ } }
+  if (from !== 'walk') { try { if (walk && walk.envMode !== m) walk.setTimeMode(m); } catch (e) { /* no walkthrough */ } }
+}
 // designs without their own renders borrow the nearest rendered design's stills (veil / gallery)
 const STILL_STYLE = { monaco: 'milano', kyoto: 'nordic', paris: 'riviera' };
 const canWalk = u => !!(F.walk && u && u.walk);
@@ -215,24 +216,21 @@ function renderStatic() {
   const P = PROJECT, T = P.terms, tot = P.totals, C = P.contact || {};
   const set = (id, html) => { const el = $(id); if (el) el.innerHTML = html; return el; };
 
-  // T32: the price tile is "from 47 450 ₴" — the words around the number are set small beside it (they made the tile wrap
-  // in every language); the number itself stays LTR, the words follow the page direction.
-  const [fromPre, fromPost = ''] = tx('price.from', { v: '\u0001' }).replace(/[\u2066-\u2069\u200e\u200f]/g, '').split('\u0001').map(x => x.trim());
-  const sm = x => (x ? `<small class="stat-pre">${esc(x)}</small>` : '');
+  // One price for every flat: the ₴ price of a square metre (data.js UAH_PER_M2 = 1300 $ × the official rate).
   set('#heroStats', [
     [num(tot.apartments), 'hero.stat.units'], [num(tot.parking), 'hero.stat.parking'],
-    [num(tot.buildings), 'hero.stat.buildings'], [money(PRICE_RANGE.min), 'hero.stat.price', fromPre, fromPost],
-  ].map(([v, k, pre, post]) => `<div class="stat"><p class="stat-v">${sm(pre)}<b dir="ltr">${esc(v)}</b>${sm(post)}</p><span>${esc(t(k))}</span></div>`).join(''));
+    [num(tot.buildings), 'hero.stat.buildings'], [money(UAH_PER_M2), 'hero.stat.price'],
+  ].map(([v, k]) => `<div class="stat"><p class="stat-v"><b dir="ltr">${esc(v)}</b></p><span>${esc(t(k))}</span></div>`).join(''));
 
   const am = AMENITIES.filter(([, k]) => has(k + '.t'));
   set('#amenities', am.map(([ic, k], i) => `<li class="am"><svg class="am-ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[ic]}</svg><span class="am-n" aria-hidden="true">${pad2(i + 1)}</span><h3 class="h5">${esc(t(k + '.t'))}</h3><p>${esc(t(k + '.d'))}</p></li>`).join(''))
     ?.classList.toggle('am-6', am.length === 6);
 
-  // terms tiles: price range, instalments, discount, planned delivery per building
+  // terms tiles: price per m², instalments, discount, planned delivery per building
   const inst = T.instalment, discMax = Math.max(0, ...(T.discounts || []).map(d => d.percent || 0));
   const years = [...new Set(B_IDS.map(b => BUILDINGS[b].delivery?.year).filter(Boolean))].sort();
   const tiles = [
-    ['terms.price', `${esc(tx('price.from', { v: money(PRICE_RANGE.min) }))}<small>${esc(t('unit.perM2Short'))}</small>`, esc(t('terms.priceD')), 'long'],
+    ['terms.price', `<span dir="ltr">${esc(money(UAH_PER_M2))}</span><small>${esc(t('unit.perM2Short'))}</small>`, esc(t('terms.priceD')), 'long'],
   ];
   if (inst) tiles.push(['terms.instT', `<span dir="ltr">${inst.firstPayment[0]}–${inst.firstPayment[1]}%</span><small>${inst.months} ${esc(t('calc.months'))}</small>`, esc(t('terms.instD'))]);
   if (discMax) tiles.push(['terms.discT', `<span dir="ltr">−${discMax}%</span>`, esc(t('terms.discD'))]);
@@ -275,7 +273,7 @@ function renderStatic() {
   const items = [];   // [label, value, href | null, ltr]
   if (C.phone) items.push([tx('foot.phone'), fmtPhone(C.phone), `tel:+${digits(C.phone)}`, true]);
   if (C.viber) items.push([tx('foot.viber'), fmtPhone(C.viber), `viber://chat?number=%2B${digits(C.viber)}`, true]);
-  if (C.whatsapp) items.push([t('bk.c.whatsapp'), fmtPhone(C.whatsapp), `https://wa.me/${digits(C.whatsapp)}`, true]);
+  if (C.whatsapp) items.push([t('bk.c.whatsapp'), fmtPhone(C.whatsapp), waHref(), true]);
   if (C.email) items.push([tx('foot.email'), C.email, `mailto:${C.email}`, true]);
   if (C.site) items.push([tx('foot.site'), host(C.site), C.site, true]);
   if (pick(C.office)) items.push([tx('foot.office'), tv('foot.officeV') || pick(C.office), null, false]);
@@ -580,13 +578,13 @@ function renderList() {
   rows.sort((a, b) => key(a) - key(b) || a.floor - b.floor || a.index - b.index);
   const shown = rows.slice(0, S.limit);
   $('#listWrap').innerHTML = `<div class="ls-head"><label>${esc(t('finder.sort'))} <select id="lsSort">${['price', 'floor', 'area'].map(k => `<option value="${k}" ${k === S.sort ? 'selected' : ''}>${esc(t('finder.sort.' + k))}</option>`).join('')}</select></label></div>` +
-    (rows.length ? `<ul class="ls">${shown.map(u => { const T = TYPES[u.type]; const st = statusOf(u); return `<li><button type="button" class="ls-row ${statusClass(st)}" data-id="${u.id}" aria-label="${esc(unitLabelL(u))}">
+    (rows.length ? `<ul class="ls">${shown.map(u => { const T = TYPES[u.type]; const st = statusOf(u); return `<li class="ls-li"><button type="button" class="ls-row ${statusClass(st)}" data-id="${u.id}" aria-label="${esc(unitLabelL(u))}">
       <span class="ls-id"><i class="dot r${u.rooms}"></i><b dir="ltr">${esc(unitCode(u))}</b><small>${esc(floorText(u.floor))}</small></span>
       <span class="ls-r">${esc(roomsText(u.rooms))}</span>
       <span class="ls-a" dir="ltr">${esc(fmtArea(T.total))}</span>
       <span class="ls-f">${esc(facingText(u))}</span>
-      <span class="ls-p" dir="ltr">${money(u.price)}</span>
-      <span class="ls-s">${esc(t('status.' + st))}</span></button></li>`; }).join('')}</ul>` +
+      <span class="ls-p" dir="ltr">${money(u.price)}<small class="usd">≈ ${usd(usdOf(u))}</small></span>
+      <span class="ls-s">${esc(t('status.' + st))}</span></button>${canWalk(u) ? `<button type="button" class="ls-walk" data-walk="${u.id}" aria-label="${esc(t('unit.walk'))} — ${esc(unitLabelL(u))}"><svg viewBox="0 0 24 24" aria-hidden="true">${ACT_ICON.walk}</svg><span>${esc(t('unit.walkShort'))}</span></button>` : ''}</li>`; }).join('')}</ul>` +
       (rows.length > S.limit ? `<button type="button" class="btn ghost wide" id="lsMore">${esc(t('finder.more'))} (${rows.length - S.limit})</button>` : '')
       : `<p class="empty">${esc(t('finder.noResults'))}</p>`);
 }
@@ -611,6 +609,7 @@ function bindFinder() {
   $('#elev').addEventListener('click', e => { const g = e.target.closest('[data-f]'); if (g) setFloor(g.dataset.b || S.b, +g.dataset.f); });
   $('#viewTabs').addEventListener('click', e => setView(e.target.closest('[data-view]')?.dataset.view));
   $('#listWrap').addEventListener('click', e => {
+    const w = e.target.closest('.ls-walk'); if (w) return walkFromFinder(unitById(w.dataset.walk));
     const r = e.target.closest('.ls-row'); if (r) return openUnit(unitById(r.dataset.id));
     if (e.target.closest('#lsMore')) { S.limit += 30; renderList(); }
   });
@@ -672,9 +671,11 @@ function renderUnit() {
   const u = S.unit; if (!u) return;
   const T = TYPES[u.type]; const st = statusOf(u), b = u.building, walkOk = canWalk(u);
   const act = (a, key) => `<button type="button" class="act" data-act="${a}"><svg viewBox="0 0 24 24" aria-hidden="true">${ACT_ICON[a]}</svg><span>${esc(t(key))}</span></button>`;
-  const acts = [walkOk ? act('walk', 'unit.walk') : '', F.photoTour ? photoBtnHTML(u) : '', walkOk ? act('tour', 'unit.tour') : '',
+  // The primary 3D action — "walk through the apartment" — is a full-width button for every flat that can be walked
+  // (u.walk, data-driven); the other entries (360° tour when panoramas exist, 360° view, balcony, building) follow.
+  const walkBtn = walkOk ? `<button type="button" class="btn gold-outline wide act-walk" data-act="walk"><svg viewBox="0 0 24 24" aria-hidden="true">${ACT_ICON.walk}</svg><span>${esc(t('unit.walk'))}</span></button>` : '';
+  const acts = [photoBtnHTML(u), walkOk ? act('tour', 'unit.tour') : '',
     walkOk && T.outdoorKind ? act('balcony', 'unit.balcony') : '', F.walk ? act('lobby', 'unit.lobby') : ''].join('');
-  const srcNote = u.priceSource === 'rooms' ? t('unit.priceEst') : tx('unit.priceSrc.' + (u.priceSource === 'list' ? 'list' : 'table'));
   const planSvg = svgFrom('unitPlanSVG', u), keySvg = svgFrom('keyPlanSVG', u), delivery = deliveryText(b);
   const fact = (k, v, ltr) => (v ? `<div><dt>${esc(t(k))}</dt><dd${ltr ? ' dir="ltr"' : ''}>${esc(v)}</dd></div>` : '');
   const msg = st === 'reserved' ? t('unit.reservedMsg') : st === 'sold' ? t('unit.soldMsg') : '';
@@ -687,10 +688,9 @@ function renderUnit() {
     </header>
     <div class="sh-body">
       <div class="sh-price">
-        <div><p class="k">${esc(t('unit.price'))}</p><p class="price" dir="ltr">${money(u.price)}</p><p class="ppm"><b dir="ltr">${money(u.ppm)}</b> ${esc(t('unit.perM2'))}</p><p class="ppm-note">${esc(t('unit.perM2Note', { p: money(u.ppm) }))}</p></div>
+        <div><p class="k">${esc(t('unit.price'))}</p><p class="price" dir="ltr">${money(u.price)}<small class="usd">≈ ${usd(usdOf(u))}</small></p><p class="ppm"><b dir="ltr">${money(u.ppm)}</b> ${esc(t('unit.perM2'))}</p><p class="ppm-note">${esc(u.priceSource === 'list' ? t('unit.perM2Note', { p: money(u.ppm) }) : t('terms.priceD'))}</p></div>
         <span class="pill ${statusClass(st)}">${esc(t('status.' + st))}</span>
       </div>
-      <p class="est">${esc(srcNote)}</p>
       ${planSvg ? `<section class="sh-plan"><h3 class="h5">${esc(t('unit.plan'))}</h3><div class="unitplan-wrap">${planSvg}</div></section>` : ''}
       <div class="sh-key${keySvg ? '' : ' solo'}">${keySvg}
         <dl class="sh-facts">
@@ -699,7 +699,7 @@ function renderUnit() {
           ${fact('unit.delivery', delivery)}
         </dl>
       </div>
-      <div class="sh-acts">${acts}</div>
+      <div class="sh-acts">${walkBtn}${acts}</div>
       ${F.walk && !u.walk ? `<p class="notice-in">${esc(t('unit.noWalk'))}</p>` : ''}
       ${msg ? `<p class="notice-in">${esc(msg)}</p>` : ''}
       <section class="sh-sec"><h3 class="h5">${esc(t('unit.areas'))}</h3>
@@ -712,8 +712,8 @@ function renderUnit() {
       </section>
       <section class="sh-sec"><h3 class="h5">${esc(t('unit.view'))}</h3><p class="muted">${esc(viewText(u))}</p></section>
       ${walkOk ? `<section class="sh-sec"><h3 class="h5">${esc(t('unit.design'))}</h3>
-        <div class="styles" role="radiogroup" aria-label="${esc(t('unit.design'))}">${STYLES.map(id => `<label class="style-card"><input type="radio" name="style" value="${id}" ${id === S.styleId ? 'checked' : ''}>
-          <span class="sw" aria-hidden="true">${SWATCH[id].map(c => `<i style="background:${c}"></i>`).join('')}</span>
+        <div class="styles n${STYLES.length}" role="radiogroup" aria-label="${esc(t('unit.design'))}">${STYLES.map(id => `<label class="style-card"><input type="radio" name="style" value="${id}" ${id === S.styleId ? 'checked' : ''}>
+          <span class="sw" aria-hidden="true">${(SWATCH[id] || []).map(c => `<i style="background:${c}"></i>`).join('')}</span>
           <span class="st-n">${esc(t('style.' + id + '.n'))}</span><span class="st-d">${esc(t('style.' + id + '.d'))}</span></label>`).join('')}</div>
         <p class="fine">${esc(t('unit.designNote'))}</p></section>` : ''}
       <section class="sh-sec ug" id="unitGal" hidden></section>
@@ -721,7 +721,7 @@ function renderUnit() {
       <button type="button" class="btn link sm" data-act="share"><span class="copy-l">${esc(t('unit.share'))}</span></button>
       <p class="fine">${esc(t('facts.disclaimer'))}</p>
     </div>
-    <footer class="sh-foot"><div class="sh-foot-p"><b dir="ltr">${money(u.price)}</b><span dir="ltr">${esc(fmtArea(T.total))}</span></div>
+    <footer class="sh-foot"><div class="sh-foot-p"><b dir="ltr">${money(u.price)}</b><span dir="ltr">${esc(fmtArea(T.total))} · ≈ ${usd(usdOf(u))}</span></div>
       <button type="button" class="btn primary" data-act="reserve" ${st !== 'available' ? 'disabled' : ''}>${esc(t('unit.reserve'))}</button></footer>
   </div>`;
   renderUnitGallery();
@@ -759,8 +759,7 @@ function bindUnit() {
     const ug = e.target.closest('[data-ui]'); if (ug) return lbOpen($('#unitGal')._list || [], +ug.dataset.ui);
     if (a === 'close') closeUnit();
     else if (a === 'walk') openWalk(u.id, 'apartment', 'walk');
-    else if (a === 'photo') openPhoto({ unitId: u.id, styleId: S.styleId, room: 'living' });
-    else if (a === 'photo-soon') openWalk(u.id, 'apartment', 'walk');
+    else if (a === 'photo') openPhoto({ unitId: u.id, styleId: S.styleId, timeMode: S.timeMode, room: 'living' });
     else if (a === 'tour') openWalk(u.id, 'apartment', '360');
     else if (a === 'balcony') openWalk(u.id, 'balcony', '360');
     else if (a === 'lobby') openWalk(u.id, 'lobby', 'walk');
@@ -772,7 +771,7 @@ function bindUnit() {
     }
   });
   d.addEventListener('change', e => {
-    if (e.target.name === 'style') { S.styleId = e.target.value; lsSet('vrc.style', S.styleId); renderUnitGallery(); if (canWalk(u0())) { preloadStill(stillFor(u0(), 'apartment')); prewarmWalkFor(u0()); } }
+    if (e.target.name === 'style') { setStyleId(e.target.value); renderUnitGallery(); if (canWalk(u0())) { preloadStill(stillFor(u0(), 'apartment')); prewarmWalkFor(u0()); } }
     if (e.target.name === 'calcPlan' || e.target.name === 'calcDisc') {
       const name = e.target.name; S[name] = e.target.value;
       $('#calcBody').innerHTML = calcHTML(S.unit); $$(`#calcBody input[name="${name}"]`).find(i => i.value === S[name])?.focus();
@@ -884,7 +883,7 @@ function hideVeil() {
 }
 
 // ---------------------------------------------------------------- walkthrough overlay
-let walk = null; let walkArgs = null; let walkFromUnit = false;
+let walk = null; let walkArgs = null; let walkFromUnit = false; let walkReturn = null;
 async function openWalk(unitId, start, mode, room, from) {
   if (!F.walk) return;                                   // PROJECT.features.walk = false: no walkthrough at all
   closePhoto(true);
@@ -906,6 +905,8 @@ async function openWalk(unitId, start, mode, room, from) {
     if (walk) { try { walk.dispose(); } catch (e) {} walk = null; }
     walk = new mod.Walkthrough($('#walkStage'), {
       i18n: i18nApi, styleId: S.styleId, timeMode: S.timeMode,
+      onStyle: id => setStyleId(id, { fromWalk: true }),          // HUD choices are the visitor's choices everywhere
+      onTimeMode: m => setTimeMode(m, 'walk'),
       onExit: () => closeWalk(),
       onReserve: id => { closeWalk(); const u = unitById(id || unitId); if (u) { openUnit(u); reserve(u); } },
     });
@@ -928,7 +929,10 @@ function closeWalk() {
   document.documentElement.classList.remove('walk-open');
   if (walkFromUnit && S.unit) { walkFromUnit = false; renderUnit(); dlgU().showModal(); }
   if (!(dlgU().open && phoneSheet())) resumeHero();
-  (dlgU().open ? dlgU().querySelector('[data-act="walk"],[data-act="lobby"],[data-act="close"]') : $('#heroTour'))?.focus?.();
+  const back = walkReturn && walkReturn.isConnected ? walkReturn : null; walkReturn = null;
+  if (dlgU().open) dlgU().querySelector('[data-act="walk"],[data-act="lobby"],[data-act="close"]')?.focus?.();
+  else if (back) back.focus?.({ preventScroll: true });
+  else $('#heroTour')?.focus?.();
   if (dlgU().open && S.unit) prewarmWalkFor(S.unit, 2500);   // the spare renderer went with the walkthrough
 }
 // Building tour (hero button): starts in the ground-floor lobby; the target flat is a walkable flat of the default
@@ -937,6 +941,15 @@ function tourUnit() {
   if (!F.walk) return null;
   const pool = UNITS.filter(u => u.walk && u.building === DEFAULT_SEL.b && u.floor === DEFAULT_SEL.f);
   return pool.find(u => statusOf(u) === 'available') || pool[0] || UNITS.find(u => u.walk) || null;
+}
+// "Walk through the apartment" straight from the finder (list row, plan hover card): no unit sheet in between.
+function walkFromFinder(u) {
+  if (!u) return;
+  if (!canWalk(u)) return openUnit(u);
+  S.unit = u; try { plan?.select(u.id); } catch (e) { /* no plan */ }
+  walkReturn = document.activeElement;                     // focus comes back here (the finder), not to the hero
+  preloadStill(stillFor(u, 'apartment'));
+  openWalk(u.id, 'apartment', 'walk');
 }
 function bindWalk() {
   $('#walkX').addEventListener('click', closeWalk);
@@ -947,25 +960,66 @@ function bindWalk() {
   tour.addEventListener('click', () => { const u = tourUnit(); if (u) openWalk(u.id, 'lobby', 'walk'); });
 }
 
-// ---------------------------------------------------------------- photoreal 360° tour (js/pano-tour.js, lazy)
-// Only when PROJECT.features.photoTour: pre-rendered panoramas per layout × design (assets/tour/tour.json), shown in
-// the #walk overlay on their own or on top of a running Walkthrough (walk.js calls window.VRC.openPhotoTour).
-// With the feature off nothing is fetched, the button is not rendered and the hooks answer "no".
+// ---------------------------------------------------------------- 360° tour of pre-rendered panoramas (js/pano-tour.js, lazy)
+// PROJECT.features.photoTour = 'auto': the feature is ON when assets/tour/tour.json lists at least one layout with
+// panoramas, OFF otherwise (no button, no toggle, no "coming soon"). true forces the fetch as well, false switches it off.
+// A flat has the tour when the manifest has its own layout, or a REPRESENTATIVE one: the manifest's `mapTo` if it
+// gives one, else the rendered layout with the same number of rooms and the nearest area — the viewer then shows its
+// "sample apartment" badge. Shown in the #walk overlay on its own or over a running Walkthrough (walk.js toggle
+// "3D live / 360° real" → window.VRC.openPhotoTour); style, light mode, place and view direction travel both ways.
 let TOUR = { types: {} }; let photo = null; let tourT = () => '';
-const tourReady = !F.photoTour ? Promise.resolve(TOUR) : Promise.all([
-  fetch('assets/tour/tour.json', { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).catch(() => null),
-  import('./i18n-tour.js').then(m => { if (m.tt) tourT = m.tt; }).catch(() => {}),
-]).then(([m]) => { TOUR = m && m.types ? m : { types: {} }; refreshPhotoBtn(); return TOUR; });
-const hasPhoto = u => !!(F.photoTour && u && TOUR.types[u.type] && Object.keys(TOUR.types[u.type].styles || {}).length);
-const PHOTO_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.4"/></svg>';
+if (!GL_OK) F.photoTour = false;                          // the viewer is WebGL as well
+// Manifest shapes (js/pano-tour.js): styles[id] = { points } or { modes: { day|dusk|night: { points } } }; a layout
+// without its own renders may point to a representative one: types[id] = { mapTo: otherId }.
+const stylePts = (st, m) => (!st ? [] : (st.modes && ((st.modes[m] && st.modes[m].points) || (Object.values(st.modes).find(x => x && x.points && x.points.length) || {}).points)) || st.points || []);
+const tourType = (man, id) => { let T = man.types[id], n = 0; while (T && T.mapTo && n++ < 4) { id = T.mapTo; T = man.types[id]; } return T && T.styles ? { id, T } : null; };
+const panoOk = T => !!(T && Object.values(T.styles || {}).some(st => stylePts(st).length));
+const tourReady = !F.photoTour ? Promise.resolve(TOUR)
+  : fetch('assets/tour/tour.json', { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).catch(() => null).then(async m => {
+    TOUR = m && m.types && typeof m.types === 'object' ? m : { types: {} };
+    if (!Object.values(TOUR.types).some(panoOk)) { F.photoTour = false; return TOUR; }        // 'auto' → off
+    F.photoTour = true;
+    try { const mod = await import('./i18n-tour.js'); if (mod.tt) tourT = mod.tt; } catch (e) { /* the viewer's own texts are optional here */ }
+    refreshPhotoBtn();
+    return TOUR;
+  });
+const typeMeta = (() => { let M = null; return k => { if (!M) { M = {}; for (const u of UNITS) if (!M[u.type]) M[u.type] = { rooms: u.rooms, area: TYPES[u.type]?.total || 0 }; } return M[k] || null; }; })();
+// The manifest layout that serves a flat: its own, the manifest's alias, or the nearest rendered layout with the same
+// number of rooms. null → no 360° tour for this flat.
+function tourTypeFor(u, man = TOUR) {
+  if (!u || !F.photoTour || !man || !man.types) return null;
+  const own = tourType(man, u.type); if (own && panoOk(own.T)) return own.id;        // its own layout, or the manifest's mapTo
+  const me = typeMeta(u.type) || { rooms: u.rooms, area: 0 }; let best = null, bd = Infinity;
+  for (const k of Object.keys(man.types)) {
+    if (man.types[k].mapTo || !panoOk(man.types[k])) continue;
+    const o = typeMeta(k) || typeMeta(unitById(man.types[k].refUnit)?.type); if (!o || o.rooms !== me.rooms) continue;
+    const d = Math.abs(o.area - me.area); if (d < bd) { bd = d; best = k; }
+  }
+  return best;
+}
+const hasPhoto = u => !!tourTypeFor(u);
+const PHOTO_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9" ry="3.6"/><circle cx="12" cy="12" r="9"/><path d="M12 3c2.6 2.4 4 5.6 4 9s-1.4 6.6-4 9c-2.6-2.4-4-5.6-4-9s1.400-6.600 4-9z"/></svg>';
 function photoBtnHTML(u) {
   if (!hasPhoto(u)) return '';
-  return `<button type="button" class="act" data-act="photo">${PHOTO_ICON}<span>${esc(tourT(lang, 'btn'))}</span></button>`;
+  return `<button type="button" class="act" data-act="photo">${PHOTO_ICON}<span>${esc(t('unit.photo360'))}</span></button>`;
 }
-function refreshPhotoBtn() { if (F.photoTour && S.unit && dlgU()?.open) renderUnit(); }
+function refreshPhotoBtn() { if (F.photoTour && S.unit && dlgU()?.open) renderUnit(); try { walk?.refreshTexts?.(); } catch (e) { /* HUD keeps its state */ } }
 const roomRef = r => (r && typeof r === 'object' ? { kind: r.kind || 'living', index: r.index | 0 } : { kind: r || 'living', index: 0 });
-async function openPhoto({ unitId, styleId, room, onBack } = {}) {
+// The viewer's state when it closes → the site's preferences (style, light mode), marked `foreign` when the panoramas
+// belong to a representative layout (their coordinates are not this flat's).
+function tourState(st, P) {
+  const s = st && typeof st === 'object' ? { ...st } : null;
+  let tm = s && [s.mode, s.timeMode].find(x => TIME_MODES.includes(x));           // the viewer's light switch (state.mode)
+  if (!tm) { try { tm = P.handle?.mode; } catch (e) { tm = null; } }
+  // a mode the viewer merely fell back to (the wanted one is not rendered) is not the visitor's choice
+  if (TIME_MODES.includes(tm) && (tm === P.tm || tm !== P.mode0)) setTimeMode(tm, 'photo');
+  if (s && STYLES.includes(s.styleId)) setStyleId(s.styleId, { fromWalk: true });
+  if (s) { s.timeMode = S.timeMode; s.foreign = !!P.foreign; if (!STYLES.includes(s.styleId)) s.styleId = S.styleId; }
+  return s;
+}
+async function openPhoto({ unitId, styleId, timeMode, room, u, v, yaw, onBack } = {}) {
   const W = $('#walk'); const overWalk = !!(walk && !W.hidden);
+  const unit = unitById(unitId);
   closePhoto(true);
   if (!overWalk) {
     walkArgs = { unitId, start: 'apartment', mode: 'walk' };
@@ -973,29 +1027,52 @@ async function openPhoto({ unitId, styleId, room, onBack } = {}) {
     if (dlgU().open) { walkFromUnit = true; dlgU().close(); }
     $('#walkVeil').hidden = false; $('#walkVeil').classList.remove('failed'); $('#walkRetry').hidden = true;
     showStill(unitId, 'apartment', roomRef(room));
-    $('#walkT').textContent = tourT(lang, 'loading'); $('#walkS').textContent = '';
+    $('#walkT').textContent = tourT(lang, 'loading') || t('walk.loading'); $('#walkS').textContent = '';
     hero?.pause();
   }
   const layer = document.createElement('div');
   layer.className = 'tour-layer'; layer.style.cssText = 'position:absolute;inset:0;z-index:30;background:#050505';
   W.appendChild(layer);
-  const P = photo = { layer, handle: null, overWalk };
+  const P = photo = { layer, handle: null, overWalk, foreign: false };
   const toLive = st => {
-    const r = roomRef(st && st.room ? st.room : room);
+    const s = tourState(st, P), r = roomRef(s && s.room ? s.room : room);
     closePhoto(true);
-    if (overWalk && walk) { if (onBack) onBack(r.kind, r.index); else walk.jumpToRoom?.(r.kind, r.index); return; }
-    openWalk(unitId, r.kind === 'balcony' ? 'balcony' : ['lobby', 'corridor', 'parking'].includes(r.kind) ? r.kind : 'apartment', 'walk', r, st && st.unitId === unitId ? st : null);
+    if (overWalk && walk) {
+      try { if (walk.envMode !== S.timeMode) walk.setTimeMode(S.timeMode); } catch (e) { /* keeps its light */ }
+      if (onBack) onBack(s || undefined); else walk.jumpToRoom?.(r.kind, r.index);
+      return;
+    }
+    openWalk(unitId, r.kind === 'balcony' ? 'balcony' : ['lobby', 'corridor', 'parking'].includes(r.kind) ? r.kind : 'apartment', 'walk', r, s && !s.foreign && s.unitId === unitId ? s : null);
   };
   try {
     const mod = await import('./pano-tour.js');
     if (photo !== P) return;
+    // Representative layout: the viewer resolves a flat's panoramas by its layout id and follows `mapTo` in its manifest
+    // (the object its public `tourReady` resolves to). When the manifest names no representative for this layout, the
+    // one chosen here (same rooms, nearest area) is written into that object in the manifest's own form — the viewer
+    // then shows its "sample apartment" badge.
+    const tm = timeModeOf(timeMode || S.timeMode), sid = offeredStyle(styleId || S.styleId);
+    let typeId = unit ? unit.type : undefined;
+    try {
+      const man = await mod.tourReady, rep = unit ? tourTypeFor(unit, man) : null;
+      if (rep && rep !== unit.type && man && man.types && !tourType(man, unit.type)) man.types[unit.type] = { mapTo: rep };
+      if (rep) { typeId = rep; P.foreign = rep !== unit.type; }
+      // standing point nearest to where the visitor stood in the live 3D (same layout only)
+      if (!P.foreign && rep && isFinite(u) && isFinite(v)) {
+        const T = man.types[rep], pts = stylePts(T.styles[sid] || Object.values(T.styles).find(x => stylePts(x).length), tm);
+        let bd = Infinity; for (const p of pts) { const d = Math.hypot(p.pos[0] - u, p.pos[1] - v); if (d < bd) { bd = d; P.pointId = p.id; } }
+      }
+    } catch (e) { /* the viewer decides */ }
+    if (photo !== P) return;
     P.handle = await mod.openPanoTour(layer, {
-      unitId, styleId: styleId || S.styleId, room: roomRef(room), i18n: i18nApi, lang, dir,
-      onExit: () => { closePhoto(true); closeWalk(); },
-      onReserve: id => { closePhoto(true); closeWalk(); const u = unitById(id || unitId); if (u) { openUnit(u); reserve(u); } },
+      unitId, typeId, styleId: sid, mode: tm, timeMode: tm,
+      room: roomRef(room), pointId: P.pointId, yaw: P.pointId && isFinite(yaw) ? yaw : undefined, i18n: i18nApi, lang, dir,
+      onExit: st => { tourState(st, P); closePhoto(true); closeWalk(); },
+      onReserve: id => { closePhoto(true); closeWalk(); const u2 = unitById(id || unitId); if (u2) { openUnit(u2); reserve(u2); } },
       onSwitchTo3D: toLive,
     });
     if (photo !== P) { P.handle?.dispose?.(); return; }
+    P.tm = tm; try { P.mode0 = P.handle?.mode; } catch (e) { /* older viewer */ }
     hideVeil(); W.classList.add('is-ready');
   } catch (e) {
     console.warn('[photo] unavailable:', e);
@@ -1008,8 +1085,8 @@ function closePhoto(silent) {
   P.layer.remove();
 }
 window.VRC = window.VRC || {};
-// walk.js hook: ({unitId, styleId, room:{kind,index}, onBack(kind,index)}) → Promise
-window.VRC.openPhotoTour = (o = {}) => (F.photoTour ? openPhoto({ unitId: o.unitId, styleId: o.styleId, room: o.room || o.roomKind, onBack: o.onBack }) : Promise.resolve());
+// walk.js hook: ({unitId, styleId, timeMode, room:{kind,index}, u, v, yaw, onBack(state)}) → Promise
+window.VRC.openPhotoTour = (o = {}) => (F.photoTour ? openPhoto({ unitId: o.unitId, styleId: o.styleId, timeMode: o.timeMode, room: o.room || o.roomKind, u: o.u, v: o.v, yaw: o.yaw, onBack: o.onBack }) : Promise.resolve());
 window.VRC.hasPhotoTour = unitId => hasPhoto(unitById(unitId));
 window.VRC.photoTourReady = tourReady;
 window.VRC.openBooking = id => { const u = unitById(id); if (u) reserve(u); else document.querySelector('.site-foot')?.scrollIntoView({ behavior: 'smooth' }); };
@@ -1140,7 +1217,7 @@ function startHero() {
         if (s === 'hover') { markHoverChip(a); return; }
         if (s === 'ready') {
           document.body.classList.add('has-3d');
-          $('#modeCtl').hidden = false; $('#heroHint').hidden = false; markMode('dusk');
+          $('#modeCtl').hidden = false; $('#heroHint').hidden = false; setTimeMode(S.timeMode);
           hero?.focusFloor(S.b, S.f);
         } else if (s === 'failed') { document.body.classList.add('no-3d'); hero = null; }
       },
@@ -1159,7 +1236,6 @@ const resumeHero = () => {
   hero.resume();
   if (heroDeferred) { heroDeferred = false; onIdle(initHero, 1500); }
 };
-function markMode(m) { S.timeMode = m; $$('#modeCtl button').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === m)); }
 
 // ---------------------------------------------------------------- header / nav / language
 function bindHeader() {
@@ -1170,7 +1246,7 @@ function bindHeader() {
   mb.addEventListener('click', () => { const o = !nav.classList.contains('open'); nav.classList.toggle('open', o); mb.setAttribute('aria-expanded', o); head.classList.toggle('menu-open', o); });
   nav.addEventListener('click', e => { if (e.target.closest('a')) { nav.classList.remove('open'); mb.setAttribute('aria-expanded', false); head.classList.remove('menu-open'); } });
   bindLangMenu();
-  $('#modeCtl').addEventListener('click', e => { const m = e.target.closest('[data-mode]')?.dataset.mode; if (m) { hero?.setMode(m); markMode(m); } });
+  $('#modeCtl').addEventListener('click', e => { const m = e.target.closest('[data-mode]')?.dataset.mode; if (m) setTimeMode(m); });
 }
 // Language dropdown: flag + native name, keyboard navigable (listbox pattern)
 function markLang() {
@@ -1178,7 +1254,7 @@ function markLang() {
   $('#langBtn').innerHTML = `${L.flagSvg}<span class="lang-code">${L.short}</span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg>`;
   $('#langBtn').setAttribute('aria-label', `${t('lang.menu')}: ${L.name}`);
   $('#langMenu').setAttribute('aria-label', t('lang.menu'));
-  $('#langMenu').innerHTML = LANGS.map(l => `<li role="option" id="lo-${l.code}" tabindex="-1" data-lang="${l.code}" lang="${l.code}" dir="ltr" aria-selected="${l.code === lang}">${l.flagSvg}<span dir="${l.dir}">${l.name}</span><span class="lang-code-sm">${l.code.toUpperCase()}</span>${l.code === lang ? '<svg class="tick" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>' : ''}</li>`).join('');
+  $('#langMenu').innerHTML = LANGS.map(l => `<li role="option" id="lo-${l.code}" tabindex="-1" data-lang="${l.code}" lang="${l.code}" dir="ltr" aria-selected="${l.code === lang}">${l.flagSvg}<span dir="${l.dir}">${l.name}</span><span class="lang-code-sm">${l.short}</span>${l.code === lang ? '<svg class="tick" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>' : ''}</li>`).join('');
 }
 function bindLangMenu() {
   const btn = $('#langBtn'), menu = $('#langMenu');
@@ -1201,8 +1277,21 @@ function bindLangMenu() {
   document.addEventListener('pointerdown', e => { if (!menu.hidden && !e.target.closest('#lang')) close(false); });
 }
 
+// Floating contact buttons (#fab in index.html): round WhatsApp button at the bottom corner (left in LTR, right in RTL)
+// and a small Instagram link above it. Links and labels come from PROJECT.contact; a missing value hides its button.
+// CSS hides the pair while a dialog (unit sheet, booking, lightbox) or the walkthrough / 360° viewer is open.
+function renderFab() {
+  const host = $('#fab'); if (!host) return;
+  const C = PROJECT.contact || {}, wa = $('#fabWa'), ig = $('#fabIg');
+  const waOk = !!String(C.whatsapp || '').replace(/\D/g, ''), igOk = /^https:\/\//.test(C.instagram || '');
+  if (wa) { wa.hidden = !waOk; if (waOk) { wa.href = waHref(); const l = `${t('bk.sendWa')} — ${PROJECT.name}`; wa.setAttribute('aria-label', l); wa.title = l; } }
+  if (ig) { ig.hidden = !igOk; if (igOk) { ig.href = C.instagram; const l = `Instagram — ${PROJECT.name}`; ig.setAttribute('aria-label', l); ig.title = l; } }
+  $$('.foot-social [data-social]').forEach(a => { const u = C[a.dataset.social]; if (u) a.href = u; });
+  host.hidden = !(waOk || igOk);
+}
+
 function rerenderAll() {
-  markLang(); renderStatic(); renderFilters(); renderTabs(); renderStack(); renderElev(); renderLegend(); renderCount();
+  markLang(); renderStatic(); renderFab(); renderFilters(); renderTabs(); renderStack(); renderElev(); renderLegend(); renderCount();
   try { plan.refresh(); } catch (e) { console.warn('[app] plan.refresh:', e); }
   setPlanNote();
   if (S.view === 'list') renderList();
@@ -1231,11 +1320,13 @@ function applyHash() {
 async function boot() {
   appStyles();
   await loadSiblings();
-  setLang(initialLang());
+  setLang(initialLang(), { save: false });                 // ?lang= → the visitor's saved menu choice → Ukrainian (always; nothing is detected)
   try {
     plan = PL?.createPlan?.($('#plan'), {
       statusOf, matches: u => matches(u),
       onSelect: u => openUnit(u),
+      cardAction: u => (canWalk(u) ? { id: 'walk', label: t('unit.walkShort') } : null),
+      onCardAction: u => walkFromFinder(u),
       onHover: u => hero?.highlightUnits(u ? [u.id] : (S.unit && dlgU().open ? [S.unit.id] : null)),
     }) || null;
   } catch (e) { console.warn('[app] floor plan:', e); plan = null; }

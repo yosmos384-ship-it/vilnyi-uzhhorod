@@ -687,6 +687,280 @@ function sofa(m, o = {}) {
   return g;
 }
 
+// ================================================================== SOFA-BED (one-room flats)
+// An "accordion" sofa that unfolds into a double bed about 1.6 × 2.0 m. Closed it is a sofa: two arms, a storage /
+// head box at the wall, a seat (mattress section 1 on a pull-out drawer) and a back made of mattress sections 2 + 3
+// standing folded against the box, loose back cushions, accent cushions, a folded blanket on the seat. Opening: the
+// drawer rolls out, sections 2 and 3 unfold flat behind the seat section (a rigid Λ whose head end stays at the box),
+// a nested middle frame follows at half the travel, the cushions go into the box; then the back cushions come out
+// again to stand at the head, a fitted sheet is drawn over the mattress and two sleeping pillows come out of the box;
+// the blanket rides on the seat section and ends at the foot of the bed.
+// Origin: floor centre of the CLOSED footprint (L × D), front = +z. The opened bed takes D/2 … D/2 + ext in front.
+// Static parts (arms, box, base) are ordinary meshes (baked by apartment.js); everything that moves is under
+// userData.sofaBed.dyn: one group per moving part, each holding ONE merged mesh per material.
+//   userData.sofaBed = { set(t), dyn, wb, L, D, ext, extW, bedLen, dur }     set(t): pose at t = 0 (sofa) … 1 (bed)
+// o.wb: mattress width (1.6 | 1.4); o.static: no kept group — the piece is plain static geometry (cutaway), closed
+// unless o.t says otherwise.
+const SB = { D: 1.02, BOX: 0.09, T: 0.12, S1: 0.68, S2: 0.64, TOP: 0.42, DUR: 1150 };
+const _sbFlat = new WeakMap();
+function mergePart(src, name) {
+  src.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(src.matrixWorld).invert(), buckets = new Map(), M = new THREE.Matrix4(), N = new THREE.Matrix3(), v = new THREE.Vector3(), n = new THREE.Vector3();
+  src.traverse(o => { if (!o.isMesh) return; let b = buckets.get(o.material); if (!b) buckets.set(o.material, b = []); b.push(o); });
+  const out = new THREE.Group(); out.name = name || 'part';
+  for (const [mat, list] of buckets) {
+    let cnt = 0;
+    const flats = list.map(o => { let f = _sbFlat.get(o.geometry); if (!f) { f = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry; _sbFlat.set(o.geometry, f); } cnt += f.attributes.position.count; return f; });
+    const pos = new Float32Array(cnt * 3), nor = new Float32Array(cnt * 3), uv = new Float32Array(cnt * 2);
+    let k = 0;
+    list.forEach((o, i) => {
+      const f = flats[i], P = f.attributes.position, Nn = f.attributes.normal;
+      M.multiplyMatrices(inv, o.matrixWorld); N.getNormalMatrix(M);
+      for (let j = 0; j < P.count; j++, k++) {
+        v.fromBufferAttribute(P, j).applyMatrix4(M);
+        if (Nn) n.fromBufferAttribute(Nn, j).applyMatrix3(N).normalize(); else n.set(0, 1, 0);
+        pos[k * 3] = v.x; pos[k * 3 + 1] = v.y; pos[k * 3 + 2] = v.z; nor[k * 3] = n.x; nor[k * 3 + 1] = n.y; nor[k * 3 + 2] = n.z;
+        // metres, projected along the dominant normal axis (what the bake does for the static pieces)
+        const ax = Math.abs(n.x), ay = Math.abs(n.y), az = Math.abs(n.z);
+        if (ay >= ax && ay >= az) { uv[k * 2] = v.x; uv[k * 2 + 1] = v.z; } else if (ax >= az) { uv[k * 2] = v.z; uv[k * 2 + 1] = v.y; } else { uv[k * 2] = v.x; uv[k * 2 + 1] = v.y; }
+      }
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    const mesh = new THREE.Mesh(g, mat); mesh.name = (name || 'part') + ':' + (mat.name || '');
+    out.add(mesh);
+  }
+  return out;
+}
+// a mattress section: w × T × len, top at y = top, from z0 to z0 + len; welted (piped) top and bottom edges
+function sbSection(p, w, len, top, z0, F, pipe) {
+  const T = SB.T, zc = z0 + len / 2;
+  rbox(p, w, T, len, 0.034, F, 0, top - T, zc, null, 3);
+  for (const y of [top - 0.017, top - T + 0.017]) {
+    for (const sz of [-1, 1]) rod(p, 0.0075, w - 0.05, pipe, 0, y, zc + sz * (len / 2 - 0.004), [0, 0, HALF], 8);
+    for (const sx of [-1, 1]) rod(p, 0.0075, len - 0.05, pipe, sx * (w / 2 - 0.004), y, zc, [HALF, 0, 0], 8);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) sph(p, 0.0085, pipe, sx * (w / 2 - 0.014), y, zc + sz * (len / 2 - 0.014), [1, 1, 1], 8);
+  }
+}
+function sofaBed(m, o = {}) {
+  if (o.kind === 'book') return sofaBook(m, o);
+  const Wb = o.wb === 1.4 ? 1.4 : 1.6, s = m.fam, id = m.styleId, g = new THREE.Group();
+  const { D, BOX, T, S1, S2, TOP } = SB, F = m.fabric;
+  const aw = s === 'nordic' ? 0.14 : 0.16;                       // slim arms: the piece must fit a studio wall
+  const L = Wb + 0.03 + 2 * aw, ax = Wb / 2 + 0.015 + aw / 2, z0 = -D / 2 + BOX, ZF = D / 2;      // z0: head edge of the mattress; ZF: closed front
+  const pipe = id === 'milano' ? m.fabricAccent : id === 'monaco' ? m.cushionA : m.throw;        // welt: cognac leather / gold velvet / a tone of the cloth
+  const dark = m.darkPlastic, footM = s === 'milano' || id === 'paris' ? m.brass : s === 'nordic' ? m.woodLight : m.woodDark;
+  // ---- static: head / storage box, base, arms
+  rbox(g, Wb + 0.028, 0.58, BOX, 0.03, F, 0, 0.04, -D / 2 + BOX / 2);
+  box(g, Wb - 0.06, 0.22, ZF - 0.04 - z0, dark, 0, 0.05, (z0 + ZF - 0.04) / 2);
+  if (id === 'kyoto') {
+    for (const sx of [-1, 1]) { box(g, aw + 0.02, 0.13, D, m.woodLight, sx * ax, 0, 0); rbox(g, aw, 0.42, D - 0.03, 0.05, F, sx * ax, 0.13, 0); }
+  } else if (s === 'nordic') {
+    for (const sx of [-1, 1]) { rbox(g, aw, 0.5, D, 0.05, F, sx * ax, 0.12, 0); for (const sz of [-1, 1]) cyl(g, 0.022, 0.014, 0.12, m.woodLight, sx * ax, 0, sz * (D / 2 - 0.09), 10); }
+  } else if (s === 'milano') {
+    for (const sx of [-1, 1]) { box(g, aw - 0.05, 0.07, D - 0.1, m.lacquer, sx * ax, 0, 0); box(g, aw - 0.03, 0.012, D - 0.08, m.brass, sx * ax, 0.07, 0); soft(g, aw, 0.54, D, F, sx * ax, 0.082, 0, null, { e: [0.3, 0.22, 0.14] }); }
+  } else {
+    for (const sx of [-1, 1]) {
+      if (id === 'paris') { for (const sz of [-1, 1]) cyl(g, 0.03, 0.022, 0.08, m.brass, sx * ax, 0, sz * (D / 2 - 0.1), 12); }
+      else rbox(g, aw - 0.06, 0.08, D - 0.12, 0.02, m.woodDark, sx * ax, 0, 0);
+      rbox(g, aw, 0.52, D, 0.075, F, sx * ax, 0.08, 0, null, 4);
+    }
+  }
+  // ---- moving parts (built in the sofa's frame at the CLOSED pose)
+  const tmp = () => new THREE.Group();
+  // drawer: front panel, side skirts, deck, feet, mattress section 1 (the seat), the folded blanket
+  let t = tmp();
+  rbox(t, Wb + 0.02, 0.25, 0.04, 0.014, F, 0, 0.05, ZF - 0.02);
+  if (s === 'milano') box(t, Wb + 0.02, 0.012, 0.042, m.brass, 0, 0.038, ZF - 0.021);
+  for (const sx of [-1, 1]) {
+    box(t, 0.02, 0.2, S1 - 0.04, F, sx * (Wb / 2 - 0.002), 0.1, ZF - 0.04 - (S1 - 0.04) / 2);
+    for (const z of [ZF - 0.07, ZF - S1 + 0.06]) cyl(t, s === 'nordic' ? 0.02 : 0.026, s === 'nordic' ? 0.014 : 0.022, 0.05, footM, sx * (Wb / 2 - 0.09), 0, z, 10);
+  }
+  box(t, Wb - 0.03, 0.03, S1 - 0.07, dark, 0, 0.27, ZF - 0.05 - (S1 - 0.07) / 2);
+  sbSection(t, Wb, S1, TOP, z0 + 2 * T, F, pipe);
+  { const bx = Wb / 2 - 0.34, bz = ZF - 0.24;
+    soft(t, 0.5, 0.05, 0.38, m.throw, bx, TOP - 0.004, bz, null, { e: [0.12, 0.6, 0.12], sag: 0.004 });
+    soft(t, 0.48, 0.045, 0.36, m.throw, bx + 0.006, TOP + 0.04, bz - 0.004, [0, 0.05, 0], { e: [0.12, 0.6, 0.12], sag: 0.004 });
+    soft(t, 0.5, 0.012, 0.07, pipe, bx, TOP + 0.082, bz + 0.08, [0, 0.05, 0], { e: [0.1, 0.8, 0.3] }); }
+  const drawer = mergePart(t, 'sb-drawer');
+  // middle frame (nested in the drawer, travels half the way): skirts, deck, feet
+  t = tmp();
+  for (const sx of [-1, 1]) { box(t, 0.018, 0.17, 0.56, F, sx * (Wb / 2 - 0.036), 0.1, ZF - 0.04 - 0.28); cyl(t, 0.018, 0.018, 0.1, dark, sx * (Wb / 2 - 0.1), 0, ZF - 0.09, 8); }
+  box(t, Wb - 0.09, 0.025, 0.56, dark, 0, 0.245, ZF - 0.04 - 0.28);
+  const mid = mergePart(t, 'sb-mid');
+  // sections 2 and 3 (the back): local frames at their hinges
+  t = tmp(); sbSection(t, Wb, S2, 0, -S2, F, pipe);
+  const sec2 = mergePart(t, 'sb-sec2');
+  t = tmp(); sbSection(t, Wb, S2, T, -S2, F, pipe);
+  const sec3 = mergePart(t, 'sb-sec3'); sec3.position.set(0, -T, -S2); sec2.add(sec3);
+  // loose back cushions (origin: their bottom line)
+  t = tmp();
+  for (const sx of [-1, 1]) soft(t, Wb / 2 - 0.03, 0.54, 0.17, F, sx * Wb / 4, 0, 0, null, { e: [0.18, 0.2, 0.55], pinch: 0.18 });
+  const backC = mergePart(t, 'sb-back');
+  // accent cushions (origin: seat top, in front of the back cushions)
+  t = tmp();
+  cushion(t, 0.45, 0.45, 0.13, m.cushionA, -Wb / 2 + 0.3, 0.01, 0, 0.22, -0.3);
+  cushion(t, 0.4, 0.4, 0.12, s === 'milano' ? m.cushionB : m.cushionC, Wb / 2 - 0.27, 0.01, 0.01, -0.2, -0.3);
+  if (Wb > 1.5) cushion(t, 0.46, 0.28, 0.12, m.cushionB, -Wb / 2 + 0.68, 0.01, 0.03, 0.06, -0.32);
+  const accC = mergePart(t, 'sb-accent');
+  // sleeping pillows (origin: their bottom, between the two)
+  t = tmp();
+  for (const sx of [-1, 1]) {
+    soft(t, Wb / 2 - 0.1, 0.15, 0.44, m.linen, sx * (Wb / 4 - 0.005), 0, 0, [0, sx * 0.05, 0], { e: [0.42, 0.9, 0.42], pinch: 0.62 });
+    for (const sz of [-1, 1]) rod(t, 0.005, Wb / 2 - 0.2, pipe, sx * (Wb / 4 - 0.005), 0.075, sz * 0.208, [0, sx * 0.05, HALF], 6);
+  }
+  const pillows = mergePart(t, 'sb-pillows');
+  // fitted sheet (origin: head edge)
+  const LB = S1 + 2 * S2;
+  t = tmp();
+  rbox(t, Wb + 0.018, 0.075, LB + 0.018, 0.034, m.linen, 0, -0.075, (LB + 0.018) / 2, null, 3);
+  const sheet = mergePart(t, 'sb-sheet');
+  // contact shadow of the pulled-out part
+  const sh = new THREE.Group(); sh.name = 'sb-shadow';
+  if (m.ao) { const q = fxFlat(sh, m.ao, 'rect', 0, 0.013, 0, 1, 1); q.renderOrder = 2; if (m.aoSoft) { const q2 = fxFlat(sh, m.aoSoft, 'soft', 0, 0.012, 0, 1.5, 1.5); q2.renderOrder = 2; } }
+  const dyn = new THREE.Group(); dyn.name = 'sofa-bed';
+  dyn.add(drawer, mid, sec2, backC, accC, pillows, sheet, sh);
+  g.add(dyn);
+  // ---- pose
+  const TR = 2 * S2, zC = z0 + 2 * T, cl = x => x < 0 ? 0 : x > 1 ? 1 : x;
+  const ease = k => k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2, ss = (a, b, x) => { const k = cl((x - a) / (b - a)); return k * k * (3 - 2 * k); };
+  const lerp = (a, b, k) => a + (b - a) * k;
+  const EXT = TR - 2 * T;                                    // travel of the drawer = floor taken in front of the sofa
+  const set = (e) => {
+    e = cl(e);
+    const em = ease(cl(e / 0.74)), th = HALF * (1 - em);
+    // the Λ of sections 2 + 3: its head corner stays at the box while it flattens → the drawer's travel follows
+    const zs = TR * Math.cos(th) + 2 * T * Math.sin(th) - 2 * T;
+    drawer.position.z = zs; mid.position.z = zs / 2; mid.visible = e > 0.001;
+    sec2.position.set(0, TOP, zC + zs); sec2.rotation.x = th; sec3.rotation.x = -2 * th;
+    // back cushions: into the box behind the back, and out of it again to stand at the head of the bed
+    const k1 = ss(0, 0.24, e), k2 = ss(0.62, 0.88, e), kb = e < 0.45 ? 1 - k1 : k2;
+    backC.visible = kb > 0.002; backC.scale.setScalar(0.25 + 0.75 * kb);
+    if (e < 0.45) { backC.position.set(0, lerp(TOP, 0.52, k1) + 0.34 * Math.sin(Math.PI * k1), lerp(zC + 0.105, z0 - 0.03, k1)); backC.rotation.x = lerp(-0.15, -0.9, k1); }
+    else { backC.position.set(0, lerp(0.55, TOP + 0.008, k2) + 0.22 * Math.sin(Math.PI * k2), lerp(z0 - 0.03, z0 + 0.1, k2)); backC.rotation.x = lerp(-0.6, -0.07, k2); }
+    const ka = ss(0, 0.24, e), sa = 1 - 0.94 * ka;
+    accC.visible = ka < 0.999; accC.scale.setScalar(sa); accC.position.set(0, lerp(TOP, 0.5, ka) + 0.3 * Math.sin(Math.PI * ka), lerp(zC + 0.25, z0 - 0.03, ka));
+    const kp = ss(0.7, 0.97, e);
+    pillows.visible = kp > 0.001; pillows.scale.setScalar(0.12 + 0.88 * kp); pillows.rotation.x = 0.2 * kp;
+    pillows.position.set(0, lerp(0.5, TOP + 0.03, kp) + 0.24 * Math.sin(Math.PI * kp), lerp(z0 - 0.03, z0 + 0.43, kp));
+    const ks = ss(0.64, 0.9, e);
+    sheet.visible = ks > 0.001; sheet.scale.z = Math.max(0.001, ks); sheet.position.set(0, TOP + 0.008, z0 - 0.009);
+    sh.visible = zs > 0.02; sh.position.set(0, 0, ZF + zs / 2); sh.scale.set(Wb + 0.24, 1, Math.max(0.01, zs + 0.2));
+  };
+  set(o.static && o.t ? o.t : 0);
+  if (o.static) { for (const c of dyn.children.slice()) if (!c.visible) dyn.remove(c); }
+  else dyn.userData.keep = true;
+  g.userData.solidBox = { w: L, d: D, h: 1.06 };
+  g.userData.sofaBed = { set, dyn, kind: 'pull', wb: Wb, L, D, ext: EXT, extW: Wb + 0.06, bedLen: LB, bedW: Wb, dur: SB.DUR };
+  return g;
+}
+// The second mechanism, for a room too narrow for the pull-out: a "eurobook" — the bed lies ALONG the wall and takes
+// only 0.62 m of floor in front of the sofa. Closed: an armless sofa 1.96 × 1.0 m — a seat (mattress piece 1 on a
+// rolling base), a back (mattress piece 2 standing behind the seat), loose back cushions, two bolsters as arms,
+// accent cushions, the folded blanket. Opening: the seat rolls out, the back tips forward and comes to lie flat in
+// the gap behind it (sleeping surface 1.94 × 1.58 m), the cushions go into the box, the sheet is drawn over, the
+// pillows come out at one end. o.wb === 1.4: a lower back → a bed 1.40 m wide that takes only 0.44 m of floor.
+// Same userData.sofaBed contract as the pull-out.
+const SK = { L: 1.96, D: 1.0, BD: 0.04, T2: 0.16, S: 0.8, H2: 0.78, T: 0.12, TOP: 0.42 };
+function sofaBook(m, o = {}) {
+  const s = m.fam, id = m.styleId, g = new THREE.Group(), F = m.fabric;
+  const { L, D, BD, T2, S, T, TOP } = SK, H2 = o.wb === 1.4 ? 0.6 : SK.H2, zb = -D / 2, ZF = D / 2, EXT = H2 - T2, WB = S + H2;
+  const pipe = id === 'milano' ? m.fabricAccent : id === 'monaco' ? m.cushionA : m.throw;
+  const dark = m.darkPlastic, footM = s === 'milano' || id === 'paris' ? m.brass : s === 'nordic' ? m.woodLight : m.woodDark;
+  // a welted pad lying flat: w × t × len, top at y = top, from z0 to z0 + len
+  const pad = (p, w, t, len, top, z0) => {
+    const zc = z0 + len / 2;
+    rbox(p, w, t, len, 0.034, F, 0, top - t, zc, null, 3);
+    for (const y of [top - 0.017, top - t + 0.017]) {
+      for (const sz of [-1, 1]) rod(p, 0.0075, w - 0.05, pipe, 0, y, zc + sz * (len / 2 - 0.004), [0, 0, HALF], 8);
+      for (const sx of [-1, 1]) rod(p, 0.0075, len - 0.05, pipe, sx * (w / 2 - 0.004), y, zc, [HALF, 0, 0], 8);
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) sph(p, 0.0085, pipe, sx * (w / 2 - 0.014), y, zc + sz * (len / 2 - 0.014), [1, 1, 1], 8);
+    }
+  };
+  // ---- static: the board at the wall, the bedding box under the seat, rear feet
+  rbox(g, L, 0.58, BD, 0.012, F, 0, 0.04, zb + BD / 2);
+  rbox(g, L - 0.06, 0.2, S - 0.2, 0.01, F, 0, 0.06, zb + BD + T2 + (S - 0.2) / 2);
+  for (const sx of [-1, 1]) cyl(g, 0.024, 0.02, 0.06, footM, sx * (L / 2 - 0.12), 0, zb + BD + T2 + 0.08, 10);
+  if (id === 'kyoto') box(g, L, 0.04, BD + 0.02, m.woodLight, 0, 0, zb + BD / 2 + 0.01);
+  // ---- moving parts
+  const tmp = () => new THREE.Group();
+  // seat unit: front panel, side cheeks, deck, feet, mattress piece 1, the folded blanket
+  let t = tmp();
+  rbox(t, L, 0.26, 0.04, 0.014, F, 0, 0.04, ZF - 0.02);
+  if (s === 'milano') box(t, L, 0.012, 0.042, m.brass, 0, 0.028, ZF - 0.021);
+  if (id === 'kyoto') box(t, L, 0.035, 0.05, m.woodLight, 0, 0.005, ZF - 0.02);
+  for (const sx of [-1, 1]) {
+    box(t, 0.022, 0.22, S - 0.04, F, sx * (L / 2 - 0.011), 0.08, ZF - 0.04 - (S - 0.04) / 2);
+    for (const z of [ZF - 0.08, ZF - S + 0.1]) cyl(t, s === 'nordic' ? 0.02 : 0.026, s === 'nordic' ? 0.014 : 0.022, 0.04, footM, sx * (L / 2 - 0.1), 0, z, 10);
+  }
+  box(t, L - 0.05, 0.03, S - 0.07, dark, 0, 0.27, ZF - 0.05 - (S - 0.07) / 2);
+  pad(t, L - 0.012, T, S, TOP, ZF - S);
+  { const bx = L / 2 - 0.36, bz = ZF - 0.24;
+    soft(t, 0.5, 0.05, 0.38, m.throw, bx, TOP - 0.004, bz, null, { e: [0.12, 0.6, 0.12], sag: 0.004 });
+    soft(t, 0.48, 0.045, 0.36, m.throw, bx + 0.006, TOP + 0.04, bz - 0.004, [0, 0.05, 0], { e: [0.12, 0.6, 0.12], sag: 0.004 });
+    soft(t, 0.5, 0.012, 0.07, pipe, bx, TOP + 0.082, bz + 0.08, [0, 0.05, 0], { e: [0.1, 0.8, 0.3] }); }
+  const seat = mergePart(t, 'sb-seat');
+  // the back = mattress piece 2 (local frame: lying flat, its wall-side top edge at the origin)
+  t = tmp(); pad(t, L - 0.012, T2, H2, 0, 0);
+  const back = mergePart(t, 'sb-backpad');
+  // cushions: three back cushions, two bolsters as arms, two accent cushions (origin: seat top at the back)
+  t = tmp();
+  const cw = (L - 0.08) / 3;
+  for (let i = 0; i < 3; i++) soft(t, cw - 0.012, 0.4, 0.17, F, (i - 1) * cw, 0.005, 0.1, [-0.15, 0, 0], { e: [0.18, 0.2, 0.55], pinch: 0.18 });
+  for (const sx of [-1, 1]) {
+    soft(t, 0.21, 0.2, 0.56, F, sx * (L / 2 - 0.115), 0.004, 0.2 + 0.3, null, { e: [0.85, 0.85, 0.22] });
+    for (const sz of [-1, 1]) torus(t, 0.088, 0.006, pipe, sx * (L / 2 - 0.115), 0.104, 0.5 + sz * 0.262, null, Math.PI * 2, 18);
+  }
+  cushion(t, 0.45, 0.45, 0.13, m.cushionA, -L / 2 + 0.55, 0.012, 0.25, 0.2, -0.3);
+  cushion(t, 0.4, 0.4, 0.12, s === 'milano' ? m.cushionB : m.cushionC, L / 2 - 0.52, 0.012, 0.26, -0.18, -0.3);
+  const cush = mergePart(t, 'sb-cushions');
+  // sleeping pillows at the head end (−x), side by side across the bed (origin: between them, mattress top)
+  t = tmp();
+  for (const sz of [-1, 1]) {
+    soft(t, 0.44, 0.15, WB / 2 - 0.1, m.linen, 0, 0, sz * (WB / 4 - 0.005), [0, sz * 0.04, 0], { e: [0.42, 0.9, 0.42], pinch: 0.62 });
+    for (const sx of [-1, 1]) rod(t, 0.005, WB / 2 - 0.2, pipe, sx * 0.208, 0.075, sz * (WB / 4 - 0.005), [HALF, sz * 0.04, 0], 6);
+  }
+  const pillows = mergePart(t, 'sb-pillows');
+  t = tmp();
+  rbox(t, L + 0.006, 0.075, WB + 0.018, 0.034, m.linen, 0, -0.075, (WB + 0.018) / 2, null, 3);
+  const sheet = mergePart(t, 'sb-sheet');
+  const sh = new THREE.Group(); sh.name = 'sb-shadow';
+  if (m.ao) { const q = fxFlat(sh, m.ao, 'rect', 0, 0.013, 0, 1, 1); q.renderOrder = 2; if (m.aoSoft) { const q2 = fxFlat(sh, m.aoSoft, 'soft', 0, 0.012, 0, 1.5, 1.5); q2.renderOrder = 2; } }
+  const dyn = new THREE.Group(); dyn.name = 'sofa-bed';
+  dyn.add(seat, back, cush, pillows, sheet, sh);
+  g.add(dyn);
+  const cl = x => x < 0 ? 0 : x > 1 ? 1 : x, ease = k => k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2, ss = (a, b, x) => { const k = cl((x - a) / (b - a)); return k * k * (3 - 2 * k); };
+  const lerp = (a, b, k) => a + (b - a) * k, zP = zb + BD;
+  const set = (e) => {
+    e = cl(e);
+    const es = ease(cl(e / 0.52)), zs = EXT * es;
+    seat.position.z = zs;
+    // the back tips forward about its lower wall-side edge and rises onto the box as it comes down
+    const eb = ease(cl((e - 0.2) / 0.52));
+    back.position.set(0, lerp(TOP + T2 - H2 + 0.3, TOP, eb), zP); back.rotation.x = -HALF * (1 - eb);
+    const k1 = ss(0, 0.22, e);
+    cush.visible = k1 < 0.998; cush.scale.setScalar(1 - 0.85 * k1);
+    cush.position.set(0, lerp(TOP, 0.5, k1) + 0.3 * Math.sin(Math.PI * k1), lerp(zP + T2, zb, k1)); cush.rotation.x = -0.5 * k1;
+    const kp = ss(0.72, 0.97, e);
+    pillows.visible = kp > 0.001; pillows.scale.setScalar(0.12 + 0.88 * kp); pillows.rotation.z = -0.14 * kp;
+    pillows.position.set(-L / 2 + 0.28, lerp(0.5, TOP + 0.035, kp) + 0.24 * Math.sin(Math.PI * kp), lerp(zb + 0.02, zP + WB / 2, kp));
+    const ks = ss(0.68, 0.92, e);
+    sheet.visible = ks > 0.001; sheet.scale.z = Math.max(0.001, ks); sheet.position.set(0, TOP + 0.008, zP - 0.009);
+    sh.visible = zs > 0.02; sh.position.set(0, 0, ZF + zs / 2); sh.scale.set(L + 0.2, 1, Math.max(0.01, zs + 0.2));
+  };
+  set(o.static && o.t ? o.t : 0);
+  if (o.static) { for (const c of dyn.children.slice()) if (!c.visible) dyn.remove(c); }
+  else dyn.userData.keep = true;
+  g.userData.solidBox = { w: L, d: D, h: 0.9 };
+  g.userData.sofaBed = { set, dyn, kind: 'book', wb: WB, L, D, ext: EXT, extW: L + 0.02, bedLen: L - 0.012, bedW: WB, dur: SB.DUR };
+  return g;
+}
+// footprint of a sofa-bed for a style (planning, before the piece is built)
+function sofaBedSize(m, wb = 1.6, kind = 'pull') {
+  if (kind === 'book') return { L: SK.L, D: SK.D, ext: (wb === 1.4 ? 0.6 : SK.H2) - SK.T2, extW: SK.L + 0.02, h: 0.9 };
+  const aw = m.fam === 'nordic' ? 0.14 : 0.16; return { L: wb + 0.03 + 2 * aw, D: SB.D, ext: 2 * SB.S2 - 2 * SB.T, extW: wb + 0.06, h: 1.06 };
+}
+
 function armchair(m, o = {}) {
   const s = m.fam, g = new THREE.Group();
   if (m.styleId === 'monaco') {
@@ -1057,7 +1331,7 @@ function sideboard(m, o = {}) {
 // ================================================================== BEDROOM
 function bed(m, o = {}) {
   if (m.styleId === 'kyoto') return lowBed(m, o);
-  const W = o.w || 1.6, L = 2.05, s = m.fam, g = new THREE.Group();
+  const W = o.w || 1.6, L = (o.len || 2.0) + 0.05, s = m.fam, g = new THREE.Group();   // o.len: mattress length (2.0; 1.9 in the tightest bedrooms)
   const paris = m.styleId === 'paris';
   const frameM = s === 'milano' || paris ? m.headboard : s === 'nordic' ? m.woodLight : m.woodDark;
   // base
@@ -1066,7 +1340,8 @@ function bed(m, o = {}) {
   const top = s === 'nordic' ? 0.28 : 0.32;
   rbox(g, W, 0.22, L - 0.04, 0.05, m.linen, 0, top, 0.04);                       // mattress
   // duvet: a draped cloth (rolls over the sides and the foot, hangs in folds), turned down at the head end
-  const dy = top + 0.26, Wc = W + 0.11, zH = -L * 0.2 + 0.08, zF = L / 2 + 0.065;
+  // (o.tuck: the duvet ends at the foot of the frame; o.flat: a thin wall-hung headboard — the compact bed of a tight room)
+  const dy = top + 0.26, Wc = W + 0.11, zH = -L * 0.2 + 0.08, zF = L / 2 + (o.tuck ? -0.04 : 0.065);
   add(g, clothGeo(Wc, zH, zF, dy, 0.25, 0.07, 1), m.duvet);
   soft(g, Wc + 0.02, 0.085, 0.34, m.duvet, 0, dy - 0.045, zH + 0.1, null, { e: [0.14, 0.7, 0.5], sag: 0.006 });   // turned-down fold
   // bed runner across the foot, draped on top of the duvet
@@ -1081,7 +1356,13 @@ function bed(m, o = {}) {
   cushion(g, 0.4, 0.22, 0.14, m.cushionC, 0, top + 0.26, pz + 0.36, 0, -0.2);
   // headboard
   const hz = -L / 2 - 0.02;
-  if (s === 'milano') {
+  if (o.flat) {
+    const hm = s === 'milano' || paris ? m.headboard : s === 'nordic' ? m.woodLight : m.woodDark;
+    box(g, W + 0.1, 1.0, 0.026, hm, 0, 0.14, -L / 2 - 0.002);
+    if (s === 'nordic') rbox(g, W - 0.12, 0.46, 0.03, 0.012, m.headboard, 0, 0.56, -L / 2 + 0.012);
+    else if (s === 'milano') box(g, W + 0.1, 0.012, 0.03, m.brass, 0, 1.14, -L / 2 - 0.002);
+    else if (!paris) box(g, W - 0.06, 0.8, 0.008, m.cane, 0, 0.26, -L / 2 + 0.014);
+  } else if (s === 'milano') {
     const n = Math.round((W + 0.6) / 0.16), cw = (W + 0.6) / n;
     for (let i = 0; i < n; i++) rbox(g, cw - 0.006, 1.2, 0.1, 0.045, m.headboard, -(W + 0.6) / 2 + cw * (i + 0.5), 0.1, hz);
     box(g, W + 0.64, 0.015, 0.12, m.brass, 0, 1.3, hz);
@@ -1104,9 +1385,9 @@ function bed(m, o = {}) {
 // Kyoto: a low oak platform bed (wide surround to sit on), mattress just above knee-low, a slatted oak headboard
 // panel with a linen-wrapped cushion rail, a folded throw.
 function lowBed(m, o = {}) {
-  const W = o.w || 1.6, L = 2.05, g = new THREE.Group();
-  box(g, W + 0.2, 0.06, L - 0.1, m.woodDark, 0, 0, 0.05);                         // recessed shadow plinth
-  box(g, W + 0.44, 0.12, L + 0.16, m.woodLight, 0, 0.06, 0.06);                  // platform surround
+  const W = o.w || 1.6, L = (o.len || 2.0) + 0.05, g = new THREE.Group(), SUR = o.slim ? 0.1 : 0.44;   // (slim: between the towers of a bridge unit)
+  box(g, W + (o.slim ? 0 : 0.2), 0.06, L - 0.1, m.woodDark, 0, 0, 0.05);          // recessed shadow plinth
+  box(g, W + SUR, 0.12, L + (o.slim ? 0.06 : 0.16), m.woodLight, 0, 0.06, o.slim ? 0.03 : 0.06);   // platform surround
   const top = 0.18;
   rbox(g, W, 0.2, L - 0.04, 0.05, m.linen, 0, top, 0.04);
   const dy = top + 0.24, Wc = W + 0.08, zH = -L * 0.2 + 0.08, zF = L / 2 + 0.06;
@@ -1119,11 +1400,11 @@ function lowBed(m, o = {}) {
     cushion(g, 0.4, 0.4, 0.12, sx < 0 ? m.cushionA : m.cushionB, sx * 0.25, top + 0.24, pz + 0.18, sx * -0.1, -0.3);
   }
   // headboard: oak slats on a dark backing, with a padded linen rail
-  const hz = -L / 2 - 0.05, HW = W + 0.44, n = Math.round(HW / 0.07);
+  const hz = o.flat ? -L / 2 + 0.012 : -L / 2 - 0.05, HW = W + SUR, n = Math.round(HW / 0.07);
   box(g, HW, 0.95, 0.03, m.woodDark, 0, 0.18, hz);
   for (let i = 0; i < n; i++) box(g, 0.04, 0.95, 0.03, m.woodLight, -HW / 2 + (i + 0.5) * HW / n, 0.18, hz + 0.03);
   rbox(g, W - 0.1, 0.22, 0.09, 0.04, m.headboard, 0, top + 0.28, hz + 0.08);
-  g.userData.solidBox = { w: W + 0.44, d: L + 0.16, h: 0.45, z: 0.06 };
+  g.userData.solidBox = { w: W + SUR, d: L + 0.16, h: 0.45, z: 0.06 };
   return g;
 }
 // Bedside drawer contents (drawer-box floor at y = 0, box centred on x, depth along -z from the front)
@@ -1184,14 +1465,19 @@ function nightstand(m, o = {}) {
 // shelf, rails; hinged pairs of doors (bedrooms) or staggered sliding panels (o.sliding: hall, dressing room).
 // Contents (clothes, folded stacks, shoe boxes, bags, shoes) + the interior LED are built on the first opening.
 function wardrobe(m, o = {}) {
-  const L = o.len || 1.8, H = o.h || 2.45, D = 0.6, s = m.fam, g = new THREE.Group(), kind = o.kind || 'bed';
+  const L = o.len || 1.8, H = o.h || 2.45, D = o.d || 0.6, s = m.fam, g = new THREE.Group(), kind = o.kind || 'bed';
   const inM = m.cabinetIn, T = 0.018, ib = -D / 2 + 0.016, iF = D / 2 - 0.02, zc = (ib + iF) / 2, dI = iF - ib;
   const endM = s === 'riviera' ? m.lacquer2 : m.lacquer, railM = s === 'nordic' ? m.blackMetal : m.brass;
   const sliding = !!o.sliding, tall = H > 1.6;
+  // o.fitted (V7): built-in joinery — a row of top boxes above the main doors, flush fronts, edge pulls, o.mirror =
+  // index of the door that carries a full-height mirror, o.ceil = gap to the ceiling closed by a scribe panel
+  const fit = !!o.fitted && tall;
   // carcass
   box(g, L - 0.012, H, 0.016, inM, 0, 0, -D / 2 + 0.008);
   for (const sx of [-1, 1]) { box(g, 0.006, H, D - 0.02, endM, sx * (L / 2 - 0.003), 0, -0.01); box(g, T, H, dI, inM, sx * (L / 2 - 0.006 - T / 2), 0, zc); }
   box(g, L - 0.012, T, dI, inM, 0, H - T, zc);
+  // (V7, cutaway / dollhouse: the cut top reads as a wardrobe from above — a wood cap with the hanging rail drawn on it)
+  if (!tall) { box(g, L, 0.006, D, s === 'nordic' ? m.woodLight : m.woodDark, 0, H, 0); box(g, L - 0.12, 0.005, 0.022, railM, 0, H + 0.006, 0); }
   box(g, L - 0.02, 0.06, D - 0.08, m.darkPlastic, 0, 0, -0.03);
   box(g, L - 0.012, T, dI, inM, 0, 0.06, zc);
   const y0 = 0.06 + T, yT = H - T, xin = L / 2 - 0.006 - T;
@@ -1202,7 +1488,7 @@ function wardrobe(m, o = {}) {
   else for (let i = 0; i < nDoor; i += 2) bays.push([-L / 2 + i * dw, -L / 2 + Math.min(nDoor, i + 2) * dw]);
   bays.forEach(b => { b[0] = Math.max(b[0], -xin); b[1] = Math.min(b[1], xin); });
   for (let i = 1; i < bays.length; i++) box(g, T, yT - y0, dI - 0.01, inM, bays[i][0], y0, zc - 0.005);
-  const seq = kind === 'hall' ? ['coat', 'shelves', 'coat'] : ['double', 'shelves', 'long'];
+  const seq = D < 0.5 ? ['shelves'] : kind === 'hall' ? ['coat', 'shelves', 'coat'] : ['double', 'shelves', 'long'];   // (a shallow one: shelves only)
   const shelfY = H - 0.42;
   const plan = bays.map(([a, b], i) => {
     const w = b - a - (i ? T / 2 : 0) - (i < bays.length - 1 ? T / 2 : 0), x = (a + b) / 2;
@@ -1249,34 +1535,59 @@ function wardrobe(m, o = {}) {
     });
   }) : null;
   // doors
-  const doorFace = (p, i, cx, w, h) => {
+  const doorFace = (p, i, cx, w, h, top) => {
+    if (fit) {
+      const fm = s === 'riviera' ? m.lacquer2 : s === 'milano' && !top && i % 3 === 1 ? m.woodDark : m.lacquer;
+      box(p, w, h, 0.02, fm, cx, 0, 0.01);
+      if (!top && o.mirror === i) box(p, w - 0.03, h - 0.03, 0.004, m.mirror, cx, 0.015, 0.0215);
+      else if (s === 'riviera' && h > 0.5 && w > 0.3) box(p, w - 0.114, h - 0.114, 0.006, m.cane, cx, 0.057, 0.023);
+      return;
+    }
     if (s === 'riviera') {
       box(p, w, h, 0.02, m.lacquer2, cx, 0, 0.01);
       box(p, w - 0.114, H * 0.62, 0.006, m.cane, cx, H * 0.3 - 0.05, 0.023);
       if (m.styleId === 'paris' && H > 1.6) box(p, w - 0.114, H * 0.3 - 0.05 - 0.13, 0.006, m.cane, cx, 0.07, 0.023);     // lower panel
     } else box(p, w, h, 0.02, s === 'milano' ? (i % 3 === 1 ? m.woodDark : m.lacquer) : m.lacquer, cx, 0, 0.01);
   };
+  // top boxes of the fitted version: a pair of flush push-to-open doors per bay, from the storage shelf to the top
+  const topRow = (z) => {
+    const y = shelfY + T / 2 + 0.003, h = H - 0.008 - y;
+    bays.forEach(([a, b], k) => {
+      const n = b - a > 0.75 ? 2 : 1, w = (b - a) / n;
+      for (let j = 0; j < n; j++) {
+        const x0 = a + j * w, side = n === 1 ? (k % 2 ? 1 : -1) : j ? 1 : -1;
+        const mv = hinged(g, x0 + 0.003, x0 + w - 0.003, y, z, side, comp);
+        doorFace(mv, k * 2 + j, mv.userData.cx, w - 0.006, h, true);
+      }
+    });
+  };
   if (sliding) {
-    box(g, L - 0.012, 0.03, 0.07, m.darkPlastic, 0, H - 0.03, iF + 0.035);
+    const yTr = fit ? shelfY - 0.02 : H - 0.03, hP = fit ? shelfY - 0.09 : H - 0.1;
+    box(g, L - 0.012, 0.03, 0.07, fit ? endM : m.darkPlastic, 0, yTr, iF + 0.035);
     for (let i = 0; i < nDoor; i++) {
       const xc = -L / 2 + dw * (i + 0.5), front = i % 2, dir = i < (nDoor - 1) / 2 || (nDoor % 2 && i === (nDoor - 1) / 2) ? 1 : -1;
       const mv = mover(g, xc, 0.05, iF + (front ? 0.026 : 0.002), { type: 'slide', dir: [dir, 0, 0], dist: dw - 0.03, comp, excl: 'w' + g.id, dur: 800 });
-      doorFace(mv, i, 0, dw + 0.012, H - 0.1);
+      doorFace(mv, i, 0, dw + 0.012, hP);
       const px = -dir * (dw / 2 - 0.04);                     // pull on the trailing edge (hook it, slide the panel away)
       if (s === 'riviera') box(mv, 0.022, 0.5, 0.018, m.styleId === 'paris' ? m.brass : m.woodDark, px, Math.min(1.05, H * 0.5) - 0.3, 0.029);
-      else box(mv, 0.012, Math.min(0.7, H * 0.4), 0.02, m.metal, px, Math.min(0.75, H * 0.33), 0.03);
+      else box(mv, 0.012, Math.min(0.7, H * 0.4), 0.02, s === 'nordic' && fit ? m.blackMetal : m.metal, px, Math.min(0.75, H * 0.33), 0.03);
     }
+    if (fit) topRow(iF + 0.026);
   } else {
+    const hD = fit ? shelfY + T / 2 - 0.003 - 0.05 : H - 0.06;
     for (let i = 0; i < nDoor; i++) {
       const a = -L / 2 + i * dw, side = i % 2 === 0 && i !== nDoor - 1 ? -1 : 1;
       const mv = hinged(g, a + 0.003, a + dw - 0.003, 0.05, iF, side, comp), cx = mv.userData.cx, w = dw - 0.006, open = cx - side * (w / 2);
-      doorFace(mv, i, cx, w, H - 0.06);
+      doorFace(mv, i, cx, w, hD);
       const hx = open + side * (s === 'riviera' ? 0.06 : 0.04);
       if (s === 'riviera') sph(mv, 0.018, m.styleId === 'paris' ? m.brass : m.woodDark, hx, Math.min(1.05, H * 0.5) - 0.05, 0.03, [1, 1, 0.6], 10);
       else if (s === 'milano') box(mv, 0.012, Math.min(0.6, H * 0.35), 0.02, m.brass, hx, Math.min(0.8, H * 0.35) - 0.05, 0.03);
+      else if (fit) box(mv, 0.012, 0.36, 0.016, m.blackMetal, open + side * 0.03, 0.82, 0.027);
       else box(mv, 0.14, 0.012, 0.012, m.blackMetal, cx, Math.min(1.0, H * 0.5) - 0.05, 0.026);
     }
+    if (fit) topRow(iF);
   }
+  if (fit && o.ceil > 0.005) box(g, L, o.ceil, 0.018, endM, 0, H, D / 2 - 0.04);       // scribe panel up to the ceiling
   if (s === 'nordic') box(g, L, 0.05, 0.02, m.woodLight, 0, 0, D / 2 - 0.01);
   g.userData.solidBox = { w: L, d: D, h: H };
   return g;
@@ -1754,7 +2065,22 @@ function kitchenRun(m, len = 3, o = {}) {
   let sinkX = x0 + bl * (o.sinkAt ?? (tallSide === 'left' ? 0.28 : 0.72));
   // packed plan: sink with the dishwasher beside it, the hob, drawer stacks in between and (if asked) the washer at
   // the far end; appliances shrink (slimline 45 cm dishwasher, 60 cm sink / hob) before a run loses its drawers
-  const packed = packBase(x0, x1, tallSide, !!o.washer, hobW);
+  // V3 (real interiors) — additive options: o.flip mirrors the base order of a run without tall columns (hob towards
+  // −x); o.compact packs a run too short for the regular plan as [sink][hob][drawers] (or [hob][drawers] under 1.2 m);
+  // o.plain makes a run of drawer units only (the second leg of an L-shaped kitchen: no sink, hob, dishwasher or hood);
+  // o.noSink / o.noHob (with o.compact): one leg of an L-shaped kitchen that carries only the hob / only the sink
+  const part = o.compact && (o.noSink || o.noHob);
+  let packed = o.plain || part ? null : packBase(x0, x1, o.flip && tallSide === 'none' ? 'right' : tallSide, !!o.washer, hobW);
+  if (!packed && o.compact && !o.plain && bl >= 0.6) {
+    const seq = [];
+    if (!o.noSink && (bl >= 1.2 || o.noHob)) seq.push(['sink', 0.6]);
+    if (!o.noHob) seq.push(['hob', 0.6]);
+    seq.push(['D', bl - 0.6 * seq.length]);
+    if (o.flip ? tallSide !== 'right' : tallSide === 'right') seq.reverse();
+    const mods0 = []; let cx = x0, hx = 0, sx = x0 - 9;
+    for (const [k, w] of seq) { if (w < 0.02) continue; mods0.push([cx, cx + w, k === 'D' ? (w < 0.25 ? 'filler' : 'drawers') : k]); if (k === 'hob') hx = cx + w / 2; if (k === 'sink') sx = cx + w / 2; cx += w; }
+    packed = o.noHob ? { mods: mods0, hobX: x0 - 0.05, hobW: 0, sinkX: sx } : { mods: mods0, hobX: hx, hobW: 0.6, sinkX: sx < x0 ? hx : sx };
+  }
   if (packed) { hobW = packed.hobW; hobX = packed.hobX; sinkX = packed.sinkX; }
   // hollow carcass (back, bottom, top rail in interior veneer) + counter
   const zF = D / 2 - 0.02, zBk = -D / 2 + 0.016, dI = zF - zBk, zc = (zF + zBk) / 2, xc = (x0 + x1) / 2;
@@ -1768,6 +2094,7 @@ function kitchenRun(m, len = 3, o = {}) {
   let mods = [];
   const hobL = hobX - hobW / 2, hobR = hobX + hobW / 2;
   if (packed) mods = packed.mods;
+  else if (o.plain) { const n = Math.max(1, Math.round(bl / 0.6)); for (let i = 0; i < n; i++) mods.push([x0 + bl * i / n, x0 + bl * (i + 1) / n, 'drawers']); }
   else {
     // (legacy fallback for very short runs) fixed sink / hob positions, 60 cm modules in between
     let cx = x0;
@@ -1888,7 +2215,7 @@ function kitchenRun(m, len = 3, o = {}) {
   const bsH = (s === 'milano' || paris) && !o.cut ? CH - BH : 0.62;
   const bsM = s === 'milano' ? m.marble : s === 'nordic' ? m.wallBath : m.wallBath;
   box(g, bl, bsH, 0.015, bsM, (x0 + x1) / 2, BH, -D / 2 + 0.0075);
-  if (o.hood !== false && !o.cut) { const hood0 = hood(m, { w: hobW, h: s === 'milano' ? CH - 1.62 - 0.12 : 0.9 }); hood0.position.set(hobX, 1.62, -D / 2 + 0.28); g.add(hood0); }
+  if (o.hood !== false && !o.cut && !o.plain && hobW > 0) { const hood0 = hood(m, { w: hobW, h: s === 'milano' ? CH - 1.62 - 0.12 : 0.9 }); hood0.position.set(hobX, 1.62, -D / 2 + 0.28); g.add(hood0); }
   if (o.uppers !== false) {
     const uy = 1.55, uh = s === 'milano' ? 0.7 : 0.72, ud = 0.36;
     const segs = [[x0, hobL - 0.05], [hobR + 0.05, x1]].filter(([a, b]) => b - a > 0.3);
@@ -1946,6 +2273,7 @@ function kitchenRun(m, len = 3, o = {}) {
   }
   // countertop styling
   const cm = coffeeMachine(m); cm.position.set(x0 + 0.25 < hobL - 0.2 ? x0 + 0.22 : x1 - 0.22, BH, -0.1); g.add(cm);
+  if (o.compact && (bl < 1.9 || part) || o.plain && bl < 1.2) { g.userData.solidBox = { w: len, d: D, h: BH }; return g; }   // (V3: a short run has no room for the styling set)
   kettle(g, m, sinkX + (hobX > sinkX ? 0.55 : -0.55), BH, -0.12);
   const bx = (sinkX + hobX) / 2;
   box(g, 0.4, 0.025, 0.28, s === 'milano' ? m.woodDark : m.woodLight, bx, BH, 0.02, [0, 0.12, 0]);
@@ -3330,10 +3658,263 @@ function fireplace(m, o = {}) {
   return g;
 }
 
+// ================================================================== FITTED JOINERY (V7-furnish)
+// Built-in pieces designed as one family: flush panel fronts with 3 mm reveals over a dark carcass (the reveals read
+// as shadow gaps), a recessed plinth, edge pulls or handle-less fronts, open niches lined in wood with a warm LED
+// line. Fronts / accent / pulls per style. All static (baked by material); the openable wardrobes are wardrobe().
+function jSt(m) {
+  const s = m.fam;
+  return { s, front: s === 'riviera' ? m.lacquer2 : m.lacquer, accent: s === 'nordic' ? m.woodLight : m.woodDark, inner: s === 'nordic' ? m.woodLight : m.woodDark,
+    pull: s === 'nordic' ? m.blackMetal : m.brass, core: m.darkPlastic };
+}
+// dark carcass body x0 … x1, y0 … y1, zb … zf (zf = the plane the fronts sit on)
+function jCore(p, J, x0, x1, y0, y1, zb, zf) { if (x1 - x0 > 0.01 && y1 - y0 > 0.01) box(p, x1 - x0, y1 - y0, zf - zb - 0.001, J.core, (x0 + x1) / 2, y0, (zb + zf) / 2 - 0.0005); }
+// flush front x0 … x1, y0 … y1 on the plane zf. o.pull: −1 / +1 = vertical edge pull on that edge, 'h' = drawer pull;
+// o.mirror; o.mat
+function jFront(p, m, J, x0, x1, y0, y1, zf, o = {}) {
+  const w = x1 - x0 - 0.006, h = y1 - y0 - 0.006, cx = (x0 + x1) / 2;
+  if (w < 0.02 || h < 0.02) return;
+  box(p, w, h, 0.019, o.mat || J.front, cx, y0 + 0.003, zf + 0.0095);
+  if (o.mirror) box(p, w - 0.03, h - 0.03, 0.004, m.mirror, cx, y0 + 0.018, zf + 0.021);
+  else if (J.s === 'riviera' && w > 0.28 && h > 0.5 && o.cane !== false) box(p, w - 0.11, h - 0.11, 0.004, m.cane, cx, y0 + 0.058, zf + 0.0205);
+  const knobM = m.styleId === 'paris' ? m.brass : m.woodDark;
+  if (o.pull === 'h') {
+    if (J.s === 'riviera') sph(p, 0.015, knobM, cx, y0 + h / 2, zf + 0.03, [1, 1, 0.7], 10);
+    else box(p, Math.min(0.18, w * 0.4), 0.01, 0.016, J.pull, cx, y1 - 0.05, zf + 0.027);
+  } else if (o.pull) {
+    const px = cx + o.pull * (w / 2 - 0.032), ph = Math.min(o.pullLen || 0.34, h - 0.1), py = o.pullY ?? y0 + h / 2;
+    if (J.s === 'riviera') sph(p, 0.016, knobM, px, py, zf + 0.03, [1, 1, 0.7], 10);
+    else box(p, 0.011, ph, 0.016, J.pull, px, py - ph / 2, zf + 0.027);
+  }
+}
+// LED line under a board + the wash it throws on the back panel
+function jLed(p, m, cx, w, y, zb, drop = 0.45) {
+  box(p, w, 0.006, 0.012, m.led, cx, y - 0.008, zb + 0.04);
+  fxQuad(p, m.glow, 'grad', [cx, y - drop / 2, zb + 0.004], [w, 0, 0], [0, drop, 0]);
+}
+// Wall cabinets hung above a bed or a sofa. Origin: bottom edge at the wall (back at z = 0, front at +z); the caller
+// hangs it at the height of its underside. o: len, d, hh (height), ends ('both' | 'none' | −1 | 1: finished end panels),
+// brackets (a slim support under each end — a row hung alone), panel (m: a wall panel behind the bed head, down to
+// the floor, o.panelW wide), led.
+function overhead(m, o = {}) {
+  const L = o.len || 1.8, D = o.d || 0.36, H = o.hh || 0.75, g = new THREE.Group(), J = jSt(m), zf = D - 0.019;
+  jCore(g, J, -L / 2 + 0.004, L / 2 - 0.004, 0.022, H, 0, zf);
+  for (const sx of [-1, 1]) box(g, 0.018, H, D, J.front, sx * (L / 2 - 0.009), 0, D / 2);
+  box(g, L - 0.036, 0.018, zf - 0.03, J.front, 0, 0.004, (zf - 0.03) / 2);                       // underside, set back: the doors overhang it (finger grip)
+  const n = Math.max(2, Math.round((L - 0.036) / 0.52)), dw = (L - 0.036) / n;
+  for (let i = 0; i < n; i++) jFront(g, m, J, -L / 2 + 0.018 + i * dw, -L / 2 + 0.018 + (i + 1) * dw, 0, H, zf, { cane: false, mat: J.s === 'milano' && n > 2 && i % 3 === 1 ? m.woodDark : null });
+  if (o.ceil > 0.005) box(g, L, o.ceil, 0.018, J.front, 0, H, D - 0.04);
+  if (o.brackets) for (const sx of [-1, 1]) { box(g, 0.012, 0.16, 0.012, J.pull, sx * (L / 2 - 0.12), -0.16, 0.012); box(g, 0.012, 0.012, D * 0.7, J.pull, sx * (L / 2 - 0.12), -0.012, D * 0.35); }
+  if (o.panel > 0) {
+    const pw = o.panelW || L, ph = o.panel;
+    box(g, pw, ph, 0.018, J.accent, 0, -ph, 0.009);
+    if (J.s !== 'nordic') box(g, pw, 0.008, 0.02, J.pull, 0, -ph + (o.railY || 1.3), 0.012);
+  }
+  if (o.led !== false) {
+    box(g, L - 0.14, 0.006, 0.014, m.led, 0, -0.004, 0.05);
+    fxQuad(g, m.glow, 'grad', [0, -0.34, 0.021], [L - 0.1, 0, 0], [0, 0.66, 0]);
+    bloom(g, 0, -0.03, 0.08, 0.5, 0.35);
+  }
+  g.userData.noSolid = true; g.userData.box3 = { w: L, d: D, h: H };
+  return g;
+}
+// Side tower of a bridge unit (origin at the floor centre, front = +z): two drawers, an open bedside niche with a
+// reading light, a tall door, and a top door level with the bridge. o: w, h, d, yB (underside of the bridge), side
+// (−1: stands left of the bed — the pull is on the bed side), seed, ceil.
+function tower(m, o = {}) {
+  const W = o.w || 0.45, H = o.h || 2.75, D = o.d || 0.42, yB = o.yB || 1.95, g = new THREE.Group(), J = jSt(m), zb = -D / 2, zf = D / 2 - 0.019, side = o.side || -1;
+  const x0 = -W / 2 + 0.018, x1 = W / 2 - 0.018, tall = H > 1.6;
+  box(g, W - 0.03, 0.06, D - 0.07, m.darkPlastic, 0, 0, -0.025);
+  for (const sx of [-1, 1]) box(g, 0.018, H - 0.06, D, J.front, sx * (W / 2 - 0.009), 0.06, 0);
+  jCore(g, J, x0, x1, 0.06, 0.52, zb, zf);
+  jFront(g, m, J, x0, x1, 0.06, 0.29, zf, { pull: 'h', cane: false }); jFront(g, m, J, x0, x1, 0.29, 0.52, zf, { pull: 'h', cane: false });
+  const nT = Math.min(1.0, H - 0.02);
+  // niche
+  box(g, x1 - x0, 0.02, D - 0.004, J.inner, 0, 0.52, 0.002); box(g, x1 - x0, nT - 0.54, 0.012, J.inner, 0, 0.54, zb + 0.012);
+  if (tall) {
+    box(g, x1 - x0, 0.02, D - 0.004, J.inner, 0, nT - 0.02, 0.002);
+    jLed(g, m, 0, x1 - x0 - 0.06, nT - 0.02, zb + 0.018, 0.4);
+    fxFlat(g, m.glowFaint, 'rect', 0, 0.542, 0, x1 - x0, D - 0.04);
+    const r = rngM(31 + (o.seed || 0) * 7), k = (r() * 3) | 0;
+    if (k === 0) { bookStack(g, m, 2, -side * 0.04, 0.54, 0.02, 5 + (o.seed || 0), 0.3); glass(g, m, side * 0.11, 0.59, 0.08, 'tumbler'); }
+    else if (k === 1) { vase(g, m, -side * 0.06, 0.54, 0, 0.2, m.ceramic, false); bookStack(g, m, 1, side * 0.08, 0.54, 0.06, 9 + (o.seed || 0), -0.2); }
+    else { plantSmall(g, m, -side * 0.05, 0.54, 0, 0.22, r() * 3); candle(g, m, side * 0.1, 0.54, 0.07, 0.09); }
+    const yD = Math.min(yB, H);
+    jCore(g, J, x0, x1, nT, H, zb, zf);
+    jFront(g, m, J, x0, x1, nT, yD, zf, { pull: -side, pullY: nT + 0.3, pullLen: 0.3 });
+    if (H > yB + 0.2) jFront(g, m, J, x0, x1, yB, H, zf, { cane: false });
+    if (o.ceil > 0.005) box(g, W, o.ceil, 0.018, J.front, 0, H, D / 2 - 0.04);
+  }
+  g.userData.solidBox = { w: W, d: D, h: H };
+  return g;
+}
+// The open niche of an entrance wardrobe: bench with a cushion, shoe shelf under it, hooks, a top box.
+function entryNiche(g, m, J, cx, W, H, D, o = {}) {
+  const zb = -D / 2, zf = D / 2 - 0.019, x0 = cx - W / 2 + 0.018, x1 = cx + W / 2 - 0.018, w = x1 - x0, tall = H > 1.6, yT = tall ? H - 0.42 : H;
+  box(g, W - 0.03, 0.06, D - 0.07, m.darkPlastic, cx, 0, -0.025);
+  for (const sx of [-1, 1]) box(g, 0.018, H - 0.06, D, J.front, cx + sx * (W / 2 - 0.009), 0.06, 0);
+  box(g, w, yT - 0.06, 0.012, J.inner, cx, 0.06, zb + 0.012);
+  box(g, w, 0.02, D - 0.004, J.inner, cx, 0.06, 0.002); box(g, w, 0.018, D - 0.06, J.inner, cx, 0.24, -0.028);
+  box(g, w, 0.04, D - 0.004, J.accent, cx, 0.43, 0.002);
+  soft(g, w - 0.04, 0.05, D - 0.1, m.cushionA || m.linen, cx, 0.47, 0.0, null, { e: [0.1, 0.5, 0.12], sag: 0.004 });
+  const W2 = (WEAR[m.styleId] || WEAR[m.fam]);
+  shoePair(g, m, cx - w * 0.2, 0.08, 0.05, W2.bags[0], 'sneaker', 0.1); if (w > 0.5) shoePair(g, m, cx + w * 0.22, 0.08, 0.04, W2.bags[1], 'loafer', -0.08);
+  shoePair(g, m, cx + w * 0.05, 0.258, 0.02, W2.bags[2], 'loafer', 0.05);
+  if (!tall) return;
+  // hooks on a rail, a bag on the bench
+  box(g, w - 0.1, 0.06, 0.016, J.accent, cx, 1.62, zb + 0.026);
+  const nH = Math.max(2, Math.round((w - 0.1) / 0.16));
+  for (let i = 0; i < nH; i++) { const hx = cx - (w - 0.2) / 2 + (w - 0.2) * (nH === 1 ? 0.5 : i / (nH - 1)); rod(g, 0.007, 0.055, J.pull, hx, 1.65, zb + 0.06, [HALF, 0, 0], 8); sph(g, 0.012, J.pull, hx, 1.65, zb + 0.09, [1, 1, 1], 8); }
+  handbag(g, m, cx + w * 0.18, 0.52, -0.04, W2.bags[3 % W2.bags.length], 0.25, 0.9);
+  box(g, w, 0.02, D - 0.004, J.inner, cx, yT - 0.02, 0.002);
+  jLed(g, m, cx, w - 0.08, yT - 0.02, zb + 0.018, 0.7);
+  jCore(g, J, x0, x1, yT, H, zb, zf);
+  const n = w > 0.75 ? 2 : 1;
+  for (let i = 0; i < n; i++) jFront(g, m, J, x0 + i * w / n, x0 + (i + 1) * w / n, yT, H, zf, { cane: false });
+  if (o.ceil > 0.005) box(g, W, o.ceil, 0.018, J.front, cx, H, D / 2 - 0.04);
+}
+// Entrance wardrobe: wardrobe() in its fitted version (sliding panels or hinged doors, one door a mirror, top boxes
+// up to the ceiling) and, where the length allows (o.niche = its width, o.nicheSide = −1 / +1 the end it is on), the
+// open niche with bench, shoe shelf and hooks.
+function hallWardrobe(m, o = {}) {
+  const L = o.len || 1.8, H = o.h || 2.75, D = o.d || 0.6, g = new THREE.Group(), J = jSt(m), tall = H > 1.6;
+  const wn = o.niche && L - o.niche >= 0.8 ? o.niche : 0, ns = o.nicheSide || 1, Lw = L - wn;
+  const sliding = o.sliding ?? Lw >= 1.5, nDoor = sliding ? Math.max(2, Math.round(Lw / 0.95)) : Math.max(2, Math.round(Lw / 0.5));
+  // the mirror: the door next to the niche (or the first one)
+  const mi = o.mirror === false ? -1 : ns > 0 ? nDoor - 1 : 0;
+  const w = wardrobe(m, { len: Lw, h: H, d: D, kind: o.kind || 'hall', sliding, seed: o.seed, fitted: true, mirror: mi, ceil: o.ceil });
+  w.position.x = -ns * wn / 2; g.add(w);
+  if (wn) entryNiche(g, m, J, ns * (L / 2 - wn / 2), wn, H, D, { ceil: tall ? o.ceil : 0 });
+  g.userData.solidBox = { w: L, d: D + (sliding ? 0.03 : 0), h: H, z: sliding ? 0.015 : 0 };
+  g.userData.piece = 'wardrobe'; g.userData.hasNiche = !!wn; g.userData.hasMirror = mi >= 0 && tall;
+  return g;
+}
+// Dressing-room fit-out: an open system along a wall — uprights, a top shelf with boxes, bays with hanging rails,
+// shelves with folded stacks, a drawer base, shoes; an LED line under the top shelf of every bay.
+function dressing(m, o = {}) {
+  const L = o.len || 1.8, H = o.h || 2.75, D = o.d || 0.45, g = new THREE.Group(), J = jSt(m), zb = -D / 2, tall = H > 1.6;
+  const n = Math.max(1, Math.round(L / 0.85)), bw = (L - 0.022) / n, yT = tall ? H - 0.42 : H - 0.03, W2 = (WEAR[m.styleId] || WEAR[m.fam]);
+  const railM = J.pull;
+  box(g, L, H, 0.012, m.cabinetIn, 0, 0, zb + 0.006);
+  for (let i = 0; i <= n; i++) box(g, 0.022, H, D - 0.012, J.accent, -L / 2 + 0.011 + i * bw, 0, 0.006);
+  box(g, L, 0.06, D - 0.06, m.darkPlastic, 0, 0, -0.02);
+  if (tall) box(g, L, 0.022, D - 0.012, J.accent, 0, H - 0.022, 0.006);
+  const types = D < 0.4 ? ['shelves', 'drawers', 'shelves'] : n === 1 ? ['double'] : ['long', 'drawers', 'double', 'shelves'];
+  for (let i = 0; i < n; i++) {
+    const xa = -L / 2 + 0.022 + i * bw, xb = xa + bw - 0.022, x = (xa + xb) / 2, w = xb - xa, type = types[(i + (o.seed || 0)) % types.length], seed = 7 + i * 13 + (o.seed || 0) * 5, r = rngM(seed);
+    box(g, w, 0.02, D - 0.02, J.accent, x, 0.06, 0.004);
+    if (tall) {
+      box(g, w, 0.022, D - 0.02, J.accent, x, yT, 0.004);
+      let xx = xa + 0.03; while (xx < xb - 0.34) { shoeBox(g, m, xx + 0.17, yT + 0.022, 0, W2.boxes[((xx * 7 + i) | 0) % W2.boxes.length], 0.34, Math.min(0.22, H - yT - 0.09), Math.min(0.3, D - 0.1)); xx += 0.38; }
+      ledWash(g, m, x, w, 0.08, yT, zb + 0.012, D / 2 - 0.02);
+    }
+    if (!tall) { foldStack(g, m, x, 0.08, 0, 3, seed, Math.min(0.3, w - 0.08), Math.min(0.27, D - 0.1)); continue; }
+    const rail = (y, mix, maxLen) => { rod(g, 0.011, w, railM, x, y, 0.01, [0, 0, HALF], 12); hangRail(g, m, xa + 0.02, xb - 0.02, y, 0.01, seed + (y * 10 | 0), mix, maxLen); };
+    if (type === 'long') { rail(yT - 0.07, ['dress', 'coat', 'dress', 'jacket'], yT - 0.5); for (let k = 0, sx = xa + 0.14; sx < xb - 0.12; k++, sx += 0.26) shoePair(g, m, sx, 0.08, 0.06, W2.bags[(k + i) % W2.bags.length], k % 2 ? 'heel' : 'loafer', (r() - 0.5) * 0.2); }
+    else if (type === 'double') { rail(yT - 0.07, ['shirt', 'shirt', 'jacket', 'shirt'], 0.85); rail(Math.min(1.12, yT * 0.5), ['trousers', 'shirt'], 0.8); for (let k = 0, sx = xa + 0.14; sx < xb - 0.12; k++, sx += 0.26) shoePair(g, m, sx, 0.08, 0.06, W2.bags[(k + 2 + i) % W2.bags.length], k % 2 ? 'sneaker' : 'loafer', (r() - 0.5) * 0.2); }
+    else {
+      let y = 0.08;
+      if (type === 'drawers') {
+        const zf = D / 2 - 0.025;
+        jCore(g, J, xa, xb, 0.08, 0.8, zb + 0.012, zf);
+        for (let k = 0; k < 3; k++) jFront(g, m, J, xa, xb, 0.08 + k * 0.24, 0.08 + (k + 1) * 0.24, zf, { pull: 'h', cane: false });
+        box(g, w, 0.022, D - 0.02, J.accent, x, 0.8, 0.004); y = 0.822;
+        handbag(g, m, x - w * 0.2, y, 0, W2.bags[i % W2.bags.length], 0.2); if (w > 0.6) handbag(g, m, x + w * 0.2, y, 0.02, W2.bags[(i + 2) % W2.bags.length], -0.15, 0.85);
+        y += 0.36;
+      }
+      const ns = Math.max(1, Math.round((yT - y) / 0.36));
+      for (let k = type === 'drawers' ? 0 : 1; k < ns; k++) {
+        const yy = y + k * (yT - y) / ns;
+        box(g, w, 0.02, D - 0.03, J.accent, x, yy, 0);
+        const cnt = w > 0.6 ? 2 : 1;
+        if ((k + i) % 3 === 2) { for (let sx = xa + 0.19; sx < xb - 0.17; sx += 0.37) shoeBox(g, m, sx, yy + 0.02, 0, W2.boxes[((k + sx * 10) | 0) % W2.boxes.length], 0.34, 0.13, Math.min(0.21, D - 0.12)); }
+        else for (let j = 0; j < cnt; j++) foldStack(g, m, xa + (j + 0.5) * w / cnt, yy + 0.02, 0.02, 3 + (r() * 3 | 0), seed + k * 5 + j, Math.min(0.3, w / cnt - 0.06), Math.min(0.27, D - 0.1));
+      }
+      if (type !== 'drawers') for (let k = 0, sx = xa + 0.14; sx < xb - 0.12; k++, sx += 0.26) shoePair(g, m, sx, 0.08, 0.04, W2.bags[(k + 1 + i) % W2.bags.length], k % 2 ? 'loafer' : 'sneaker', (r() - 0.5) * 0.2);
+    }
+  }
+  g.userData.solidBox = { w: L, d: D, h: H };
+  return g;
+}
+// Tall pantry cabinet at the end of a kitchen run (fronts and pulls of the kitchen).
+function pantry(m, o = {}) {
+  const W = o.w || 0.6, H = o.h || 2.3, D = o.d || 0.6, g = new THREE.Group(), J = jSt(m), zb = -D / 2, zf = D / 2 - 0.019, x0 = -W / 2 + 0.018, x1 = W / 2 - 0.018;
+  box(g, W - 0.03, 0.1, D - 0.08, m.darkPlastic, 0, 0, -0.03);
+  for (const sx of [-1, 1]) box(g, 0.018, H - 0.1, D, m.lacquer, sx * (W / 2 - 0.009), 0.1, 0);
+  jCore(g, J, x0, x1, 0.1, H, zb, zf);
+  const J2 = { ...J, front: m.lacquer }, yM = Math.min(1.42, H - 0.02), side = o.side || 1;
+  jFront(g, m, J2, x0, x1, 0.1, yM, zf, { cane: false }); handle(g, m, side * (W / 2 - 0.06), yM - 0.25, zf + 0.019, 0.3, true);
+  if (H > 1.6) {
+    const yU = Math.min(2.2, H - 0.3);
+    jFront(g, m, J2, x0, x1, yM, yU, zf, { cane: false }); handle(g, m, side * (W / 2 - 0.06), yM + 0.25, zf + 0.019, 0.3, true);
+    jFront(g, m, J2, x0, x1, yU, H, zf, { cane: false });
+    if (o.ceil > 0.005) box(g, W, o.ceil, 0.018, m.lacquer, 0, H, D / 2 - 0.04);
+  }
+  g.userData.solidBox = { w: W, d: D, h: H };
+  return g;
+}
+// Cupboard over a washing machine that stands in a niche: side cheeks, a worktop, an open shelf with towels and a
+// light, doors up to the ceiling. Origin = the washer's floor centre; nothing of it stands on new floor.
+function washerCab(m, o = {}) {
+  const W = o.w || 0.636, H = o.h || 2.75, D = o.d || 0.6, g = new THREE.Group(), J = jSt(m), zb = -D / 2, zf = D / 2 - 0.019, x0 = -W / 2 + 0.016, x1 = W / 2 - 0.016;
+  for (const sx of [-1, 1]) box(g, 0.016, H, D, J.front, sx * (W / 2 - 0.008), 0, 0);
+  box(g, x1 - x0, 0.03, D, m.counter || J.accent, 0, 0.87, 0);
+  box(g, x1 - x0, 0.42, 0.012, J.inner, 0, 0.9, zb + 0.008);
+  towelRoll(g, m, -0.12, 0.9, 0.02, m.towel || m.linen, 0.28); towelRoll(g, m, -0.12, 0.99, 0.02, m.towel2 || m.towel || m.linen, 0.28); towelRoll(g, m, 0.14, 0.9, 0.0, m.towel2 || m.linen, 0.26);
+  box(g, x1 - x0, 0.02, D - 0.004, J.inner, 0, 1.32, 0.002);
+  jLed(g, m, 0, x1 - x0 - 0.06, 1.32, zb + 0.014, 0.38);
+  jCore(g, J, x0, x1, 1.34, H, zb, zf);
+  const yU = Math.max(1.9, H - 0.6), mid = (x0 + x1) / 2;
+  jFront(g, m, J, x0, mid, 1.34, yU, zf, { pull: 1, pullY: 1.5, pullLen: 0.2, cane: false }); jFront(g, m, J, mid, x1, 1.34, yU, zf, { pull: -1, pullY: 1.5, pullLen: 0.2, cane: false });
+  jFront(g, m, J, x0, x1, yU, H, zf, { cane: false });
+  if (o.ceil > 0.005) box(g, W, o.ceil, 0.018, J.front, 0, H, D / 2 - 0.04);
+  g.userData.noSolid = true; g.userData.box3 = { w: W, d: D, h: H, y0: 0.87 };
+  return g;
+}
+// Slim shelf tower (beside the TV unit, in a larger bedroom): a door below, open lit shelves, a top box.
+function shelfTower(m, o = {}) {
+  const W = o.w || 0.5, H = o.h || 2.75, D = o.d || 0.32, g = new THREE.Group(), J = jSt(m), zb = -D / 2, zf = D / 2 - 0.019, x0 = -W / 2 + 0.018, x1 = W / 2 - 0.018, w = x1 - x0, tall = H > 1.6;
+  box(g, W - 0.03, 0.06, D - 0.06, m.darkPlastic, 0, 0, -0.02);
+  for (const sx of [-1, 1]) box(g, 0.018, H - 0.06, D, J.front, sx * (W / 2 - 0.009), 0.06, 0);
+  const yL = Math.min(0.74, H - 0.02);
+  jCore(g, J, x0, x1, 0.06, yL, zb, zf); jFront(g, m, J, x0, x1, 0.06, yL, zf, { pull: o.side || 1, pullY: yL - 0.2, pullLen: 0.22 });
+  if (!tall) { g.userData.solidBox = { w: W, d: D, h: H }; return g; }
+  const yT = H - 0.42, nS = Math.max(2, Math.round((yT - yL) / 0.4)), sh = (yT - yL) / nS;
+  box(g, w, yT - yL, 0.012, J.inner, 0, yL, zb + 0.012);
+  for (let k = 0; k <= nS; k++) {
+    const y = yL + k * sh;
+    box(g, w, 0.02, D - 0.004, J.inner, 0, y - (k === nS ? 0.02 : 0), 0.002);
+    if (k === nS) break;
+    const top = y + 0.02, mode = (k + (o.seed || 0)) % 4;
+    if (mode === 0) bookRow(g, m, x0 + 0.02, w - 0.14, top, 0, 3 + k * 7 + (o.seed || 0), Math.min(0.28, sh - 0.08));
+    else if (mode === 1) { vase(g, m, -w * 0.15, top, 0, Math.min(0.24, sh - 0.1), k % 2 ? m.ceramic2 : m.ceramic, false); bookStack(g, m, 3, w * 0.18, top, 0, k * 5 + 2, 0.2); }
+    else if (mode === 2) { bookStack(g, m, 2, -w * 0.12, top, 0, k * 3 + 1, -0.15); plantSmall(g, m, w * 0.2, top, 0, Math.min(0.24, sh - 0.1), k); }
+    else { const e = bookRow(g, m, x0 + 0.02, w * 0.5, top, 0, 11 + k * 5, Math.min(0.26, sh - 0.08)); sph(g, 0.05, m.ceramic2 || m.ceramic, Math.min(x1 - 0.07, e + 0.09), top + 0.05, 0, [1, 1, 1], 12); }
+    if (k % 2 === 1 || k === nS - 1) jLed(g, m, 0, w - 0.06, y + sh - 0.02, zb + 0.018, sh - 0.06);
+  }
+  jCore(g, J, x0, x1, yT, H, zb, zf); jFront(g, m, J, x0, x1, yT, H, zf, { cane: false });
+  if (o.ceil > 0.005) box(g, W, o.ceil, 0.018, J.front, 0, H, D / 2 - 0.04);
+  g.userData.solidBox = { w: W, d: D, h: H };
+  return g;
+}
+// Two floating shelves over a desk (back at z = 0; the caller hangs it at the lower board's height).
+function wallShelves(m, o = {}) {
+  const L = o.len || 1.0, g = new THREE.Group(), J = jSt(m), D = 0.22;
+  for (const [y, k] of [[0, 0], [0.38, 1]]) {
+    box(g, L, 0.03, D, J.accent, 0, y, D / 2);
+    if (k === 0) { const e = bookRow(g, m, -L / 2 + 0.04, L * 0.5, y + 0.03, D / 2, 5 + (o.seed || 0), 0.26); vase(g, m, Math.min(L / 2 - 0.1, e + 0.14), y + 0.03, D / 2, 0.18, m.ceramic, false); }
+    else { bookStack(g, m, 3, -L * 0.22, y + 0.03, D / 2, 9 + (o.seed || 0), 0.2); plantSmall(g, m, L * 0.25, y + 0.03, D / 2, 0.2, 1); }
+  }
+  box(g, L - 0.1, 0.005, 0.012, m.led, 0, -0.005, 0.03);
+  fxQuad(g, m.glow, 'grad', [0, -0.2, 0.004], [L - 0.06, 0, 0], [0, 0.4, 0]);
+  g.userData.noSolid = true; g.userData.box3 = { w: L, d: D, h: 0.6 };
+  return g;
+}
+
 const F0 = {
   fireplace,
-  sofa, armchair, coffeeTable, sideTable, diningTable, diningChair, tableSetting, stool, tvUnit, tv, bookshelf, sideboard,
-  bed, nightstand, wardrobe, desk,
+  sofa, sofaBed, armchair, coffeeTable, sideTable, diningTable, diningChair, tableSetting, stool, tvUnit, tv, bookshelf, sideboard,
+  bed, nightstand, wardrobe, desk, overhead, tower, hallWardrobe, dressing, pantry, washerCab, shelfTower, wallShelves,
   kitchenRun, island, fridge, oven, hob, hood, dishwasher, microwave, washer, sink, coffeeMachine,
   bathtub, shower, toilet, vanity, mirror, towelRail,
   plant, floorLamp, pendant, rug, artFrame, curtains, motorCurtains, curtainSwitch, throwBlanket, laundryTower,
@@ -3344,4 +3925,4 @@ export const F = {};
 for (const [k, fn] of Object.entries(F0)) F[k] = (...args) => { const g = fn(...args); if (!g.userData.piece) g.userData.piece = k; return g; };
 // small helpers reused by apartment.js (decor on shelves / walls)
 export const FX = { mouldFrame, bloom, box, rbox, cyl, rod, sph, lathe, torus, disc, plane, grp, bookRow, bookStack, vase, candle, bowl, plantSmall, sconce, tableLamp, tap, glass, plate, HALF,
-  soft, softGeo, clothGeo, fxQuad, fxFlat, fxWallZ };
+  soft, softGeo, clothGeo, fxQuad, fxFlat, fxWallZ, sofaBedSize };

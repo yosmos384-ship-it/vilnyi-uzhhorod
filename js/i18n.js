@@ -4,7 +4,7 @@
 // Project facts (prices, areas, permit numbers) are NOT duplicated in the dictionaries — they come from data.js.
 // No DOM access at module top level: this file must stay importable in Node (tools/check-i18n.mjs).
 
-import { BUILDINGS } from './data.js';
+import { BUILDINGS, USD_PER_M2, UAH_PER_M2, RATE_DATE } from './data.js';
 
 import ukUi from './i18n/uk.ui.js'; import ukSite from './i18n/uk.site.js';
 import enUi from './i18n/en.ui.js'; import enSite from './i18n/en.site.js';
@@ -13,7 +13,6 @@ import roUi from './i18n/ro.ui.js'; import roSite from './i18n/ro.site.js';
 import deUi from './i18n/de.ui.js'; import deSite from './i18n/de.site.js';
 import frUi from './i18n/fr.ui.js'; import frSite from './i18n/fr.site.js';
 import itUi from './i18n/it.ui.js'; import itSite from './i18n/it.site.js';
-import ruUi from './i18n/ru.ui.js'; import ruSite from './i18n/ru.site.js';
 
 // Flags are inline SVG (Windows has no emoji flags). viewBox 3:2, drawn edge to edge.
 const F = (body) => `<svg class="flag" viewBox="0 0 30 20" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid slice">${body}</svg>`;
@@ -21,23 +20,22 @@ const FLAGS = {
   en: F('<rect width="30" height="20" fill="#012169"/><path d="M0 0L30 20M30 0L0 20" stroke="#fff" stroke-width="4"/><path d="M0 0L30 20M30 0L0 20" stroke="#C8102E" stroke-width="1.4"/><path d="M15 0V20M0 10H30" stroke="#fff" stroke-width="6"/><path d="M15 0V20M0 10H30" stroke="#C8102E" stroke-width="3.4"/>'),
   ro: F('<rect width="10" height="20" fill="#002B7F"/><rect x="10" width="10" height="20" fill="#FCD116"/><rect x="20" width="10" height="20" fill="#CE1126"/>'),
   he: F('<rect width="30" height="20" fill="#fff"/><rect y="2.2" width="30" height="3" fill="#0038B8"/><rect y="14.8" width="30" height="3" fill="#0038B8"/><path d="M15 6.2L18.3 11.9H11.7ZM15 13.8L11.7 8.1H18.3Z" fill="none" stroke="#0038B8" stroke-width=".9"/>'),
-  ru: F('<rect width="30" height="6.67" fill="#fff"/><rect y="6.67" width="30" height="6.67" fill="#0039A6"/><rect y="13.33" width="30" height="6.67" fill="#D52B1E"/>'),
   uk: F('<rect width="30" height="10" fill="#0057B7"/><rect y="10" width="30" height="10" fill="#FFD700"/>'),
   fr: F('<rect width="10" height="20" fill="#0055A4"/><rect x="10" width="10" height="20" fill="#fff"/><rect x="20" width="10" height="20" fill="#EF4135"/>'),
   it: F('<rect width="10" height="20" fill="#009246"/><rect x="10" width="10" height="20" fill="#fff"/><rect x="20" width="10" height="20" fill="#CE2B37"/>'),
   de: F('<rect width="30" height="6.67" fill="#000"/><rect y="6.67" width="30" height="6.67" fill="#DD0000"/><rect y="13.33" width="30" height="6.67" fill="#FFCE00"/>'),
 };
 
-// Menu order: Ukrainian first (the default), then English and the other languages.
+// Menu order: Ukrainian first (the default), then English and the other languages. `short` is the label shown in the
+// header button and in the menu (owner: Hebrew reads "He"; all codes use the same capitalisation).
 export const LANGS = [
-  { code: 'uk', name: 'Українська', short: 'UA', dir: 'ltr', flagSvg: FLAGS.uk },
-  { code: 'en', name: 'English', short: 'EN', dir: 'ltr', flagSvg: FLAGS.en },
-  { code: 'he', name: 'עברית', short: 'HE', dir: 'rtl', flagSvg: FLAGS.he },
-  { code: 'ro', name: 'Română', short: 'RO', dir: 'ltr', flagSvg: FLAGS.ro },
-  { code: 'de', name: 'Deutsch', short: 'DE', dir: 'ltr', flagSvg: FLAGS.de },
-  { code: 'fr', name: 'Français', short: 'FR', dir: 'ltr', flagSvg: FLAGS.fr },
-  { code: 'it', name: 'Italiano', short: 'IT', dir: 'ltr', flagSvg: FLAGS.it },
-  { code: 'ru', name: 'Русский', short: 'RU', dir: 'ltr', flagSvg: FLAGS.ru },
+  { code: 'uk', name: 'Українська', short: 'Ua', dir: 'ltr', flagSvg: FLAGS.uk },
+  { code: 'en', name: 'English', short: 'En', dir: 'ltr', flagSvg: FLAGS.en },
+  { code: 'he', name: 'עברית', short: 'He', dir: 'rtl', flagSvg: FLAGS.he },
+  { code: 'ro', name: 'Română', short: 'Ro', dir: 'ltr', flagSvg: FLAGS.ro },
+  { code: 'de', name: 'Deutsch', short: 'De', dir: 'ltr', flagSvg: FLAGS.de },
+  { code: 'fr', name: 'Français', short: 'Fr', dir: 'ltr', flagSvg: FLAGS.fr },
+  { code: 'it', name: 'Italiano', short: 'It', dir: 'ltr', flagSvg: FLAGS.it },
 ];
 export const LANG_CODES = LANGS.map(l => l.code);
 export const DEFAULT_LANG = 'uk';
@@ -57,16 +55,20 @@ export const I18N = {
   de: dict(deUi, deSite),
   fr: dict(frUi, frSite),
   it: dict(itUi, itSite),
-  ru: dict(ruUi, ruSite),
 };
 
 export let lang = DEFAULT_LANG;
 export let dir = 'ltr';
 
+// Price facts every text may use without the caller passing them (data.js is the only place they are written):
+//   {usdM2} = 1300 · {uahM2} = '58 283' · {rateDate} = '03.10.2026'
+const dmy = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? `${m[3]}.${m[2]}.${m[1]}` : String(iso || ''); };
+export const AUTO_VARS = { usdM2: String(USD_PER_M2), uahM2: String(UAH_PER_M2).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0'), rateDate: dmy(RATE_DATE) };
+
 // t('unit.floor', {n: 5}) — fallback chain: current language → Ukrainian → English → the key itself.
 export function t(key, vars) {
   let s = I18N[lang]?.[key] ?? COMMON[key] ?? I18N.uk[key] ?? I18N.en[key] ?? key;
-  if (vars && typeof s === 'string') s = s.replace(/\{(\w+)\}/g, (m, k) => (vars[k] ?? m));
+  if (typeof s === 'string' && s.includes('{')) s = s.replace(/\{(\w+)\}/g, (m, k) => (vars?.[k] ?? AUTO_VARS[k] ?? m));
   return s;
 }
 
@@ -85,12 +87,18 @@ export function num(n) { try { return Number(n).toLocaleString(LOCALES[lang] || 
 const listeners = new Set();
 export function onLangChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
-export function setLang(l) {
+// setLang(l)                  — the visitor's own choice (language menu): remembered in localStorage.
+// setLang(l, { save: false })  — language not chosen in the menu (page start, ?lang= link): not remembered.
+//                                The first call on a page (boot) never saves unless
+//                                `save: true` is passed — callers that still do setLang(initialLang()) stay correct.
+let booted = false;
+export function setLang(l, { save = booted } = {}) {
   if (!LANG_CODES.includes(l)) l = DEFAULT_LANG;
+  booted = true;
   lang = l; dir = langInfo(l).dir;
   const html = document.documentElement;
   html.lang = l; html.dir = dir;
-  try { localStorage.setItem('vrc.lang', l); } catch (e) { /* storage blocked */ }
+  if (save) { try { localStorage.setItem('vrc.lang', l); localStorage.setItem('vrc.lang.by', 'user'); } catch (e) { /* storage blocked */ } }
   applyDom(document);
   listeners.forEach(fn => { try { fn(l); } catch (e) { console.error(e); } });
 }
@@ -107,18 +115,19 @@ export function applyDom(root) {
   }
 }
 
-// ?lang= → localStorage['vrc.lang'] → first match in navigator.languages → Ukrainian.
+// ---------------------------------------------------------------- initial language: ?lang= → the visitor's saved choice → Ukrainian
+// The owner's rule (BRIEF addendum 4, item 1): the site ALWAYS opens in Ukrainian. Nothing about the visitor is looked at —
+// no country, IP, time zone or browser language — and no network request is made. Only an explicit `?lang=` link or the
+// visitor's own earlier choice in the language menu changes that.
+const queryParam = k => { try { return new URLSearchParams(location.search).get(k); } catch (e) { return null; } };
+// The visitor's own, remembered choice. A 'vrc.lang' value without the 'vrc.lang.by' mark was written by an old automatic
+// start (v0.2 saved whatever it opened in) and is not a choice.
+function savedLang() {
+  try { const l = localStorage.getItem('vrc.lang'); return localStorage.getItem('vrc.lang.by') === 'user' && LANG_CODES.includes(l) ? l : null; } catch (e) { return null; }
+}
 export function initialLang() {
-  let l = null;
-  try { l = new URLSearchParams(location.search).get('lang'); } catch (e) { /* ignore */ }
-  if (LANG_CODES.includes(l)) return l;
-  try { l = localStorage.getItem('vrc.lang'); } catch (e) { l = null; }
-  if (LANG_CODES.includes(l)) return l;
-  try {
-    const prefs = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language];
-    for (const p of prefs) { const c = String(p || '').slice(0, 2).toLowerCase(); if (LANG_CODES.includes(c)) return c; }
-  } catch (e) { /* no navigator */ }
-  return DEFAULT_LANG;
+  const q = queryParam('lang'); if (LANG_CODES.includes(q)) return q;
+  return savedLang() || DEFAULT_LANG;
 }
 
 // Object handed to Walkthrough: live getters so a language switch is picked up.

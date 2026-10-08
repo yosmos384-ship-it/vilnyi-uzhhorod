@@ -51,7 +51,7 @@ export const PROJECT_LL = [PROJECT?.geo?.lat ?? 48.61133, PROJECT?.geo?.lon ?? 2
 // Embedded copy of data/pois.json (45 places; sources per place are in that file and in notes/W4-surroundings.md) plus the
 // on-site children's play centre from the plans. cat: transport | shopping | education | health | parks | leisure | city.
 // kind → i18n 'k.<kind>'.  key:true = priority label.  approx:true = position not exact (shown on the card).
-// name: uk + en here; he/ro/de/fr/it/ru in i18n-panorama.js.  Distances and bearings are NOT stored — computed below.
+// name: uk + en here; he/ro/de/fr/it in i18n-panorama.js.  Distances and bearings are NOT stored — computed below.
 export const POIS = [
   // --- transport
   { id: 'stop-hrushevskoho', cat: 'transport', kind: 'bus', name: { uk: 'Зупинка на вул. Грушевського', en: 'Bus stop on Hrushevskoho St' }, route: '24', ll: [48.611689, 22.277672], approx: true, key: true }, // position from plans p.5; stop name not confirmed; route 24 (suspilne.media, 27.08.2025)

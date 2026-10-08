@@ -1,8 +1,8 @@
 // Lead request flow (modal): 1 contact details → 2 payment option (+ declared discount category) → 3 confirmation.
 // PROJECT.features.booking === 'lead': no deposit, no bank transfer, no card payment — the sales office calls back.
 // Delivery order: artifact runtime db → PROJECT.leadsEndpoint (POST, needs PROJECT.leadsKey for Web3Forms) →
-// localStorage outbox + a copyable summary with direct call / Viber / e-mail buttons (the only path while the endpoint is empty).
-import { PROJECT, TYPES, money } from './data.js';
+// localStorage outbox + a copyable summary with direct call / Viber / WhatsApp / e-mail buttons (the only path while the endpoint is empty).
+import { PROJECT, TYPES, money, usd, usdOf } from './data.js';
 import { t, pick, planText, lang, dir, onLangChange, LANG_CODES, unitLabelL } from './i18n.js';
 
 // ---------- small utils shared with app.js ----------
@@ -99,7 +99,6 @@ const LOCAL = {
     'bk.viberHint': 'Підсумок скопійовано — вставте його в чат Viber.',
     'bk.office': 'Відділ продажу',
     'bk.hours': 'Пн–Пт {a}, Сб {b}',
-    'bk.est': 'орієнтовна',
   },
   en: {
     'bk.emailOpt': 'Email (optional)',
@@ -113,7 +112,6 @@ const LOCAL = {
     'bk.viberHint': 'Summary copied — paste it into the Viber chat.',
     'bk.office': 'Sales office',
     'bk.hours': 'Mon–Fri {a}, Sat {b}',
-    'bk.est': 'estimate',
   },
 };
 function L(key, vars) {
@@ -124,7 +122,7 @@ function L(key, vars) {
 }
 
 // ---------- formatting ----------
-const commaLang = () => lang === 'uk' || lang === 'ru';
+const commaLang = () => lang === 'uk';
 function fmtArea(n) {
   const s = Number(n).toFixed(2);
   return commaLang() ? s.replace('.', ',') + ' м²' : s + ' m²';
@@ -228,7 +226,7 @@ function stepper() {
 function unitSummaryHtml() {
   const u = S.unit;
   return `<div class="bk-unit"><div><div class="bk-unit-l" dir="${dir}">${esc(unitLabelL(u))}</div><div class="bk-unit-s">${esc(unitLine(u))}</div></div>
-    <div class="bk-unit-p">${esc(money(u.price))}${u.ppm ? `<small>${esc(money(u.ppm) + t('unit.perM2Short'))}</small>` : ''}</div></div>`;
+    <div class="bk-unit-p"><span dir="ltr">${esc(money(u.price))}</span><small dir="ltr">≈ ${esc(usd(usdOf(u)))}${u.ppm ? ` · ${esc(money(u.ppm) + t('unit.perM2Short'))}` : ''}</small></div></div>`;
 }
 
 function field(id, label, input, err) {
@@ -278,7 +276,7 @@ function stepPlan() {
     ${disc}
     <div class="bk-net" aria-live="polite"><span>${esc(t('calc.net'))}${r.discountPct ? ` · ${esc(t('calc.discount'))} −${r.discountPct}%` : ''}</span><b>${r.discountPct ? `<s>${esc(money(r.price))}</s>` : ''}${esc(money(r.net))}</b></div>
     <fieldset class="plans"><legend class="h4">${esc(t('bk.choosePlan'))}</legend>${plans().map(planOption).join('')}</fieldset>
-    <p class="fine">${esc(t('calc.disclaimer'))}${S.unit.priceSource === 'rooms' ? ' ' + esc(t('unit.priceEst')) : ''}</p>
+    <p class="fine">${esc(t('calc.disclaimer'))}</p>
     <div class="bk-actions"><button type="button" class="btn ghost" data-act="back" ${S.sending ? 'disabled' : ''}>${esc(t('bk.back'))}</button><button type="submit" class="btn primary" ${S.sending ? 'disabled' : ''}>${esc(S.sending ? t('bk.sending') : t('bk.confirm'))}</button></div>
   </form>`;
 }
@@ -330,7 +328,7 @@ function summaryText() {
     `${t('bk.resNo')}: ${S.result?.resNo || ''}`,
     `${t('bk.unit')}: ${unitLabelL(u)} (${u.id})`,
     unitLine(u),
-    `${t('bk.price')}: ${money(u.price)}${ppm}${u.priceSource === 'rooms' ? ` — ${L('bk.est')}` : ''}`,
+    `${t('bk.price')}: ${money(u.price)} (≈ ${usd(usdOf(u))})${ppm}`,
     `${t('bk.planChosen')}: ${p ? planText(p) : ''}`,
   ];
   if (d) lines.push(`${t('calc.discount')}: ${discountLabel(d)} −${d.percent}% (−${money(r.discount)})`, `${t('calc.net')}: ${money(r.net)}`);
@@ -416,7 +414,7 @@ function leadDoc() {
   const u = S.unit, f = S.f, p = curPlan(), r = curBreakdown(p), d = discountOf(f.discount);
   return {
     kind: 'request', resNo: S.result?.resNo || null, unitId: u.id, unit: unitLabelL(u), building: u.building, floor: u.floor, apNo: u.apNo ?? null,
-    rooms: u.rooms, area: TYPES[u.type]?.total ?? null, price: u.price, ppm: u.ppm ?? null, priceSource: u.priceSource || null, currency: PROJECT.currency || 'UAH',
+    rooms: u.rooms, area: TYPES[u.type]?.total ?? null, price: u.price, ppm: u.ppm ?? null, priceUsd: usdOf(u), priceSource: u.priceSource || null, currency: PROJECT.currency || 'UAH',
     plan: p?.id || null, planLabel: p ? planText(p) : '', discount: d?.id || '', discountPct: r.discountPct, discountDeclared: !!d,
     net: Math.round(r.net), first: Math.round(r.first), rest: Math.round(r.rest), months: r.months, monthly: Math.round(r.monthly),
     name: f.name, phone: fullPhone(), email: f.email, country: f.country, prefLang: f.prefLang, contactBy: f.contactBy,

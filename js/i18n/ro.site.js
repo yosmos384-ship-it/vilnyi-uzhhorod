@@ -3,7 +3,7 @@
 export default {
   // ── meta ──
   'meta.title': 'VILNYI — apartamente business class în Ujhorod',
-  'meta.desc': 'Apartamente cu 1, 2 și 3 camere în complexul VILNYI, str. Hrușevski nr. 4A, Ujhorod: patru clădiri, curte închisă fără mașini, parcare subterană, supermarket, club de fitness cu piscină. Prețuri orientative de la 47 450 ₴/m², plată în rate până la 17 luni.',
+  'meta.desc': 'Apartamente cu 1, 2 și 3 camere în complexul VILNYI, str. Hrușevski nr. 4A, Ujhorod: patru clădiri, curte închisă fără mașini, parcare subterană, supermarket, club de fitness cu piscină. Preț: {usdM2} $ pe m², în grivne la cursul Băncii Naționale a Ucrainei; plată în rate până la 17 luni.',
 
   // ── hero ──
   'hero.eyebrow': 'Ujhorod · cartierul Novîi · business class',
@@ -15,7 +15,7 @@ export default {
   'hero.stat.units': 'apartamente',
   'hero.stat.parking': 'locuri de parcare subterane',
   'hero.stat.buildings': 'clădiri',
-  'hero.stat.price': 'pe m², orientativ',
+  'hero.stat.price': 'pe m² · {usdM2} $',
   'hero.mode': 'Lumină',
   'hero.day': 'Zi',
   'hero.dusk': 'Amurg',
@@ -48,7 +48,7 @@ export default {
   'terms.title': 'Condiții transparente',
   'terms.lead': 'Plată integrală sau în rate, direct de la dezvoltator, până la 17 luni, cu un avans de 30–50%. Pentru militari și pentru personalul medical — reducere de 5%.',
   'terms.price': 'Preț pe m²',
-  'terms.priceD': 'Apartamente cu o cameră — de la 47 450 la 52 000 ₴/m², cu două camere — 56 500 ₴/m², cu trei camere — 52 000 ₴/m². Prețuri orientative, la data de 28.09.2026.',
+  'terms.priceD': 'Un singur preț pentru toate apartamentele: {usdM2} $ pe m² — în grivne, la cursul Băncii Naționale a Ucrainei din {rateDate}.',
   'terms.instT': 'Plată în rate',
   'terms.instD': 'De la dezvoltator — până la 17 luni. Avansul este de 30–50% din preț, iar restul se achită pe durata eșalonării.',
   'terms.discT': 'Reducere de 5%',
@@ -111,7 +111,7 @@ export default {
   'facts.permitV': 'nr. {n} din {d} — conform anunțului public',
   'facts.contractor': 'Antreprenor general',
   'facts.cadastral': 'Număr cadastral',
-  'facts.disclaimer': 'Vizualizările și planurile de pe site sunt preluate din conceptul de arhitectură; suprafețele, compartimentările și numerotarea apartamentelor se pot modifica. Prețurile sunt orientative și nu constituie o ofertă publică.',
+  'facts.disclaimer': 'Vizualizările și planurile de pe site sunt preluate din conceptul de arhitectură; suprafețele, compartimentările și numerotarea apartamentelor se pot modifica. Informațiile de pe site nu constituie o ofertă publică.',
   'facts.partner': 'Despre dezvoltator',
 
   // ── view (orientarea apartamentului) ──
@@ -143,4 +143,7 @@ export default {
   'brand.city': 'UJHOROD',
   'facts.perListing': 'conform anunțului public',
   'facts.customer': 'Beneficiar',
+
+  // v0.3 (V4-page): floating WhatsApp button — the prefilled greeting
+  'wa.greeting': 'Bună ziua! Mă interesează un apartament în complexul VILNYI din Ujhorod.',
 };

@@ -3,20 +3,26 @@
 // drag / swipe to look, wheel / pinch to zoom, gold floor rings to glide between standing points (re-projected cross-fade
 // with a slight zoom), room chips, style switcher, minimap from the room polygons, Reserve, and a Photo-real ↔ Live 3D toggle.
 //
-//   export async function openPanoTour(container, { unitId, styleId, room, pointId, yaw, i18n, lang, dir,
+//   export async function openPanoTour(container, { unitId, styleId, mode, room, pointId, yaw, i18n, lang, dir,
 //                                                   onExit(state), onReserve(unitId), onSwitchTo3D(state) })
-//     → { ok, setStyle(id), getState(), dispose() }
+//     → { ok, setStyle(id), setMode('day'|'dusk'|'night'), getState(), dispose(), styles, modes, mode, pointId }
 //   export const tourReady: Promise<manifest>;  export function hasTour(typeId[, styleId]) → boolean (after tourReady)
+//   export function tourInfo(typeId) → { type, mapped, refUnit, styles[], modes[] } | null      (after tourReady)
+//
+// The style switch offers only the styles of PROJECT.styles (data.js) that have panoramas; the light switch offers the
+// modes (day / dusk / night) rendered for the current scene. Switching style, light or point keeps the view direction.
 //
 // Manifest: assets/tour/tour.json (written by pano-work/build_tour.py)
-//   types[typeId]  = { refUnit, width, depth, azimuth, rooms:[{kind,name,level,poly:[[u,v]…]}], styles:{ styleId:{ points:[…] } } }
-//   commons[key]   = { building, floor, frame:'building', points:[…] }          (key: lobby | corridor | parking)
+//   types[typeId]  = { refUnit, width, depth, azimuth, rooms:[{kind,name,level,poly:[[u,v]…]}],
+//                      styles:{ styleId:{ points:[…], modes:{ day:{points:[…]}, dusk:{…}, night:{…} } } } }
+//   types[typeId]  = { mapTo: otherTypeId }   → the panoramas of a representative layout ("sample apartment" badge)
+//   commons[key]   = { building, floor, frame:'building', points:[…], modes:{…} }      (key: lobby | corridor | parking)
 //   commonsBy[bId][key] = same, per building; the viewer uses the unit's building, else `commons`
 //   point = { id, room, level, pos:[u, v, y], yawOffset, links:[{ to, yaw, dist }], img:{ '2k': path, '4k': path } }
 //   pos is unit-local (types) or building-local x/z (commons); y = floor height of the level; the camera sat at y + eye.
 // Projection: image centre = +v (+z) of the scene frame, left quarter = +u; yaw = three.js camera rotation.y (+ yawOffset).
 import * as THREE from 'three';
-import { unitById, unitLabel, corridorsOf, coresOf } from './data.js';
+import { unitById, unitLabel, corridorsOf, coresOf, PROJECT, UNITS, TYPES, plateOf, interiorOf, unitToLocal } from './data.js';
 import { tt, RTL } from './i18n-tour.js';
 
 const MANIFEST_URL = new URL('../assets/tour/tour.json', import.meta.url);
@@ -24,11 +30,58 @@ const ASSET_BASE = new URL('../assets/tour/', import.meta.url);
 let MAN = null;
 export const tourReady = fetch(MANIFEST_URL, { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).catch(() => null)
   .then(m => (MAN = m && m.types ? m : { types: {}, commons: {} }));
+const MODES = ['day', 'dusk', 'night'];
+// a layout without its own renders points to a representative one (mapTo); follow the chain (at most a few steps)
+function resolveType(man, typeId) {
+  let id = typeId, t = man && man.types && id ? man.types[id] : null, n = 0;
+  while (t && t.mapTo && n++ < 4) { id = t.mapTo; t = man.types[id]; }
+  return t && t.styles ? { id, t, mapped: id !== typeId } : null;
+}
+// light modes of one style / commons entry: { mode: points[] } (a manifest without modes is one 'day' set)
+function modesOf(e) {
+  const out = {};
+  if (e && e.modes) for (const m of MODES) { const P = e.modes[m] && e.modes[m].points; if (P && P.length) out[m] = P; }
+  if (!Object.keys(out).length && e && e.points && e.points.length) out.day = e.points;
+  return out;
+}
+// the styles offered: PROJECT.styles (ids or {id}) when the project lists them, else what the manifest has (at most four)
+function allowedStyles(have) {
+  const list = PROJECT && Array.isArray(PROJECT.styles) && PROJECT.styles.length ? PROJECT.styles.map(s => (typeof s === 'string' ? s : s && s.id)).filter(Boolean) : null;
+  return (list ? list.filter(s => have.includes(s)) : have).slice(0, 4);
+}
+// The manifest layout that serves a layout: its own panoramas, the manifest's `mapTo`, or — when the manifest names
+// nothing — the rendered layout with the same number of rooms and the nearest total area ("sample apartment").
+const _typeMeta = (() => { let M = null; return k => { if (!M) { M = {}; for (const u of UNITS) if (!M[u.type]) M[u.type] = { rooms: u.rooms, area: (TYPES[u.type] && TYPES[u.type].total) || 0 }; } return M[k] || null; }; })();
+const _hasPanos = t => !!(t && t.styles && Object.keys(t.styles).some(k => Object.keys(modesOf(t.styles[k])).length));
+function repType(man, typeId) {
+  const own = resolveType(man, typeId);
+  if (own && _hasPanos(own.t)) return own;
+  const me = _typeMeta(typeId); if (!me || !man || !man.types) return null;
+  let best = null, bd = Infinity;
+  for (const k of Object.keys(man.types)) {
+    const t = man.types[k]; if (t.mapTo || !_hasPanos(t)) continue;
+    const o = _typeMeta(k); if (!o || o.rooms !== me.rooms) continue;
+    const d = Math.abs(o.area - me.area); if (d < bd) { bd = d; best = k; }
+  }
+  return best ? { id: best, t: man.types[best], mapped: true } : null;
+}
+/** After tourReady: the layout whose panoramas a layout is shown with → { type, mapped } | null. */
+export function tourTypeFor(typeId) { const r = repType(MAN, typeId); return r ? { type: r.id, mapped: r.mapped } : null; }
+/** After tourReady: the common-area panoramas of a building → { lobby?, corridor?, parking? } (manifest entries) | null. */
+export function tourCommons(bId) { return (MAN && MAN.commonsBy && MAN.commonsBy[bId]) || null; }
+// the last state handed to onSwitchTo3D / onExit (walk.js reads it when the page opens the walkthrough afterwards)
+function stash(state) { try { window.VRC_TOUR_LAST = { t: Date.now(), state }; } catch { /* no window */ } return state; }
 export function hasTour(typeId, styleId) {
-  const t = MAN && MAN.types && typeId ? MAN.types[typeId] : null; if (!t) return false;
-  const st = t.styles || {};
-  const ok = s => !!(st[s] && st[s].points && st[s].points.length);
+  const r = repType(MAN, typeId); if (!r) return false;
+  const st = r.t.styles || {};
+  const ok = s => !!(st[s] && Object.keys(modesOf(st[s])).length);
   return styleId ? ok(styleId) : Object.keys(st).some(ok);
+}
+export function tourInfo(typeId) {
+  const r = repType(MAN, typeId); if (!r) return null;
+  const styles = allowedStyles(Object.keys(r.t.styles || {}).filter(s => Object.keys(modesOf(r.t.styles[s])).length));
+  const modes = MODES.filter(m => styles.some(s => modesOf(r.t.styles[s])[m]));
+  return styles.length ? { type: r.id, mapped: r.mapped, refUnit: r.t.refUnit, styles, modes } : null;
 }
 const FOV0 = 78, FOV_MIN = 32, FOV_MAX = 100;
 const COMMONS = ['lobby', 'corridor', 'parking'];
@@ -61,6 +114,15 @@ const CSS = `
 .pt-styles .lbl{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--g);padding:0 8px 0 9px;white-space:nowrap}
 .pt-styles button{height:28px;padding:0 12px;border-radius:999px;font-size:12px;white-space:nowrap}
 .pt-styles button.on{background:linear-gradient(135deg,#e6c987,#b88a3c);color:#111;font-weight:700}
+.pt-time{display:flex;align-items:center;gap:2px;padding:3px;border-radius:999px}
+.pt-time button{height:28px;padding:0 11px;border-radius:999px;font-size:12px;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.pt-time button svg{width:15px;height:15px;flex:none;display:block}
+.pt-time button.on{background:linear-gradient(135deg,#e6c987,#b88a3c);color:#111;font-weight:700}
+.pt-time button:not(.on):hover{color:var(--g2)}
+.pt-row{flex-wrap:wrap}
+.pt-styles[hidden],.pt-time[hidden]{display:none}
+.pt.phone .pt-time button{padding:0 10px}.pt.phone .pt-time button span{display:none}
+.pt.phone .pt-styles button{padding:0 10px;font-size:11.5px}
 .pt-chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px;max-width:min(100%,860px);-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%);padding-inline:12px}
 .pt-chips::-webkit-scrollbar{display:none}
 .pt-chip{flex:0 0 auto;height:32px;padding:0 13px;border-radius:999px;font-size:12.5px;white-space:nowrap;background:var(--bg);border:1px solid var(--ln);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
@@ -97,20 +159,25 @@ const CSS = `
 .pt.phone .pt-title{max-width:calc(100% - 120px)}
 .pt.phone .pt-map{bottom:auto;top:calc(100px + var(--st))}
 .pt.phone .pt-map canvas{width:104px;height:104px}
-.pt.phone .pt-side{top:auto;bottom:calc(104px + var(--sb));transform:none}
+.pt.phone .pt-side{top:auto;bottom:calc(148px + var(--sb));transform:none}
 .pt.phone .pt-side .zm{display:none}
-.pt.phone .pt-hint{bottom:calc(98px + var(--sb));font-size:11.5px;white-space:normal;text-align:center;border-radius:14px;width:max-content}
+.pt.phone .pt-hint{bottom:calc(142px + var(--sb));font-size:11.5px;white-space:normal;text-align:center;border-radius:14px;width:max-content}
 .pt.phone .pt-styles .lbl{display:none}
 .pt.phone .pt-legal{inset-inline-end:auto;inset-inline-start:10px}
 .pt.embedded .pt-title{max-width:min(40vw,440px)}
 .pt.phone.embedded .pt-title{max-width:calc(50% - 70px)}
-.pt.phone.embedded .pt-map{top:calc(98px + var(--st))}
+.pt.phone.embedded .pt-map{top:calc(110px + var(--st))}
+.pt.embedded .pt-mode{display:none}
+.pt-exit[hidden]{display:none}
 `;
 
 const ICON = {
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
   cube: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>',
   cam: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.4"/></svg>',
+  day: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>',
+  dusk: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 17h18M6 20.5h12M7 17a5 5 0 0 1 10 0M12 5v3M4.6 9.6l2 2M19.4 9.6l-2 2"/></svg>',
+  night: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>',
   gyro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M3 9c-1 2-1 4 0 6M21 9c1 2 1 4 0 6"/></svg>',
 };
 
@@ -146,7 +213,9 @@ void main(){
   vec4 a = equi(tA, proj(cameraPosition, d, cA, rA));
   vec4 col = a;
   if (k > 0.0) { vec4 b = equi(tB, proj(cameraPosition, d, cB, rB)); col = mix(a, b, k); }
-  oc = vec4(col.rgb * fade, 1.0);
+  // the panoramas are sRGB JPEGs sampled as linear (correct filtering and cross-fade); encode for the canvas again —
+  // without this the picture comes out about one stop too dark and over-saturated
+  oc = linearToOutputTexel(vec4(col.rgb * fade, 1.0));
 }`;
 
 function strFor(opts) {
@@ -156,7 +225,8 @@ function strFor(opts) {
   const dirV = opts.dir || (i18n && (typeof i18n.dir === 'function' ? i18n.dir() : i18n.dir)) || (RTL.has(lang) ? 'rtl' : 'ltr');
   const T = (key) => {
     // site i18n first for the shared vocabulary (walk.* / rooms), then our own table
-    const siteKey = { lobby: 'walk.lobby', corridor: 'walk.corridor', parking: 'walk.parking', balcony: 'walk.balcony', reserve: 'walk.reserve' }[key.replace(/^r\./, '')];
+    const siteKey = { lobby: 'walk.lobby', corridor: 'walk.corridor', parking: 'walk.parking', balcony: 'walk.balcony', reserve: 'walk.reserve' }[key.replace(/^r\./, '')]
+      || (/^s\.[a-z0-9_-]+$/i.test(key) ? 'style.' + key.slice(2) + '.n' : null);
     if (siteKey && i18n && typeof i18n.t === 'function') {
       try { const s = i18n.t(siteKey); if (typeof s === 'string' && s && s !== siteKey) return s; } catch { /* optional */ }
     }
@@ -182,22 +252,31 @@ export async function openPanoTour(container, opts = {}) {
   // ---------------------------------------------------------------- which scene / style
   const sceneDefs = {};   // key → { kind:'apt'|'commons', def, typeId?, sample? }
   const typeId = (unit && unit.type) || opts.typeId;
-  if (typeId && man.types && man.types[typeId]) {
-    const t = man.types[typeId], styles = {};
-    for (const [k, v] of Object.entries(t.styles || {})) styles[k] = { points: norm(v.points) };
-    sceneDefs.apt = { kind: 'apt', def: { ...t, styles }, typeId, sample: !!(unit && t.refUnit && unit.id !== t.refUnit) };
+  stash(null);
+  const normModes = (e) => { const o = {}; for (const [m, P] of Object.entries(modesOf(e))) o[m] = norm(P); return o; };
+  const RT = repType(man, typeId);
+  if (RT) {
+    const t = RT.t, styles = {};
+    const have = Object.keys(t.styles || {}).filter(k => Object.keys(modesOf(t.styles[k])).length);
+    for (const k of allowedStyles(have)) styles[k] = { modes: normModes(t.styles[k]) };
+    if (Object.keys(styles).length) sceneDefs.apt = { kind: 'apt', def: { ...t, styles }, typeId: RT.id, mapped: RT.mapped, sample: !!(RT.mapped || (unit && t.refUnit && unit.id !== t.refUnit)) };
   }
   // common areas of the unit's own building (commonsBy[building]), else the default set
+  // (V4: only the unit's OWN building — another tower's lobby is not shown as this one's; without a unit: the default set)
   const bld = (unit && unit.building) || opts.building;
-  const CM = (bld && man.commonsBy && man.commonsBy[bld]) || man.commons || {};
-  for (const c of COMMONS) if (CM[c]) sceneDefs[c] = { kind: 'commons', def: { ...CM[c], styles: { default: { points: norm(CM[c].points) } } } };
-  const stylesOf = (key) => { const d = sceneDefs[key]; return d ? Object.keys(d.def.styles || {}).filter(s => (d.def.styles[s].points || []).length) : []; };
+  const CM = bld ? ((man.commonsBy && man.commonsBy[bld]) || {}) : (man.commons || {});
+  // a lift hall is rendered on one floor of the tower: exact for every floor of the same plate, a sample for the others
+  const corridorExact = !!(unit && CM.corridor && plateOf(unit.building, unit.floor) && plateOf(unit.building, unit.floor) === plateOf(CM.corridor.building || unit.building, CM.corridor.floor));
+  for (const c of COMMONS) if (CM[c] && Object.keys(modesOf(CM[c])).length) sceneDefs[c] = { kind: 'commons', def: { ...CM[c], styles: { default: { modes: normModes(CM[c]) } } } };
+  const stylesOf = (key) => { const d = sceneDefs[key]; return d ? Object.keys(d.def.styles || {}) : []; };
+  const modesFor = (key, style) => { const d = sceneDefs[key], st = d && d.def.styles[style]; return st ? MODES.filter(m => st.modes[m]) : []; };
+  const pickMode = (key, style, want) => { const L = modesFor(key, style); return L.includes(want) ? want : L.includes('day') ? 'day' : L[0]; };
 
   // ---------------------------------------------------------------- DOM
   if (!document.getElementById('pt-css')) { const st = document.createElement('style'); st.id = 'pt-css'; st.textContent = CSS; document.head.appendChild(st); }
   const root = document.createElement('div');
   root.className = 'pt'; root.dir = dir; root.lang = lang;
-  if (container.classList && container.classList.contains('vw-pano')) root.classList.add('embedded');
+  if (opts.embedded || (container.classList && container.classList.contains('vw-pano'))) root.classList.add('embedded');
   if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
   container.appendChild(root);
   const isPhone = () => root.clientWidth < 640 || root.clientHeight < 500;
@@ -237,12 +316,12 @@ export async function openPanoTour(container, opts = {}) {
     </div>
     <div class="pt-p pt-map"><canvas width="300" height="300"></canvas><div class="cap">${esc(T('plan'))}</div></div>
     <div class="pt-p pt-hint">${esc(T('hint'))}</div>
-    <div class="pt-bottom"><div class="pt-row"><div class="pt-p pt-styles"></div>${opts.onReserve && unit ? `<button type="button" class="pt-res">${esc(T('reserve'))}</button>` : ''}</div><div class="pt-chips"></div></div>
+    <div class="pt-bottom"><div class="pt-row"><div class="pt-p pt-styles"></div><div class="pt-p pt-time" role="group" aria-label="${esc(T('light'))}"></div>${opts.onReserve && unit ? `<button type="button" class="pt-res">${esc(T('reserve'))}</button>` : ''}</div><div class="pt-chips"></div></div>
     <div class="pt-legal">${esc(T('illus'))}</div>
     <div class="pt-busy"></div>
     <div class="pt-load"><div class="in"><div class="pt-spin"></div><div>${esc(T('loading'))}</div></div></div>`;
   const $ = s => root.querySelector(s);
-  const el = { canvas: $('canvas.pt-gl'), t1: $('.pt-title .t1'), t2: $('.pt-title .t2'), badge: $('.pt-badge'), exit: $('.pt-exit'), styles: $('.pt-styles'), chips: $('.pt-chips'),
+  const el = { canvas: $('canvas.pt-gl'), t1: $('.pt-title .t1'), t2: $('.pt-title .t2'), badge: $('.pt-badge'), exit: $('.pt-exit'), styles: $('.pt-styles'), time: $('.pt-time'), chips: $('.pt-chips'),
     map: $('.pt-map'), mode: $('.pt-mode'), res: $('.pt-res'), mapC: $('.pt-map canvas'), hint: $('.pt-hint'), load: $('.pt-load'), busy: $('.pt-busy'), gy: $('.pt-side .gy') };
 
   // ---------------------------------------------------------------- three
@@ -269,10 +348,10 @@ export async function openPanoTour(container, opts = {}) {
 
   // ---------------------------------------------------------------- state
   const S = {
-    key: startKey, style: null, point: null, yaw: 0, pitch: -0.05, fov: FOV0, vy: 0, vp: 0,
+    key: startKey, style: null, mode: MODES.includes(opts.mode) ? opts.mode : 'day', wantMode: MODES.includes(opts.mode) ? opts.mode : 'day', point: null, yaw: 0, pitch: -0.05, fov: FOV0, vy: 0, vp: 0,
     trans: null, dirty: true, disposed: false, touched: false, gyro: null, lastT: performance.now(),
   };
-  const pts = () => { const d = sceneDefs[S.key]; const st = d && d.def.styles[S.style]; return (st && st.points) || []; };
+  const pts = () => { const d = sceneDefs[S.key]; const st = d && d.def.styles[S.style]; return (st && (st.modes[S.mode] || st.modes[pickMode(S.key, S.style, S.mode)])) || []; };
   const byId = (id) => pts().find(p => p.id === id);
   const eyeOf = (p) => new THREE.Vector3(p.pos[0], (p.pos[2] || 0) + (man.eye || 1.6), p.pos[1]);
 
@@ -294,12 +373,16 @@ export async function openPanoTour(container, opts = {}) {
     e.used = performance.now();
     return e.p;
   }
-  function trim() {
-    const hi = [...cache.entries()].filter(([u]) => !/-lo\.jpg$/.test(u)).sort((a, b) => b[1].used - a[1].used);
-    const keep = new Set([U.tA.value, U.tB.value]);
-    for (const [u, e] of hi.slice(isPhone() ? 3 : 5)) if (e.t && !keep.has(e.t)) { e.t.dispose(); cache.delete(u); }
+  function trim() {   // LRU per tier: the 2k tier is also what gets preloaded (neighbours, other light modes)
+    const keep = new Set([U.tA.value, U.tB.value]), phone = isPhone();
+    const all = [...cache.entries()].sort((a, b) => b[1].used - a[1].used);
+    const drop = (list, n) => { for (const [u, e] of list.slice(n)) if (e.t && !keep.has(e.t)) { e.t.dispose(); cache.delete(u); } };
+    drop(all.filter(([u]) => /-4k\.jpg$/.test(u)), phone ? 1 : 3);
+    drop(all.filter(([u]) => !/-4k\.jpg$/.test(u)), phone ? 6 : 12);
   }
-  const hiOK = (p) => p.img && p.img !== p.lo && maxTex >= 4096 && !isPhone() && !(navigator.connection && navigator.connection.saveData);
+  // tier choice: phones, data-saver connections and GPUs below 4096 px stay on the 2k tier
+  const saver = () => !!(navigator.connection && (navigator.connection.saveData || /(^|-)2g$/.test(navigator.connection.effectiveType || '')));
+  const hiOK = (p) => p.img && p.img !== p.lo && maxTex >= 4096 && !isPhone() && !saver();
   async function bestNow(p) {   // lo immediately (or hi if cached), hi later
     const hiE = p.img && cache.get(p.img);
     if (hiE && hiE.t && hiOK(p)) return hiE.t;
@@ -313,9 +396,19 @@ export async function openPanoTour(container, opts = {}) {
       U.tA.value = t; S.dirty = true;
     }).catch(() => {});
   }
+  let preTok = 0;
   function preloadNeighbours(p) {
-    const phone = isPhone();
-    for (const id of p.links || []) { const q = byId(id); if (!q) continue; tex(q.lo || q.img).catch(() => {}); if (!phone && hiOK(q)) tex(q.img).catch(() => {}); }
+    const tok = ++preTok;
+    // 1) the linked points (what a tap on a ring needs) — 2k tier only; the 4k tier is fetched on arrival
+    for (const id of (p.links || []).slice(0, isPhone() ? 3 : 6)) { const q = byId(id); if (q) tex(q.lo || q.img).catch(() => {}); }
+    // 2) a little later, when the visitor stays: the same point in the other light modes and styles (instant switches)
+    if (saver()) return;
+    setTimeout(() => {
+      if (S.disposed || tok !== preTok || S.point !== p) return;
+      const d = sceneDefs[S.key], st = d && d.def.styles[S.style];
+      for (const m of modesFor(S.key, S.style)) { if (m === S.mode) continue; const q = st.modes[m].find(x => x.id === p.id); if (q) tex(q.lo || q.img).catch(() => {}); }
+      if (!isPhone()) for (const s2 of stylesOf(S.key)) { if (s2 === S.style) continue; const P2 = d.def.styles[s2].modes[pickMode(S.key, s2, S.mode)] || []; const q = P2.find(x => x.id === p.id); if (q) tex(q.lo || q.img).catch(() => {}); }
+    }, 1400);
   }
 
   // ---------------------------------------------------------------- hotspots
@@ -331,12 +424,62 @@ export async function openPanoTour(container, opts = {}) {
       ring.renderOrder = disc.renderOrder = 2; g.add(disc, ring, hit); g.userData = { ring, disc, id: q.id };
       hotGroup.add(g);
     }
+    // the entrance door: from the flat's point nearest to it out to the lift hall, and back in from there
+    const pt = portalOf(p);
+    if (pt) {
+      const g = new THREE.Group();
+      g.position.set(pt.pos[0], 0.02, pt.pos[1]);
+      const ring = new THREE.Mesh(ringGeo, mkMat(0.95, 0xffffff)), disc = new THREE.Mesh(discGeo, mkMat(0.3, 0xe6c987));
+      const hit = new THREE.Mesh(hitGeo, mkMat(0, 0xffffff)); hit.userData.portal = pt;
+      ring.renderOrder = disc.renderOrder = 2; g.add(disc, ring, hit); g.userData = { ring, disc, id: '__door', portal: pt };
+      hotGroup.add(g);
+    }
     S.dirty = true;
+  }
+  // Entrance portal of the current point, or null. Flat side: the point nearest to the entrance door (within 5 m);
+  // lift hall side: the points within 9 m of the flat's door (same plate only — on another plate the doors differ).
+  const ENT = (() => {
+    if (!unit || !sceneDefs.apt || !sceneDefs.corridor) return null;
+    try {
+      const I = interiorOf(sceneDefs.apt.typeId), d = I && I.doors.find(q => q.type === 'entrance'); if (!d) return null;
+      const own = unitToLocal(unit, unit.door.u, 0), V = unit.frame.V;
+      return { p: [d.p[0], d.p[1]], t: +d.t || 0.2, own, V, exact: corridorExact && !sceneDefs.apt.mapped };
+    } catch { return null; }
+  })();
+  function portalOf(p) {
+    if (!ENT) return null;
+    if (S.key === 'apt') {
+      const P = pts(); let best = null, bd = 5;
+      for (const q of P) { const dd = Math.hypot(q.pos[0] - ENT.p[0], q.pos[1] - ENT.p[1]); if (dd < bd) { bd = dd; best = q; } }
+      if (!best || best.id !== p.id) return null;
+      // the corridor point nearest to this flat's door (exact plate) or the first one; arrive looking away from the door
+      const CP = (sceneDefs.corridor.def.styles.default.modes[pickMode('corridor', 'default', S.mode)]) || [];
+      let cp = CP[0], cd = Infinity; if (ENT.exact) for (const q of CP) { const dd = Math.hypot(q.pos[0] - ENT.own[0], q.pos[1] - ENT.own[1]); if (dd < cd) { cd = dd; cp = q; } }
+      if (!cp) return null;
+      return { pos: [ENT.p[0], Math.max(0.3, ENT.t + 0.25)], scene: 'corridor', pointId: cp.id, yaw: ENT.exact ? Math.atan2(ENT.V[0], ENT.V[1]) : undefined };
+    }
+    if (S.key === 'corridor' && ENT.exact) {
+      if (Math.hypot(p.pos[0] - ENT.own[0], p.pos[1] - ENT.own[1]) > 9) return null;
+      const P = (() => { const d = sceneDefs.apt, st = d.def.styles[S.aptStyle] || d.def.styles[Object.keys(d.def.styles)[0]]; return st.modes[S.mode] || st.modes[Object.keys(st.modes)[0]] || []; })();
+      let best = null, bd = 5; for (const q of P) { const dd = Math.hypot(q.pos[0] - ENT.p[0], q.pos[1] - ENT.p[1]); if (dd < bd) { bd = dd; best = q; } }
+      if (!best) return null;
+      return { pos: [ENT.own[0] - ENT.V[0] * 0.35, ENT.own[1] - ENT.V[1] * 0.35], scene: 'apt', pointId: best.id, yaw: Math.PI };
+    }
+    return null;
   }
 
   // ---------------------------------------------------------------- HUD
+  // the plan's own name of the room the point stands in (manifest rooms carry nk = 'room.kitchenLiving' …; the site's
+  // dictionaries have it as walk.<nk>) — the same words as the live walkthrough's labels; else the generic room kind
+  function planName(p) {
+    const d = sceneDefs[S.key] && sceneDefs[S.key].def, r = d && d.rooms && d.rooms.find(q => q.nk && q.poly && pointInPoly(p.pos, q.poly));
+    if (!r || !opts.i18n || typeof opts.i18n.t !== 'function') return null;
+    try { const k = 'walk.' + r.nk, v = opts.i18n.t(k); return typeof v === 'string' && v && v !== k ? v : null; } catch { return null; }
+  }
   function roomLabel(p) {
     if (COMMONS.includes(p.room)) return T('r.' + p.room);
+    const pn = planName(p);
+    if (pn) { const same = [...new Set(pts().filter(q => planName(q) === pn).map(q => baseId(q.id)))]; return pn + (same.length > 1 ? ' ' + (same.indexOf(baseId(p.id)) + 1) : ''); }
     const name = T('r.' + p.room);
     const same = [...new Set(pts().filter(q => q.room === p.room).map(q => baseId(q.id)))];
     const n = same.length > 1 ? ' ' + (same.indexOf(baseId(p.id)) + 1) : '';
@@ -349,12 +492,18 @@ export async function openPanoTour(container, opts = {}) {
     else head = T('building');
     el.t1.textContent = roomLabel(p);
     el.t2.textContent = head;
-    el.badge.hidden = !(S.key === 'apt' && sceneDefs.apt.sample);
+    el.badge.hidden = !((S.key === 'apt' && sceneDefs.apt.sample) || (S.key === 'corridor' && (opts.corridorSample || (unit && !corridorExact))));
   }
   function renderStyles() {
     const list = S.key === 'apt' ? stylesOf('apt') : [];
     el.styles.hidden = list.length < 2;
-    el.styles.innerHTML = `<span class="lbl">${esc(T('design'))}</span>` + list.map(s => `<button type="button" data-s="${s}" class="${s === S.style ? 'on' : ''}">${esc(T('s.' + s) === 's.' + s ? s : T('s.' + s))}</button>`).join('');
+    el.styles.innerHTML = `<span class="lbl">${esc(T('design'))}</span>` + list.map(s => `<button type="button" data-s="${s}" class="${s === S.style ? 'on' : ''}" aria-pressed="${s === S.style}">${esc(T('s.' + s) === 's.' + s ? s : T('s.' + s))}</button>`).join('');
+    renderTime();
+  }
+  function renderTime() {
+    const list = modesFor(S.key, S.style);
+    el.time.hidden = list.length < 2;
+    el.time.innerHTML = list.map(m => `<button type="button" data-t="${m}" class="${m === S.mode ? 'on' : ''}" aria-pressed="${m === S.mode}" aria-label="${esc(T('m.' + m))}" title="${esc(T('m.' + m))}">${ICON[m]}<span>${esc(T('m.' + m))}</span></button>`).join('');
   }
   function renderChips() {
     const P = pts(), seen = new Set(), chips = [];
@@ -482,14 +631,15 @@ export async function openPanoTour(container, opts = {}) {
     S.dirty = true;
     if (x >= 1) finishTrans();
   }
-  async function enterScene(key, { pointId, room, yaw, style } = {}) {
+  async function enterScene(key, { pointId, room, roomIndex = 0, yaw, style } = {}) {
     const d = sceneDefs[key]; if (!d) return;
     const styles = stylesOf(key);
     const near = { monaco: 'milano', kyoto: 'nordic', paris: 'riviera' }[style || opts.styleId];   // designs without renders → the nearest rendered one
-    const st = style && styles.includes(style) ? style : (key === 'apt' ? (styles.includes(opts.styleId) ? opts.styleId : styles.includes(near) ? near : styles.includes(S.style) ? S.style : styles[0]) : styles[0]);
-    const prevKey = S.key; S.key = key; S.style = st;
+    const st = style && styles.includes(style) ? style : (key === 'apt' ? (styles.includes(S.aptStyle) ? S.aptStyle : styles.includes(opts.styleId) ? opts.styleId : styles.includes(near) ? near : styles[0]) : styles[0]);
+    const prevKey = S.key; S.key = key; S.style = st; if (key === 'apt') S.aptStyle = st;
+    S.mode = pickMode(key, st, S.wantMode);
     const P = pts();
-    let p = (pointId && P.find(q => q.id === pointId)) || (room && P.find(q => q.room === room || baseId(q.id) === room));
+    let p = (pointId && P.find(q => q.id === pointId)) || (room && (P.find(q => q.room === room && (q.roomIndex || 0) === roomIndex) || P.find(q => q.room === room || baseId(q.id) === room)));
     if (!p && room === 'living') p = P.find(q => q.room === 'living');
     p = p || P.find(q => q.room === 'living') || P[0];
     if (yaw === undefined) yaw = p.view ?? p.yaw ?? 0;
@@ -507,16 +657,28 @@ export async function openPanoTour(container, opts = {}) {
       renderStyles(); renderChips(); drawMap();
     }
   }
-  async function setStyle(styleId) {
-    if (S.key !== 'apt' || !stylesOf('apt').includes(styleId) || styleId === S.style || S.trans) return;
+  // the same point (else the nearest one) of another panorama set, cross-faded in place: view direction and zoom stay
+  async function swapSet(apply) {
     const cur = S.point;
-    S.style = styleId;
+    apply();
     const P = pts();
     let p = P.find(q => q.id === cur.id);
     if (!p) { let bd = Infinity; for (const q of P) { const dd = Math.hypot(q.pos[0] - cur.pos[0], q.pos[1] - cur.pos[1]) + ((q.level || 0) !== (cur.level || 0) ? 50 : 0); if (dd < bd) { bd = dd; p = q; } } }
     S.point = { ...cur, id: '__prev' };   // force a cross-fade in place
     await go(p, { walk: false });
+    if (S.point !== p && !S.trans) { S.point = p; buildHotspots(); }   // the load failed: stay consistent
     renderStyles();
+  }
+  async function setStyle(styleId) {
+    if (S.key !== 'apt' || !stylesOf('apt').includes(styleId) || styleId === S.style || S.trans) return false;
+    await swapSet(() => { S.style = styleId; S.aptStyle = styleId; S.mode = pickMode(S.key, styleId, S.wantMode); });
+    return true;
+  }
+  async function setMode(mode) {
+    if (!modesFor(S.key, S.style).includes(mode) || mode === S.mode || S.trans) return false;
+    S.wantMode = mode;
+    await swapSet(() => { S.mode = mode; });
+    return true;
   }
 
   // ---------------------------------------------------------------- input
@@ -528,13 +690,13 @@ export async function openPanoTour(container, opts = {}) {
     ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
     const hits = ray.intersectObjects(hotGroup.children.map(g => g.children[2]), false);
-    if (hits.length) return byId(hits[0].object.userData.target);
+    if (hits.length) return hits[0].object.userData.portal || byId(hits[0].object.userData.target);
     // otherwise: the linked point closest to the clicked direction (within ~16°)
     let best = null, bd = 0.28;
     for (const g of hotGroup.children) {
       const v = g.position.clone().sub(camera.position).normalize();
       const a = Math.acos(clamp(v.dot(ray.ray.direction), -1, 1));
-      if (a < bd) { bd = a; best = byId(g.userData.id); }
+      if (a < bd) { bd = a; best = g.userData.portal || byId(g.userData.id); }
     }
     return best;
   }
@@ -568,7 +730,7 @@ export async function openPanoTour(container, opts = {}) {
     if (e.pointerType === 'mouse') {   // hover feedback
       const h = pick(e.clientX, e.clientY);
       el.canvas.classList.toggle('hot', !!h);
-      for (const g of hotGroup.children) { const on = h && g.userData.id === h.id; g.userData.ring.material.opacity = on ? 1 : 0.85; g.userData.disc.material.opacity = on ? 0.45 : 0.2; g.scale.setScalar(on ? 1.18 : 1); }
+      for (const g of hotGroup.children) { const on = h && (h.scene ? g.userData.portal === h : g.userData.id === h.id); g.userData.ring.material.opacity = on ? 1 : 0.85; g.userData.disc.material.opacity = on ? 0.45 : 0.2; g.scale.setScalar(on ? 1.18 : 1); }
       S.dirty = true;
     }
   });
@@ -579,7 +741,7 @@ export async function openPanoTour(container, opts = {}) {
     if (!ptrs.size) {
       el.canvas.classList.remove('drag');
       if (drag && performance.now() - drag.t > 80) { S.vy = S.vp = 0; }
-      if (wasTap) { const target = pick(e.clientX, e.clientY); if (target) go(target); }
+      if (wasTap) { const target = pick(e.clientX, e.clientY); if (target && target.scene) enterScene(target.scene, { pointId: target.pointId, yaw: target.yaw }); else if (target) go(target); }
       drag = null;
     }
   };
@@ -596,6 +758,7 @@ export async function openPanoTour(container, opts = {}) {
   });
   root.querySelectorAll('.pt-side .zm').forEach(b => b.onclick = () => { touched(); S.fov = clamp(S.fov + (+b.dataset.z) * 10, FOV_MIN, FOV_MAX); S.dirty = true; });
   el.styles.onclick = e => { const b = e.target.closest('button[data-s]'); if (b) { touched(); setStyle(b.dataset.s); } };
+  el.time.onclick = e => { const b = e.target.closest('button[data-t]'); if (b) { touched(); setMode(b.dataset.t); } };
   el.chips.onclick = e => {
     const b = e.target.closest('button[data-i]'); if (!b) return;
     touched();
@@ -613,9 +776,10 @@ export async function openPanoTour(container, opts = {}) {
     if (best) { touched(); go(best, { walk: (S.point.links || []).includes(best.id) }); }
   });
   el.exit.onclick = () => { const s = getState(); dispose(); opts.onExit && opts.onExit(s); };
+  el.exit.hidden = opts.exit === false;
   el.mode.onclick = e => {
     if (!e.target.closest('button[data-m="3d"]') || !opts.onSwitchTo3D) return;
-    const s = getState(); dispose(); opts.onSwitchTo3D(s);
+    const s = stash(getState()); dispose(); opts.onSwitchTo3D(s);
   };
   if (el.res) el.res.onclick = () => { touched(); opts.onReserve(unit.id, getState()); };
 
@@ -675,12 +839,14 @@ export async function openPanoTour(container, opts = {}) {
 
   function getState() {
     const p = S.point; if (!p) return null;
-    const yaw = wrapPi(S.yaw);
-    if (S.key === 'apt') return { unitId: unit ? unit.id : opts.unitId, styleId: S.style, room: { kind: p.room, index: p.roomIndex || 0, level: p.level || 0 },
-      u: p.pos[0], v: p.pos[1], level: p.level || 0, yaw, pointId: p.id, sample: sceneDefs.apt.sample };
+    const yaw = wrapPi(S.yaw), pitch = S.pitch;
+    if (S.key === 'apt') return { unitId: unit ? unit.id : opts.unitId, styleId: S.style, mode: S.mode, type: sceneDefs.apt.typeId, room: { kind: p.room, index: p.roomIndex || 0, level: p.level || 0 },
+      u: p.pos[0], v: p.pos[1], level: p.level || 0, yaw, pitch, pointId: p.id, sample: sceneDefs.apt.sample, mapped: !!sceneDefs.apt.mapped, style0: S.style0, mode0: S.mode0 };
     const d = sceneDefs[S.key].def;
-    return { unitId: unit ? unit.id : opts.unitId, styleId: opts.styleId, room: { kind: p.room, index: 0, level: 0 }, frame: 'building', building: d.building, floor: d.floor,
-      x: p.pos[0], z: p.pos[1], yaw, pointId: p.id };
+    // exact = the panorama's coordinates are valid on the visitor's own floor (lobby; lift hall of the same plate)
+    const exact = S.key !== 'corridor' || corridorExact;
+    return { unitId: unit ? unit.id : opts.unitId, styleId: S.aptStyle || opts.styleId, mode: S.mode, room: { kind: p.room, index: 0, level: 0 }, frame: 'building', building: d.building, floor: d.floor, scene: S.key, exact,
+      x: p.pos[0], z: p.pos[1], yaw, pitch, pointId: p.id, style0: S.style0, mode0: S.mode0 };
   }
   function dispose() {
     if (S.disposed) return; S.disposed = true;
@@ -693,7 +859,11 @@ export async function openPanoTour(container, opts = {}) {
 
   // ---------------------------------------------------------------- start
   try {
-    await enterScene(startKey, { pointId: opts.pointId, room: COMMONS.includes(startRoom) ? undefined : (startRoom || 'living'), yaw: opts.yaw, style: opts.styleId });
+    await enterScene(startKey, { pointId: opts.pointId, room: COMMONS.includes(startRoom) ? undefined : (startRoom || 'living'), roomIndex: roomOpt && typeof roomOpt === 'object' ? roomOpt.index | 0 : 0, yaw: opts.yaw, style: opts.styleId });
+    if (isFinite(opts.pitch)) S.pitch = clamp(opts.pitch, -1.45, 1.45);
+    // what the viewer opened with — a style / light mode it only fell back to is not the visitor's choice
+    S.style0 = S.aptStyle || null; S.mode0 = S.mode;
+    if (isFinite(opts.yaw)) S.touched = true;            // arrived from the live 3D looking somewhere: no idle rotation
   } catch (e) {
     console.warn('[pano] start failed', e);
     el.load.querySelector('.in').innerHTML = `<div>${esc(T('none'))}</div>`;
@@ -703,6 +873,10 @@ export async function openPanoTour(container, opts = {}) {
   el.hint.classList.add('show'); setTimeout(() => { if (!S.touched) el.hint.classList.remove('show'); }, 6000);
   el.canvas.focus({ preventScroll: true });
 
-  return { ok: true, setStyle, getState, dispose, close: dispose, get pointId() { return S.point && S.point.id; } };
+  // (tests / stills) the current view as a JPEG data URL
+  const snapshot = (q = 0.86) => { camera.rotation.set(S.pitch, S.yaw, 0); camera.fov = S.fov; camera.updateProjectionMatrix(); sky.position.copy(camera.position); renderer.render(scene, camera); return el.canvas.toDataURL('image/jpeg', q); };
+  root._ptSnapshot = snapshot;
+  return { ok: true, setStyle, setMode, getState, snapshot, dispose, close: dispose, get scene() { return S.key; }, get pointId() { return S.point && S.point.id; }, get mode() { return S.mode; }, get styleId() { return S.style; },
+    get styles() { return stylesOf('apt'); }, get modes() { return modesFor(S.key, S.style); }, get sample() { return !!(sceneDefs.apt && sceneDefs.apt.sample); } };
 }
 export default openPanoTour;

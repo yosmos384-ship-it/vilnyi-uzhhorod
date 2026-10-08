@@ -6,8 +6,11 @@ commercial podium, VILNYI SPA, one underground parking level.
 
 What the site does: hero (renders + live 3D model), apartment finder (building → floor → real floor plan → unit sheet
 with price and payment calculator), reservation request (lead form), 3D walkthrough (lobby, lift, corridor, apartment,
-parking), gallery, construction progress (monthly photos), location map and 360° view, project facts, 8 languages
-(uk default, en, he, ro, de, fr, it, ru).
+parking), gallery, construction progress (monthly photos), location map and 360° view, project facts, 7 languages
+(uk — always the opening language; en, he, ro, de, fr, it through the menu or `?lang=`), a floating WhatsApp button and an
+Instagram link.
+
+Live: https://vilnyi-gt-city.uz.ua/ (`CNAME` in this folder must be published with the site; `vilnyi.uz.ua` redirects to it).
 
 Plain ES modules, **no build step**, three.js r160 from `vendor/`. Everything in this folder is static.
 
@@ -16,10 +19,23 @@ Plain ES modules, **no build step**, three.js r160 from `vendor/`. Everything in
 ```
 cd site
 python3 -m http.server 8080
-# open http://localhost:8080/index.html            (language: ?lang=uk|en|he|ro|de|fr|it|ru)
+# open http://localhost:8080/index.html            (language: ?lang=uk|en|he|ro|de|fr|it)
 ```
 
 A plain file:// open does not work (ES modules and `fetch` need http).
+
+## Prices
+
+One rule for every apartment: **1300 US dollars per m² of total area, shown in hryvnia**. The constants are at one place in
+`js/data.js` ("Money, prices, status"): `USD_PER_M2`, `UAH_PER_USD`, `RATE_DATE`, `RATE_SOURCE`. To update the prices, change
+`UAH_PER_USD` and `RATE_DATE` (official NBU rate) — the unit sheets, list, filters, tiles, calculator, booking and CRM follow,
+and the texts take the numbers through `{usdM2}` / `{uahM2}` / `{rateDate}`. Only the static `<meta name="description">` in
+`index.html` repeats "1300 $". `data/sales.json` → `js/data-sales.js` can still override the price or status of single units.
+
+## Language
+
+The page always opens in Ukrainian. Order: `?lang=` → the visitor's own choice in the language menu (localStorage
+`vrc.lang` + `vrc.lang.by = user`) → `uk`. Nothing about the visitor is detected and no third-party request is made for it.
 
 ## Where things are
 
@@ -31,7 +47,7 @@ A plain file:// open does not work (ES modules and `fetch` need http).
 | `js/app.js`, `plan.js`, `booking.js`, `progress.js`, `panorama.js`, `hero3d.js`, `hero-slides.js`, `pano-tour.js` | page modules |
 | `js/three/` | 3D engine: exterior, commons, apartment, walkthrough, environment, cars, materials |
 | `js/i18n.js`, `js/i18n/<lang>.ui.js`, `<lang>.site.js` | translations (ui = interface, site = project copy); module-own strings in `js/i18n-hero.js`, `i18n-panorama.js`, `i18n-progress.js`, `i18n-tour.js` |
-| `assets/gallery/manifest.json` | the gallery: `[{src, type: exterior|amenity|interior|lobby, caption:{8 languages}}]` — list only files that exist |
+| `assets/gallery/manifest.json` | the gallery: `[{src, type: exterior|amenity|interior|lobby, caption:{7 languages}}]` — list only files that exist |
 | `assets/hero-slides.json` | hero slideshow |
 | `assets/plans/` | floor-plan images (webp) |
 | `assets/progress/` | construction photos: `<yyyy-mm>-b<N>-<n>.jpg` (full), `-thumb.jpg` (360 px wide), `-s.jpg` (240 px wide) |

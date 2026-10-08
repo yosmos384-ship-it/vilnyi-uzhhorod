@@ -351,7 +351,7 @@ select:focus, input:focus { outline: none; border-color: var(--gold); background
 .tb-s { font-size: 10px; letter-spacing: .2em; }
 :lang(he) .tb-s { font-size: 13px; letter-spacing: 0; }
 .fd-viz { display: grid; grid-template-columns: minmax(0, 1fr) 76px; gap: 10px; }
-/* "floor 1 = ground floor" note (finder.floorNote): empty in uk / ru, where the numbering needs no explanation */
+/* "floor 1 = ground floor" note (finder.floorNote): empty in uk, where the numbering needs no explanation */
 .floor-note { margin: 0; }
 .floor-note:empty { display: none; }
 .f3d { position: relative; aspect-ratio: 4 / 3.3; min-height: 0; background: radial-gradient(120% 90% at 50% 100%, #1a1611 0%, #0c0b09 70%); border: 1px solid var(--line); overflow: hidden; }
@@ -921,6 +921,14 @@ dialog.is-closing { animation: sheetOut .2s ease-in forwards; }
 .hs-spin { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid rgba(230, 204, 146, .25); border-top-color: var(--gold-hi); animation: hs-spin 1s linear infinite; }
 @keyframes hs-spin { to { transform: rotate(360deg); } }
 .hs-3d .hero3d-slot { z-index: 1; }
+/* V4: path-traced stills under the live canvas — the canvas (same camera) fades in only while the visitor turns the model */
+.hs-stills { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+.hs-stills img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .7s var(--ease); -webkit-user-select: none; user-select: none; -webkit-user-drag: none; -webkit-touch-callout: none; }
+.hs-stills img.on { opacity: 1; }
+.hs-3d.has-stills .hs-3d-poster, .hs-3d.has-stills .hs-3d-load { opacity: 0; }
+.hs-3d.has-stills .hero3d-canvas { opacity: 0; transition: opacity .55s var(--ease); }
+.hs-3d.has-stills.is-3d .hero3d-canvas { opacity: 1; }
+.hs.on-3d.stills .mode:not([hidden]) { opacity: 1; visibility: visible; transition: opacity .5s; }
 /* shade: header legibility on top, controls + text at the bottom */
 .hs .hero-shade { z-index: 3; background: linear-gradient(to bottom, rgba(6,7,10,.38) 0, rgba(6,7,10,0) 150px, rgba(6,7,10,0) 58%, rgba(6,7,10,.55) 76%, rgba(6,7,10,.9) 90%, #06070a 100%) !important; }
 .hs.on-3d .hero-shade { background: linear-gradient(to bottom, rgba(6,7,10,.3) 0, rgba(6,7,10,0) 120px, rgba(6,7,10,0) 70%, rgba(6,7,10,.8) 90%, #06070a 100%) !important; }
@@ -1007,3 +1015,55 @@ dialog.is-closing { animation: sheetOut .2s ease-in forwards; }
   .caps-statement { font-size: clamp(15px, 2vw, 34px); white-space: normal; }
   .caps-statement span { white-space: nowrap; }
 }
+
+/* ---------- V3-ui: walk-through buttons (unit sheet, list rows, plan hover card), four style cards ---------- */
+/* Unit sheet: the primary 3D action, full width above the other view buttons (Reserve stays the one filled button). */
+.sh-acts .act-walk { grid-column: 1 / -1; }
+.btn.act-walk { --h: 56px; gap: 12px; font-size: 12.5px; background: rgba(201, 169, 106, .09); }
+.btn.act-walk svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linejoin: round; }
+.btn.act-walk:hover { background: rgba(201, 169, 106, .18); }
+:lang(he) .btn.act-walk { font-size: 15px; }
+/* List: each walkable flat has its own button beside (phones: under) the row. */
+.ls-li { display: grid; grid-template-columns: minmax(0, 1fr); border-bottom: 1px solid var(--line); }
+.ls-li .ls-row { border-bottom: 0; }
+.ls-walk { justify-self: start; display: inline-flex; align-items: center; gap: 8px; min-height: 36px; margin: -6px 4px 12px; padding: 0 14px 0 10px; border: 1px solid var(--line-2); border-radius: 40px; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); white-space: nowrap; transition: border-color .2s, color .2s, background .2s; }
+.ls-walk svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linejoin: round; }
+.ls-walk:hover, .ls-walk:focus-visible { border-color: var(--gold); color: var(--gold-hi); background: rgba(201, 169, 106, .08); }
+:lang(he) .ls-walk { letter-spacing: .02em; font-size: 13px; }
+@media (min-width: 900px) {
+  .ls-li { grid-template-columns: minmax(0, 1fr) 232px; align-items: center; }
+  .ls-li .ls-id b { white-space: nowrap; }
+  .ls-li .ls-row { grid-template-columns: 1.5fr 1.1fr .8fr .7fr 1.1fr .7fr; gap: 4px 10px; }
+  .ls-walk { justify-self: end; margin: 0 8px; }
+}
+/* Plan hover card with a button: reachable with the pointer (js/plan.js keeps it in place). */
+.plan > .plan-card.has-act { pointer-events: auto; }
+.pc-act { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 38px; margin-top: 12px; padding: 0 12px; border: 1px solid var(--gold); border-radius: 40px; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--gold-hi); background: rgba(201, 169, 106, .08); cursor: pointer; }
+.pc-act:hover { background: var(--gold); color: #17130c; }
+:lang(he) .pc-act { letter-spacing: .02em; font-size: 13px; }
+/* Four interior styles: a 2 × 2 grid on phones, one row of four on wide sheets. */
+.styles.n4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 720px) { .styles.n4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* ---------- V4-page: floating contact buttons (WhatsApp + Instagram) and the $ equivalent beside prices ---------- */
+.fab { position: fixed; z-index: 45; inset-inline-start: calc(16px + env(safe-area-inset-left)); bottom: calc(16px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 10px; }
+[dir="rtl"] .fab { inset-inline-start: calc(16px + env(safe-area-inset-right)); }
+.fab[hidden], .fab [hidden] { display: none; }
+.fab a { display: grid; place-items: center; border-radius: 50%; transition: transform .25s var(--ease, ease), box-shadow .25s, background .25s, color .25s, border-color .25s; }
+.fab-wa { width: 56px; height: 56px; background: #25d366; color: #fff; box-shadow: 0 8px 24px rgba(0, 0, 0, .45), 0 0 0 1px rgba(255, 255, 255, .14); }
+.fab-wa svg { width: 30px; height: 30px; fill: currentColor; stroke: none; }
+.fab-ig { width: 40px; height: 40px; background: rgba(13, 12, 9, .86); border: 1px solid var(--line-2, rgba(201, 169, 106, .35)); color: var(--gold); box-shadow: 0 6px 18px rgba(0, 0, 0, .4); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.fab-ig svg { width: 20px; height: 20px; }
+.fab a:hover { transform: translateY(-2px); }
+.fab-wa:hover { background: #1fbe5b; box-shadow: 0 12px 28px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .22); }
+.fab-ig:hover { color: var(--gold-hi); border-color: var(--gold); }
+.fab a:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+@media (min-width: 900px) { .fab { inset-inline-start: 24px; bottom: 24px; } .fab-wa { width: 60px; height: 60px; } .fab-wa svg { width: 32px; height: 32px; } }
+/* never over the unit sheet's bottom bar, the booking dialog, a lightbox, the walkthrough / 360° viewer, the full-screen
+   panorama or the open phone menu */
+html.modal-open .fab, html.walk-open .fab, html.pano-open .fab, html:has(dialog[open]) .fab, html:has(:fullscreen) .fab, .site-head.menu-open ~ .fab { display: none; }
+@media print { .fab { display: none; } }
+@media (prefers-reduced-motion: reduce) { .fab a { transition: none; } }
+.price small.usd { display: inline-block; margin-inline-start: 12px; font: 400 15px/1 var(--f-body); letter-spacing: .01em; color: var(--muted); white-space: nowrap; }
+.ls-p small.usd { display: block; margin-top: 4px; font: 400 11.5px/1.2 var(--f-body); letter-spacing: .01em; color: var(--muted); white-space: nowrap; }
+@media (max-width: 599px) { .price small.usd { display: block; margin: 8px 0 2px; line-height: 1; } .fab { inset-inline-start: calc(12px + env(safe-area-inset-left)); bottom: calc(12px + env(safe-area-inset-bottom)); gap: 8px; } [dir="rtl"] .fab { inset-inline-start: calc(12px + env(safe-area-inset-right)); } .fab-ig { width: 38px; height: 38px; } }

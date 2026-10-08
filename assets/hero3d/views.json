@@ -1,0 +1,75 @@
+{
+ "version": 1,
+ "portraitBelow": 0.95,
+ "note": "cameras of the path-traced hero stills (pano-work/hero); hero3d.js starts the live model from the same view",
+ "views": {
+  "land": {
+   "aspect": 1.7777777777777777,
+   "fov": 30,
+   "az": 0.761,
+   "elev": 36,
+   "dist": 320.567,
+   "target": [
+    11.312,
+    8,
+    -3.68
+   ],
+   "position": [
+    199.138,
+    196.425,
+    175.153
+   ],
+   "safe": [
+    0.6,
+    0.8,
+    -0.46
+   ],
+   "orbitScale": 1.15,
+   "pos": [
+    0.5,
+    0.25
+   ],
+   "files": {
+    "day": "land-day.webp",
+    "dusk": "land-dusk.webp",
+    "night": "land-night.webp"
+   },
+   "w": 2560,
+   "h": 1440
+  },
+  "port": {
+   "aspect": 0.62,
+   "fov": 38,
+   "az": 0.761,
+   "elev": 38,
+   "dist": 412.865,
+   "target": [
+    3.038,
+    11,
+    5.011
+   ],
+   "position": [
+    238.661,
+    265.185,
+    229.353
+   ],
+   "safe": [
+    0.72,
+    0.62,
+    -0.3
+   ],
+   "orbitScale": 1,
+   "pos": [
+    0.5,
+    0.3
+   ],
+   "files": {
+    "day": "port-day.webp",
+    "dusk": "port-dusk.webp",
+    "night": "port-night.webp"
+   },
+   "w": 1080,
+   "h": 1742
+  }
+ }
+}

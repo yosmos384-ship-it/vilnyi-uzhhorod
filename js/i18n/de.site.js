@@ -3,7 +3,7 @@
 export default {
   // ── meta ──
   'meta.title': 'VILNYI – Business-Class-Wohnungen in Uschhorod',
-  'meta.desc': '1-, 2- und 3-Zimmer-Wohnungen in der Wohnanlage VILNYI, Hruschewskyj-Straße 4A in Uschhorod: vier Gebäude, geschlossener autofreier Innenhof, Tiefgarage, Supermarkt, Fitnessclub mit Schwimmbad. Richtpreise ab 47 450 ₴/m², Ratenzahlung bis zu 17 Monate.',
+  'meta.desc': '1-, 2- und 3-Zimmer-Wohnungen in der Wohnanlage VILNYI, Hruschewskyj-Straße 4A in Uschhorod: vier Gebäude, geschlossener autofreier Innenhof, Tiefgarage, Supermarkt, Fitnessclub mit Schwimmbad. Preis: {usdM2} $ pro m², in Hrywnja zum Kurs der Nationalbank der Ukraine; Ratenzahlung bis zu 17 Monate.',
 
   // ── hero ──
   'hero.eyebrow': 'Uschhorod · Stadtteil Nowyj · Business-Class',
@@ -15,7 +15,7 @@ export default {
   'hero.stat.units': 'Wohnungen',
   'hero.stat.parking': 'Tiefgaragenplätze',
   'hero.stat.buildings': 'Gebäude',
-  'hero.stat.price': 'pro m², Richtpreis',
+  'hero.stat.price': 'pro m² · {usdM2} $',
   'hero.mode': 'Licht',
   'hero.day': 'Tag',
   'hero.dusk': 'Dämmerung',
@@ -48,7 +48,7 @@ export default {
   'terms.title': 'Transparente Kaufkonditionen',
   'terms.lead': 'Vollzahlung oder Ratenzahlung vom Bauträger über bis zu 17 Monate bei einer Anzahlung von 30–50 %. Für Militärangehörige und medizinisches Personal gibt es 5 % Rabatt.',
   'terms.price': 'Preis pro m²',
-  'terms.priceD': 'Einzimmerwohnungen von 47 450 bis 52 000 ₴/m², Zweizimmerwohnungen 56 500 ₴/m², Dreizimmerwohnungen 52 000 ₴/m². Richtpreise, Stand 28.09.2026.',
+  'terms.priceD': 'Ein Preis für alle Wohnungen: {usdM2} $ pro m² – in Hrywnja zum Kurs der Nationalbank der Ukraine vom {rateDate}.',
   'terms.instT': 'Ratenzahlung',
   'terms.instD': 'Vom Bauträger – bis zu 17 Monate. Die Anzahlung beträgt 30–50 % des Preises, der Rest wird über die Laufzeit der Ratenzahlung gezahlt.',
   'terms.discT': '5 % Rabatt',
@@ -111,7 +111,7 @@ export default {
   'facts.permitV': 'Nr. {n} vom {d} – laut öffentlichem Inserat',
   'facts.contractor': 'Generalunternehmer',
   'facts.cadastral': 'Katasternummer',
-  'facts.disclaimer': 'Die Visualisierungen und Pläne auf dieser Website stammen aus dem Architekturkonzept; Flächen, Grundrisse und Wohnungsnummern können sich ändern. Die Preise sind Richtwerte und kein verbindliches Angebot.',
+  'facts.disclaimer': 'Die Visualisierungen und Pläne auf dieser Website stammen aus dem Architekturkonzept; Flächen, Grundrisse und Wohnungsnummern können sich ändern. Die Angaben auf dieser Website sind kein verbindliches Angebot.',
   'facts.partner': 'Über den Entwickler',
 
   // ── view (Ausrichtung der Wohnung) ──
@@ -143,4 +143,7 @@ export default {
   'brand.city': 'USCHHOROD',
   'facts.perListing': 'laut öffentlichem Inserat',
   'facts.customer': 'Bauherr',
+
+  // v0.3 (V4-page): floating WhatsApp button — the prefilled greeting
+  'wa.greeting': 'Guten Tag! Ich interessiere mich für eine Wohnung in der Wohnanlage VILNYI in Uschhorod.',
 };

@@ -4,6 +4,17 @@
 // static imagery (hero slides + the SVG elevation in the finder).
 // Nothing here knows how many buildings there are or how tall they are: orbit, finder angles, fits and floor picking all
 // come from data.js (footprints, buildingCenter, roofY, topFloor) and from the exterior API (CONTRACT §4.1).
+//
+// V4 — stills first. The hero slide shows a path-traced picture of the complex (assets/hero3d/<view>-<mode>.webp, made by
+// pano-work/hero/) and this engine starts from exactly the camera that picture was rendered with
+// (assets/hero3d/views.json: position, target, lens, and the `object-fit: cover` crop of the picture in this container is
+// reproduced with a view offset). The canvas stays transparent over the still (class `has-stills` on the host, set by
+// hero-slides.js once a still is on screen) and takes over — class `is-3d`, a cross-fade from the same view — only when
+// the visitor drags or taps; some seconds after they let go the camera glides home and the still fades back in.
+// Without views.json / stills the old behaviour remains (slow orbit, always live).
+const VIEWS_URL = 'assets/hero3d/views.json';
+const EXPOSURE = { day: 1.0, dusk: 1.6, night: 1.85 };   // per light mode (the night model was too dark next to the stills)
+const RETURN_AFTER = 5.5;                                   // seconds without input before the camera goes home
 import { PROJECT, BUILDINGS, B_IDS, DEFAULT_SEL, SITE_CENTER, floorY, roofY, floorsOf, topFloor, floorFromY, buildingCenter, localToWorld, worldToLocal, footprintOf } from './data.js';
 
 const TAU = Math.PI * 2;
@@ -68,6 +79,19 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
   const finderCam = { cur: null };
   const fitCache = new Map();
   let camGoalPos = null, camGoalTgt = null, curTgt = null;
+  // stills-first state (see the header): the views of the stills, the one in use, live / still, hidden warm-up frames
+  let VIEWS = null, home = null, live = false, warmT = 0, fadeT = 0, heroFov = 34, finderFov = 34;
+  const viewsP = fetch(VIEWS_URL).then(r => (r.ok ? r.json() : null)).then(j => { VIEWS = j && j.views && j.views.land ? j : null; return VIEWS; }).catch(() => null);
+  const hasStills = () => !!(VIEWS && heroHost && heroHost.classList.contains('has-stills'));
+  const viewFor = aspect => { const v = VIEWS.views; return v.port && aspect < (VIEWS.portraitBelow || 0.95) ? v.port : v.land; };
+  function setLive(on, why) {
+    if (live === on) return;
+    live = on; orbit.idleT = 0;
+    if (heroHost) heroHost.classList.toggle('is-3d', on);
+    if (!on) fadeT = 0.9;                                    // keep drawing while the canvas fades out
+    try { document.dispatchEvent(new CustomEvent('vrc:hero3d-live', { detail: { live: on, why: why || '' } })); } catch (e) { /* ignore */ }
+    kick();
+  }
 
   // The hero 3D is one slide of the hero slideshow (js/hero-slides.js). It only counts as "on screen" while that slide
   // is active, and the whole engine is only built once it is needed: that slide is reached, or the finder comes near.
@@ -79,6 +103,10 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
     if (ready) { if (!heroActive) state.visible.set(heroHost, 0); else ioSync(); pickHost(); }
   };
   document.addEventListener('vrc:hero3d', onHeroEvt);
+  // created after the slideshow already reached the 3D slide (slow start): the event was missed — read the slide itself
+  if (heroHost && heroHost.classList.contains('hs-slide') && heroHost.classList.contains('is-on')) { heroActive = true; needResolve(); }
+  const onStillsEvt = () => { warmT = Math.max(warmT, 0.3); kick(); };       // a still appeared / failed: re-check who is on screen
+  document.addEventListener('vrc:hero3d-stills', onStillsEvt);
   const nearIo = finderHost ? new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { needResolve(); nearIo.disconnect(); } }, { rootMargin: '900px 0px' }) : null;
   nearIo?.observe(finderHost);
   function ioSync() {
@@ -109,7 +137,7 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
       // T32: probe first — three.js logs console.error when it cannot create a context
       if (!window.WebGLRenderingContext || !(() => { try { const c = document.createElement('canvas'), gl = c.getContext('webgl2') || c.getContext('webgl'); if (!gl) return false; gl.getExtension('WEBGL_lose_context')?.loseContext(); return true; } catch (e) { return false; } })()) throw new Error('no webgl');
       THREE = await import('three');
-      const [envMod, extMod] = await Promise.all([import('./three/environment.js'), import('./three/exterior.js')]);
+      const [envMod, extMod] = await Promise.all([import('./three/environment.js'), import('./three/exterior.js'), viewsP]);
       if (typeof extMod.createComplex !== 'function' || typeof envMod.createEnvironment !== 'function') throw new Error('exterior / environment API missing');
       exteriorMod = extMod;
       renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', alpha: false });
@@ -118,7 +146,7 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
       renderer.setPixelRatio(Math.min(devicePixelRatio || 1, coarse ? 1.5 : 1.75));
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.0;
+      renderer.toneMappingExposure = EXPOSURE[state.mode] || 1.0;
       renderer.shadowMap.enabled = !coarse;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       renderer.domElement.className = 'hero3d-canvas';
@@ -147,12 +175,15 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
       }
       orbit.target = tgt;
       curTgt = tgt.clone();
+      heroFov = finderFov = camera.fov;
       renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault(); cancelAnimationFrame(raf); raf = 0; });
       renderer.domElement.addEventListener('webglcontextrestored', () => kick());
+      homeTgt = new THREE.Vector3(); orbit.daz = 0;
       placeHeroCamera(0, true);
       bindPointer(renderer.domElement);
       ready = true;
-      if (/[?&]debug3d\b/.test(location.search)) window.__vrcHeroDbg = { THREE, scene, camera, complex, renderer, pick: (x, y, t) => pick(x, y, t), FINDER_AZ, fitCache, finderCam, orbit, state };
+      if (/[?&]debug3d\b/.test(location.search)) window.__vrcHeroDbg = { THREE, scene, camera, complex, renderer, pick: (x, y, t) => pick(x, y, t), FINDER_AZ, fitCache, finderCam, orbit, state,
+        get live() { return live; }, get home() { return home; }, setLive, renderHome: () => { if (state.where === 'hero') { orbit.daz = 0; placeHeroCamera(0, true); } renderOnce(); } };
       if (heroActive) ioSync();
       pickHost();
       renderOnce();
@@ -161,6 +192,8 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
     }
     try { onState('ready'); } catch (e) { console.warn('[hero3d] onState handler:', e?.message || e); }
     announce('ready');
+    // the visitor already pulled at the still while the model was loading: hand over now
+    try { if (home && state.where === 'hero' && Date.now() - (+heroHost.dataset.want || 0) < 4000) setLive(true, 'wanted'); } catch (e) { /* ignore */ }
     return true;
   }
 
@@ -185,6 +218,18 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
     fitCache.set(key, s); return s;
   }
   function placeHeroCamera(dt, snap) {
+    if (home) {
+      // orbit round the still's own target; `daz` = how far the visitor has turned it. Away from home the orbit widens
+      // a little (views.json orbitScale) so no tower leaves the frame at any azimuth.
+      const v = home, t = v.target, p = v.position;
+      const dx = p[0] - t[0], dz = p[2] - t[2], az0 = Math.atan2(dz, dx), d0 = Math.hypot(dx, dz), h0 = p[1] - t[1];
+      const far = Math.min(1, Math.abs(orbit.daz) / 0.6), s = 1 + ((v.orbitScale || 1) - 1) * far * far * (3 - 2 * far);
+      const az = az0 + orbit.daz;
+      const pos = new THREE.Vector3(t[0] + Math.cos(az) * d0 * s, t[1] + h0 * s, t[2] + Math.sin(az) * d0 * s);
+      camGoalPos = pos; camGoalTgt = homeTgt.set(t[0], t[1], t[2]);
+      if (snap) { camera.position.copy(pos); curTgt.copy(camGoalTgt); camera.lookAt(curTgt); }
+      return;
+    }
     const aspect = camera.aspect || 1.6;
     const fit = heroFit(aspect, viewOffY);
     const d = orbit.dist * fit, h = orbit.h * fit;
@@ -193,6 +238,7 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
     camGoalPos = pos; camGoalTgt = tgt;
     if (snap) { camera.position.copy(pos); curTgt.copy(tgt); camera.lookAt(curTgt); }
   }
+  let homeTgt = null;
   function bandBox(b, f) { try { const bb = exteriorMod?.floorBandBox?.(b, f); return bb && v3(THREE, bb.min) && v3(THREE, bb.max) ? bb : null; } catch (e) { return null; } }
   // A low tower is not shown in extreme close-up: its distance is at least 75 % of the tallest tower's, so the podium
   // and the neighbours it stands between stay in the picture and a building switch does not feel like a zoom jump.
@@ -251,20 +297,42 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
   function frame(now) {
     raf = 0;
     if (!ready || state.paused || !state.host || document.hidden) return;
-    const dt = Math.min(0.05, last ? (now - last) / 1000 : 0.016); last = now;
+    const rdt = last ? Math.min(1.5, (now - last) / 1000) : 0.016;      // real time (slow devices): the hidden warm-up and the fade are wall-clock
+    const dt = Math.min(0.05, rdt); last = now;
+    let still = false;
     if (state.where === 'hero') {
-      if (!orbit.drag) { orbit.idleT += dt; if (!reducedMotion && orbit.idleT > 2.5) orbit.az += orbit.speed * dt; }
-      placeHeroCamera(dt);
+      if (home) {
+        // stills first: no idle orbit. After RETURN_AFTER s without input the camera glides home; there the still returns.
+        const stills = hasStills();
+        if (stills !== lastStills) { lastStills = stills; if (!stills) setLive(true, 'no-stills'); else if (!orbit.drag && Math.abs(orbit.daz) < 1e-3) setLive(false, 'stills'); }
+        if (!orbit.drag) {
+          orbit.idleT += rdt;
+          if (live && stills && orbit.idleT > RETURN_AFTER) {
+            orbit.daz *= Math.pow(0.03, Math.min(0.5, rdt));
+            if (Math.abs(orbit.daz) < 0.0015) { orbit.daz = 0; if (camera.position.distanceTo(camGoalPos) < 0.12) { camera.position.copy(camGoalPos); setLive(false, 'home'); } }
+          }
+        }
+        placeHeroCamera(dt);
+        if (!live) { camera.position.copy(camGoalPos); curTgt.copy(camGoalTgt); }
+        still = !live && stills;
+      } else {
+        if (!orbit.drag) { orbit.idleT += dt; if (!reducedMotion && orbit.idleT > 2.5) orbit.az += orbit.speed * dt; }
+        placeHeroCamera(dt);
+      }
     } else {
       placeFinderCamera(dt);
     }
-    const k = state.where === 'hero' ? 1 - Math.pow(0.001, dt * 1.4) : 1;   // finder: placeFinderCamera already eases
+    const k = state.where === 'hero' ? 1 - Math.pow(0.001, (home ? Math.min(0.5, rdt) : dt) * 1.4) : 1;   // finder: placeFinderCamera already eases; hero on a slow device: real time, so the return home takes seconds, not frames
     camera.position.lerp(camGoalPos, k); curTgt.lerp(camGoalTgt, k); camera.lookAt(curTgt);
+    if (still) {                                   // the still is on screen: draw only while warming up / fading, then sleep
+      warmT = Math.max(0, warmT - rdt); fadeT = Math.max(0, fadeT - rdt);
+      if (warmT <= 0 && fadeT <= 0) { try { env?.update?.(dt, camera); renderer.render(scene, camera); } catch (e) { /* ignore */ } return; }
+    }
     try { env?.update?.(dt, camera); } catch (e) { /* keep rendering */ }
     try { renderer.render(scene, camera); renderErr = 0; } catch (e) { if (++renderErr >= 3) { fail(e); return; } }
     raf = requestAnimationFrame(frame);
   }
-  let renderErr = 0;
+  let renderErr = 0, lastStills = null;
   function kick() { if (!raf && ready && !state.paused && state.host) { last = 0; raf = requestAnimationFrame(frame); } }
   function renderOnce() { if (!ready || !state.host) return; resize(true); try { env?.update?.(0.016, camera); } catch (e) {} renderer.render(scene, camera); state.host.classList.add('is-live'); }
 
@@ -292,7 +360,7 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
       resize(true);
       state.hoverFloor = null;
       try { complex.hoverFloor?.(null, null); } catch (e) { /* optional */ }
-      if (where === 'hero') { highlight(state.sel.b, null); placeHeroCamera(0, true); }
+      if (where === 'hero') { highlight(state.sel.b, null); orbit.daz = 0; lastStills = null; if (home) { live = false; heroHost.classList.remove('is-3d'); warmT = 1.2; } placeHeroCamera(0, true); }
       else { highlight(state.sel.b, state.sel.f); placeFinderCamera(0, true); }
       requestAnimationFrame(() => host.classList.add('is-live'));
     }
@@ -308,9 +376,10 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
     lastSize = [w, h];
     const c = renderer.domElement;
     if (c.width !== Math.round(w * renderer.getPixelRatio()) || c.height !== Math.round(h * renderer.getPixelRatio())) {
-      renderer.setSize(w, h, false); camera.aspect = w / h;
+      renderer.setSize(w, h, false);
     }
     applyOffset(w, h);
+    if (state.where === 'hero' && home) { placeHeroCamera(0, !live); warmT = Math.max(warmT, 0.3); kick(); }
   }
   // In the hero the headline sits on the reading-start side, so the complex is framed toward the other side
   // (and lower on portrait phones). Off-centre framing via a view offset keeps the orbit maths centred.
@@ -318,11 +387,26 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
   function applyOffset(w, h) {
     const rtl = document.documentElement.dir === 'rtl';
     let ox = 0, oy = 0;
+    if (state.where === 'hero' && VIEWS) {
+      // The still fills the slide with `object-fit: cover` at `object-position: pos` — the camera shows the same window
+      // of the same picture: the still's full frame is the camera's full frame, the slide is a view offset into it.
+      const v = viewFor(w / h), as = v.aspect, pos = v.pos || [0.5, 0.5];
+      const fw = Math.max(w, h * as), fh = fw / as, x = (fw - w) * pos[0], y = (fh - h) * pos[1];
+      const key = ['still', w, h, as, v.fov, pos[0], pos[1]].join();
+      if (home !== v) { home = v; if (ready) placeHeroCamera(0, true); }
+      if (key === offKey) return; offKey = key; viewOffY = 0;
+      camera.fov = v.fov; camera.aspect = as;
+      camera.setViewOffset(fw, fh, x, y, w, h); camera.updateProjectionMatrix();
+      return;
+    }
+    home = state.where === 'hero' ? home : null;
+    if (camera.fov !== (state.where === 'hero' ? heroFov : finderFov)) { camera.fov = state.where === 'hero' ? heroFov : finderFov; offKey = ''; }
+    camera.aspect = w / h;
     if (state.where === 'hero') {
       // v1.6: the hero text sits below the image, so the complex is centred, nudged up clear of the slide controls
       oy = w / h > 1.15 ? h * 0.09 : h * 0.13; void rtl;   // T32: 0.05 left the podium under the slide caption on landscape screens (≈ 1000–1440 px)
     }
-    const key = [w, h, ox, oy].join();
+    const key = [w, h, ox, oy, camera.fov].join();
     if (key === offKey) return; offKey = key;
     viewOffY = 2 * oy / h;
     if (ox || oy) camera.setViewOffset(w, h, ox, oy, w, h); else camera.clearViewOffset();
@@ -407,17 +491,19 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
       const touch = e.pointerType !== 'mouse';
       down = { x: e.clientX, y: e.clientY, az: orbit.az, t: e.timeStamp, moved: 0, id: e.pointerId, touch };   // event time, not handler time: a slow frame must not turn a tap into a "long press"
       state.pointerDown = true;
-      if (state.where === 'hero') orbit.drag = down;
+      if (state.where === 'hero') { orbit.drag = down; down.daz = orbit.daz || 0; if (home && !live) setLive(true, 'pointer'); }
       if (touch) preview(pick(e.clientX, e.clientY, true));   // finger down: show which floor a tap would choose
     });
     c.addEventListener('pointermove', e => {
       if (down && e.pointerId === down.id) {
         const dx = e.clientX - down.x; down.moved = Math.max(down.moved, Math.hypot(dx, e.clientY - down.y));
         if (down.touch && down.moved > SLOP) preview(null);         // it became a scroll / drag, not a tap
-        if (state.where === 'hero' && orbit.drag) { orbit.az = down.az - dx * 0.006; orbit.idleT = 0; kick(); }
+        if (state.where === 'hero' && orbit.drag) { orbit.az = down.az - dx * 0.006; orbit.daz = down.daz - dx * 0.006; orbit.idleT = 0; kick(); }
         return;
       }
       if (e.pointerType !== 'mouse') return;
+      if (state.where === 'hero' && home && !live) { c.style.cursor = 'grab'; return; }   // the still is showing: no hover band until the visitor takes over
+      if (state.where === 'hero') orbit.idleT = Math.min(orbit.idleT, RETURN_AFTER - 2.5);   // a moving mouse keeps the model live a little longer
       const now = performance.now(); if (now - lastMove < 50) return; lastMove = now;
       const a = pick(e.clientX, e.clientY);
       c.style.cursor = a ? 'pointer' : (state.where === 'hero' ? 'grab' : 'default');
@@ -452,7 +538,9 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
     get ready() { return ready; },
     get failed() { return failed; },
     relayout() { offKey = ''; resize(true); kick(); },  // call after a language (direction) change
-    setMode(m) { state.mode = m; try { env?.setMode?.(m); } catch (e) {} kick(); },
+    setMode(m) { state.mode = m; try { env?.setMode?.(m); if (renderer) renderer.toneMappingExposure = EXPOSURE[m] || 1; } catch (e) {} warmT = 1.5; kick(); },
+    get live() { return live; },
+    goLive() { if (ready && state.where === 'hero' && home) setLive(true, 'api'); },
     // Finder selection: frame this building/floor and outline it
     focusFloor(b, f) {
       if (!okB(b)) return;
@@ -472,6 +560,6 @@ export function createHero3D({ heroHost, finderHost, onFloor = () => {}, onState
     highlightUnits(ids) { try { complex?.setUnitHighlight?.(ids && ids.length ? ids : null); } catch (e) {} kick(); },
     pause() { state.paused = true; cancelAnimationFrame(raf); raf = 0; },
     resume() { state.paused = false; kick(); },
-    dispose() { this.pause(); io.disconnect(); ro.disconnect(); nearIo?.disconnect(); document.removeEventListener('vrc:hero3d', onHeroEvt); disposeGL(); ready = false; },
+    dispose() { this.pause(); io.disconnect(); ro.disconnect(); nearIo?.disconnect(); document.removeEventListener('vrc:hero3d', onHeroEvt); document.removeEventListener('vrc:hero3d-stills', onStillsEvt); disposeGL(); ready = false; },
   };
 }

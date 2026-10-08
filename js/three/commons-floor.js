@@ -7,7 +7,7 @@
 // Run convention (= data.js hallEdgesOf = commons.js wallRun): { axis:'x'|'z', c, a0, a1, side }. axis 'x' is a wall
 // along x at z = c; `side` points from the wall line INTO the hall. P(run, a, d) is the point at coordinate `a` along
 // the wall, `d` metres from the line toward the hall.
-import { plateOf, hallEdgesOf, coresOf, unitsOn, blocksOn, unitToLocal, unitYaw, floorH, isGround, floorLabel } from '../data.js';
+import { plateOf, hallEdgesOf, coresOf, unitsOn, blocksOn, unitToLocal, unitYaw, floorH, isGround, floorLabel, interiorOf } from '../data.js';
 
 const TAU = Math.PI * 2;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -58,7 +58,10 @@ function planFloor(K, bId, floor) {
       warn.push(`${u.id}: door not on a hall edge (${bd.toFixed(2)} m)`);
     }
     const a = along(run, x, z);
-    const op = { c: a, w: DOOR_W, h: DOOR_H, kind: 'door', unitId: u.id };
+    // (V4) the opening is as high as the flat's real entrance door (2.10 m in the data) — with the kit's 2.20 a dark slot
+    // showed above the leaf of a loaded flat; the hall's own closed leaf simply ends inside the lintel
+    let dh = DOOR_H; try { const I = interiorOf(u), e = I && I.doors.find(q => q.type === 'entrance'); if (e && e.h > 1.9) dh = Math.min(DOOR_H, e.h + 0.012); } catch { dh = DOOR_H; }
+    const op = { c: a, w: DOOR_W, h: dh, kind: 'door', unitId: u.id };
     run.openings.push(op); units.push({ u, run, a, x, z, op });
   }
   // ---- lifts
@@ -332,7 +335,9 @@ export function buildTowerFloor(KIT, bId, floor) {
   }, 'art');
 
   // ---- walls
-  for (const run of runs) K.wallRun(ctx, { axis: run.axis, c: run.c, side: run.side, a0: run.a0, a1: run.a1, openings: run.openings, zones: run.zones, finish: run.finish, scallops: scallopsOf(run) });
+  // (V4) a run with flat doors is no thicker than the thinnest entrance wall of those flats (real interiors: 0.07–0.38 m)
+  const runT = run => { let T = null; for (const d of pl.units) { if (d.run !== run) continue; let t = null; try { const I = interiorOf(d.u), e = I && I.doors.find(q => q.type === 'entrance'); t = e ? +e.t : null; } catch { t = null; } if (t > 0) T = Math.min(T ?? 1, t - 0.012); } return T == null ? undefined : T; };
+  for (const run of runs) K.wallRun(ctx, { axis: run.axis, c: run.c, side: run.side, a0: run.a0, a1: run.a1, openings: run.openings, zones: run.zones, finish: run.finish, scallops: scallopsOf(run), T: runT(run) });
   // slim bronze corner guards where the hall turns around a solid (the two wall skins leave a 4 cm notch there)
   for (const r of runs) if (r.axis === 'x') for (const [e, need] of [[r.a0, -1], [r.a1, 1]]) {
     const q = runs.find(q => q.axis === 'z' && q.side === need && Math.abs(q.c - e) < 0.02 && (Math.abs(q.a0 - r.c) < 0.02 || Math.abs(q.a1 - r.c) < 0.02));

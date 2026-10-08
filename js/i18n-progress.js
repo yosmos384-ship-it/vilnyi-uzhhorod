@@ -179,35 +179,10 @@ const P = {
     'ph.insulation': 'Isolamento della facciata', 'ph.render': 'Intonaco di facciata', 'ph.facadeGlazing': 'Facciata intonacata, vetratura dell’angolo curvo',
     'ph.facadePodium': 'Facciata della parte residenziale completata; basamento ancora a struttura aperta', 'ph.podiumWalls': 'Facciata della parte residenziale completata; getto delle strutture del basamento',
   },
-  ru: {
-    eyebrow: 'Ход строительства', title: 'Стройка — <em>месяц за месяцем</em>',
-    lead: '{n} фото со строительной площадки за {m} мес. ({from} — {to}). Состояние каждого дома видно на снимках, без рендеров.',
-    all: 'Все дома', building: 'Дом {n}', b: 'Дом', floors: 'Этажей: {n}',
-    'status.prep': 'Подготовительные работы', 'status.building': 'Строится', 'status.done': 'Сдан',
-    statusAsOf: 'Состояние на {d}', stage: 'Текущий этап', stepOf: 'Этап {i} из {n}', stageBasis: 'по фото от {d}',
-    'step.0': 'Подготовительные работы', 'step.1': 'Котлован и фундамент', 'step.2': 'Каркас', 'step.3': 'Стены и окна', 'step.4': 'Фасад', 'step.5': 'Завершающие работы',
-    stepsLegend: 'Этапы строительства',
-    delivery: 'Плановая сдача', deliveryTbc: 'планово', q: '{r} кв. {y}',
-    photosN: '{n} фото', view: 'Смотреть фото', latest: 'Последнее фото', noPhoto: 'Фото ещё не публиковались',
-    'cmp.title': 'Было — <em>стало</em>', 'cmp.lead': 'Раннее фото дома рядом с последним. Передвиньте ползунок, чтобы выбрать месяц для сравнения.',
-    'cmp.then': 'Тогда', 'cmp.now': 'Сейчас', 'cmp.pick': 'Месяц для сравнения',
-    'tl.title': 'Хроника <em>по месяцам</em>', filter: 'Фильтр по дому', years: 'Перейти к году',
-    more: 'Показать ещё {k} мес.', shown: 'Показано {a} из {b} мес.',
-    updated: 'Последнее обновление фото: {d}', plannedNote: 'Сроки сдачи — плановые и могут измениться. Этапы определены по опубликованным фото, без оценки в процентах.',
-    sources: 'Источники', credit: 'Фото: {c}', 'credit.LUN': 'ЛУН', open: 'Открыть фото',
-    'lb.label': 'Просмотр фото', 'lb.close': 'Закрыть', 'lb.prev': 'Предыдущее фото', 'lb.next': 'Следующее фото', 'lb.loading': 'Загрузка…', 'lb.of': '{i} / {n}',
-    empty: 'Фотоотчётов пока нет.',
-    'ph.site': 'Площадка до начала земляных работ', 'ph.demolition': 'Демонтаж старых строений на участке', 'ph.clearing': 'Расчистка участка, первые земляные работы',
-    'ph.pit': 'Котлован', 'ph.blinding': 'Бетонная подготовка дна котлована', 'ph.slabRebar': 'Армирование фундаментной плиты', 'ph.slab': 'Фундаментная плита забетонирована',
-    'ph.basement': 'Стены и колонны подземного этажа', 'ph.frame': 'Возведение монолитного каркаса', 'ph.frameWalls': 'Каркас растёт, кладка стен на нижних этажах',
-    'ph.frameWallsWindows': 'Каркас почти на полную высоту, кладка стен, первые окна', 'ph.topped': 'Каркас завершён, окна установлены',
-    'ph.insulation': 'Утепление фасада', 'ph.render': 'Штукатурка фасада', 'ph.facadeGlazing': 'Фасад оштукатурен, остекление скруглённого угла',
-    'ph.facadePodium': 'Фасад жилой части завершён; стилобат — открытый каркас', 'ph.podiumWalls': 'Фасад жилой части завершён; бетонируются конструкции стилобата',
-  },
 };
 
 // BCP-47 locales for Intl date formatting (month names come from Intl, not from this dictionary).
-export const PG_LOCALES = { uk: 'uk-UA', en: 'en-GB', he: 'he-IL', ro: 'ro-RO', de: 'de-DE', fr: 'fr-FR', it: 'it-IT', ru: 'ru-RU' };
+export const PG_LOCALES = { uk: 'uk-UA', en: 'en-GB', he: 'he-IL', ro: 'ro-RO', de: 'de-DE', fr: 'fr-FR', it: 'it-IT' };
 export const PG_LANGS = Object.keys(P);
 
 export function pgHas(key) { return P[lang]?.[key] != null || P.uk[key] != null || P.en[key] != null; }

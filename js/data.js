@@ -3,6 +3,7 @@
 //   data-plates.js   SITE, PLATES, GENERATED   (tools/build-data.mjs ← data/plates-B1..B4.json, site.json, surroundings.json)
 //   data-progress.js PROGRESS                  (← data/progress.json)
 //   data-sales.js    SALES                     (← data/sales.json; real price / status table, empty until the owner supplies it)
+//   data-rooms.js    ROOMS, ROOM_DEFAULTS      (← data/rooms-B1..B4.json; the REAL interior of every layout — notes/V3-data.md)
 // Units: metres, Y up. Importable in Node (no DOM access).
 //
 // Frames (see the header of data-plates.js):
@@ -14,11 +15,14 @@
 import { SITE, PLATES, GENERATED } from './data-plates.js';
 import { PROGRESS } from './data-progress.js';
 import { SALES } from './data-sales.js';
+import { PARKING_DATA } from './data-parking.js';   // V6: the car park of the working drawing (generated)
+import { ROOMS, ROOM_DEFAULTS, interiorU } from './data-rooms.js';
 
-export { SITE, PLATES, GENERATED, PROGRESS, SALES };
+export { SITE, PLATES, GENERATED, PROGRESS, SALES, ROOMS, ROOM_DEFAULTS };
 
 // ---------- Project ----------
-// Facts: plans.pdf (counts, geometry), lun.ua listing of 28.09.2026 (prices, terms, documents — "per the public listing"),
+// Facts: plans.pdf (counts, geometry), lun.ua listing of 28.09.2026 (terms, documents — "per the public listing"; prices are
+// the owner's rule, see "Money" below),
 // vilnyi.group (contacts, office hours, developer). Nothing here is invented; unknown values stay empty.
 export const PROJECT = {
   name: 'ЖК VILNYI', nameLatin: 'VILNYI', brand: ['VILNYI', 'УЖГОРОД'],
@@ -58,16 +62,26 @@ export const PROJECT = {
     reservationDeposit: null, rentGuarantee: null, marketRent2c: null,   // legacy keys, null = feature absent
     contract: { uk: '', en: '' },
   },
+  url: 'https://vilnyi-gt-city.uz.ua/',                                  // canonical address of the site
   bank: { beneficiary: '', iban: '', bic: '', bank: '', address: '' },   // stay empty
   payments: { stripePaymentLink: '' },
   leadsEndpoint: '', leadsKey: '',                                       // EMPTY until the owner issues a key for this project
   contact: {
-    phone: '+380500100723', viber: '+380675279818', whatsapp: '', email: 'gvilnyi@gmail.com', site: 'https://vilnyi.group',
-    instagram: 'https://www.instagram.com/vilnyi.uzhhorod/', facebook: 'https://www.facebook.com/profile.php?id=61552331798401',
+    // whatsapp: the sales number the lun.ua listing publishes as its messenger contact (the listing labels it "Написати у
+    // Viber"; it does not name WhatsApp) — used for the WhatsApp button on the owner's instruction of 03.10.2026.
+    // instagram: the project's Instagram as recorded from the lun.ua listing (data/content-lun.json); the developer's own
+    // site links instagram.com/vilnyi.uzhhorod instead (instagramAlt).
+    phone: '+380500100723', viber: '+380675279818', whatsapp: '+380675279818', email: 'gvilnyi@gmail.com', site: 'https://vilnyi.group',
+    instagram: 'https://www.instagram.com/vilnyi.group/', instagramAlt: 'https://www.instagram.com/vilnyi.uzhhorod/', facebook: 'https://www.facebook.com/profile.php?id=61552331798401',
     office: { uk: 'вул. Грушевського, 23, Ужгород', en: '23 Hrushevskoho St, Uzhhorod' },
     hours: { 'mon-fri': '10:00–18:00', sat: '11:00–15:00', sun: null },  // vilnyi.group
   },
-  features: { hero3d: true, walk: true, pano360: 'auto', photoTour: false, progress: true, drive: true, booking: 'lead' },
+  // The FOUR interior finish styles offered to buyers, in the order shown (ids of js/three/materials.js STYLES; the
+  // first one is the default). Every style selector — unit sheet, walkthrough HUD, 360° viewer — lists exactly these.
+  styles: ['nordic', 'milano', 'riviera', 'monaco'],
+  // photoTour 'auto': the 360° tour of pre-rendered panoramas is on when assets/tour/tour.json lists at least one layout
+  // with panoramas, off otherwise (no button, no toggle) — app.js decides after reading the manifest.
+  features: { hero3d: true, walk: true, pano360: 'auto', photoTour: 'auto', progress: true, drive: true, driveGame: true, cityBalcony: false, booking: 'lead' },
   // legacy aliases so untouched code does not crash:
   permit: { number: '', date: '', issuer: '', applicant: '', designer: '', cadastral: '', totalApartments: 462, parkingPlaces: 155, regime: '', pot: '', cut: '' },
   phase: '', deliveryMonths: null, partner: { name: 'VILNYI Group', role: {} },
@@ -197,19 +211,28 @@ export function coresOf(bId, floor) {
 function pointInPoly(p, x, z) { let c = false; for (let i = 0, j = p.length - 1; i < p.length; j = i++) { const [xi, zi] = p[i], [xj, zj] = p[j]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c; } return c; }
 
 // ---------- Money, prices, status ----------
-// UAH per m² of the printed total area, lun.ua listing of 28.09.2026. The listing gives prices per building and room count for
-// buildings 1, 3 and 4 (PRICE_TABLE); building 2 and the 2-room flats of building 4 are not on it → PRICE_BY_ROOMS, priceSource 'rooms'
-// (shown as an estimate). 1-room: the listing range is 47 450 – 52 000: 47 450 applies to building 4, 52 000 to the others.
-// data/sales.json → SALES overrides price / ppm / status per unit id.
-export const PRICE_BY_ROOMS = { 1: 52000, 2: 56500, 3: 52000 };
-export const PRICE_TABLE = { B1: { 1: 52000, 2: 56500, 3: 52000 }, B3: { 1: 52000, 2: 56500 }, B4: { 1: 47450 } };
-export const PRICE_RANGE = { min: 47450, max: 56500 };
-export const PRICE_PER_M2 = PRICE_RANGE.min;                             // LEGACY name = "from" price. Never show it as "the" price.
+// ONE RULE (owner, 03.10.2026): every apartment in every building costs 1300 US dollars per m² of its total area, shown in
+// hryvnia at the official UAH/USD rate. To update the prices, change UAH_PER_USD and RATE_DATE below — nothing else.
+//   price per m² in ₴ = USD_PER_M2 × UAH_PER_USD, rounded to the hryvnia;  unit price = total area × that, rounded.
+// data/sales.json → SALES may still override price / ppm / status per unit id (priceSource 'list').
+export const USD_PER_M2 = 1300;
+export const UAH_PER_USD = 44.8333;                                      // official NBU rate, hryvnias for 1 US dollar
+export const RATE_DATE = '2026-10-03';                                   // the day that rate is set for
+export const RATE_SOURCE = 'НБУ, офіційний курс гривні до долара США на 03.10.2026 (прочитано 03.10.2026 на minfin.com.ua/ua/currency/nbu/usd/; bank.gov.ua API відповідав 403)';
+export const UAH_PER_M2 = Math.round(USD_PER_M2 * UAH_PER_USD);          // 58 283 ₴
+export const PRICE_RANGE = { min: UAH_PER_M2, max: UAH_PER_M2 };         // one price; kept for callers that ask for a range
+export const PRICE_PER_M2 = UAH_PER_M2;
 export const STATUSES = ['available', 'reserved', 'sold', 'blocked'];
-export function pricePerM2(u) { return SALES.units[u.id]?.ppm ?? PRICE_TABLE[u.building]?.[u.rooms] ?? PRICE_BY_ROOMS[Math.min(u.rooms, 3)]; }
+export function pricePerM2(u) { return SALES.units[u.id]?.ppm ?? UAH_PER_M2; }
 export function priceOf(u) { return SALES.units[u.id]?.price ?? Math.round(TYPES[u.type].total * pricePerM2(u)); }
-export function priceSourceOf(u) { const s = SALES.units[u.id]; return s && (s.price != null || s.ppm != null) ? 'list' : PRICE_TABLE[u.building]?.[u.rooms] != null ? 'table' : 'rooms'; }
-export function money(n) { return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₴'; }   // '1 794 000 ₴'
+export function priceSourceOf(u) { const s = SALES.units[u.id]; return s && (s.price != null || s.ppm != null) ? 'list' : 'rule'; }
+// US-dollar equivalent of a unit's price: exactly area × USD_PER_M2 under the rule, price ÷ rate for a SALES override.
+export function usdOf(u) { return priceSourceOf(u) === 'list' ? Math.round(priceOf(u) / UAH_PER_USD) : Math.round(TYPES[u.type].total * USD_PER_M2); }
+export const toUsd = uah => Math.round(uah / UAH_PER_USD);
+const _grp = n => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');   // no-break spaces
+export function money(n) { return _grp(n) + '\u00a0₴'; }                      // '1 794 000 ₴'
+export function usd(n) { return _grp(n) + '\u00a0$'; }                        // '44 850 $'
+export const RATE = { usdPerM2: USD_PER_M2, uahPerUsd: UAH_PER_USD, uahPerM2: UAH_PER_M2, date: RATE_DATE, source: RATE_SOURCE };
 
 // ---------- Apartment types: one per distinct plate slot ----------
 // kind: living | kitchen | hall | bedroom | bath | storage | dressing | balcony | loggia | terrace     level: always 0 (no duplexes)
@@ -240,13 +263,16 @@ export const TWO_ROOM_VARIANTS = [];                                     // lega
 const typeKey = (bId, plateId, slot) => `${BUILDINGS[bId].no}${plateId}${pad2(slot)}`;
 for (const bId of B_IDS) for (const p of platesOf(bId)) for (const u of p.units) {
   const key = typeKey(bId, p.id, u.slot);
-  const list = u.list.map(r => ({ kind: r.kind, name: r.name, nk: r.nk, area: r.area, level: 0, ...(r.kitchen ? { kitchen: true } : {}) }));
+  // V3: b = [x0, z0, x1, z1] box of the room and poly = its real outline (building-local), id = room id in the interior
+  const I = ROOMS[key] || null, real = {}; if (I) for (const r of [...I.rooms, ...I.outdoor]) real[r.li] = r;
+  const list = u.list.map((r, i) => ({ kind: r.kind, name: r.name, nk: r.nk, area: r.area, level: 0, ...(r.kitchen ? { kitchen: true } : {}),
+    ...(r.b ? { b: r.b } : {}), ...(real[i] ? { id: real[i].id, poly: real[i].poly } : {}) }));
   const outs = list.filter(r => OUTDOOR.has(r.kind));
   const util = sum(list.filter(r => !OUTDOOR.has(r.kind)).map(r => r.area));
   const total = u.total ?? +(util + sum(outs.map(r => r.area))).toFixed(2);
   TYPES[key] = { key, building: bId, plate: p.id, slot: u.slot, rooms: u.rooms, label: `${u.rooms}-кімнатна · ${fmtUk(total)} м²`,
     total, living: u.living ?? null, util, outdoor: sum(outs.map(r => r.area)), built: null, outdoorKind: outs[0]?.kind ?? null,
-    duplex: false, est: !!u.est || u.total == null, list, plan: planOf(list) };
+    duplex: false, est: !!u.est || u.total == null, interior: !!I, list, plan: planOf(list) };
 }
 
 // ---------- Units ----------
@@ -272,7 +298,9 @@ export const BLOCKS = [];      // non-residential blocks of the floor plates (ca
         const f = (FRAME[n.join()] || FRAME['0,1'])(s.rect);
         const width = +f.w.toFixed(3), depth = +f.d.toFixed(3);
         const du = (s.door.p[0] - f.o[0]) * f.U[0] + (s.door.p[1] - f.o[1]) * f.U[1];
-        const doorU = width >= 2 * DOOR_MARGIN ? +Math.max(DOOR_MARGIN, Math.min(width - DOOR_MARGIN, du)).toFixed(3) : +(width / 2).toFixed(3);
+        // V3: with a real interior the door stands exactly where the plan draws it (door.p is the foot of the real opening on
+        // the hall edge) — no margin clamp; the old clamp only serves the fitted-box planner
+        const doorU = s.interior ? +Math.max(0, Math.min(width, du)).toFixed(3) : width >= 2 * DOOR_MARGIN ? +Math.max(DOOR_MARGIN, Math.min(width - DOOR_MARGIN, du)).toFixed(3) : +(width / 2).toFixed(3);
         const frame = { o: f.o, U: f.U, V: f.V }, door = { u: doorU };
         const facades = s.facades.length ? s.facades : [f.V];
         const az = facades.map(v => bearingOf(...worldDir(bId, v)));
@@ -290,8 +318,8 @@ export const BLOCKS = [];      // non-residential blocks of the floor plates (ca
           outdoor: s.outdoor,
           run, doorA: s.doorA ?? (run.axis === 'x' ? s.door.p[0] : s.door.p[1]), doorP: s.door.p,
           stair: 1, seg: SEG[f.V.join()],
-          price: 0, ppm: 0, priceSource: 'rooms', status: 'available',
-          walk: !!s.walk, fit: s.fit ?? (s.walk ? 1 : 0), est: !!s.est,
+          price: 0, ppm: 0, priceSource: 'rule', status: 'available',
+          walk: !!s.walk, interior: !!s.interior, fit: s.fit ?? (s.walk ? 1 : 0), est: !!s.est,
           cframe: frame, cdoor: door,
         };
         if (s.pos != null) unit.pos = s.pos; if (s.stack) unit.stack = s.stack;
@@ -303,11 +331,11 @@ export const BLOCKS = [];      // non-residential blocks of the floor plates (ca
     }
   }
 })();
-// Apply the price table and SALES to every unit. Call again after SALES.units was changed at run time (CRM, tests).
+// Apply the price rule and SALES to every unit. Call again after SALES.units was changed at run time (CRM, tests).
 export function applySales(table) {
   if (table && table !== SALES) { SALES.units = table.units || table; if (table.updatedAt !== undefined) SALES.updatedAt = table.updatedAt; }
   for (const u of UNITS) {
-    u.ppm = pricePerM2(u); u.price = priceOf(u); u.priceSource = priceSourceOf(u);
+    u.ppm = pricePerM2(u); u.price = priceOf(u); u.priceSource = priceSourceOf(u); u.usd = usdOf(u);
     const st = SALES.units[u.id]?.status; u.status = STATUSES.includes(st) ? st : 'available';
   }
   return UNITS;
@@ -335,6 +363,21 @@ export function unitToWorld(unit, uu, vv) { const [x, z] = unitToLocal(unit, uu,
 // Yaw (radians, three.js rotation.y) that maps unit-local axes (x = u, z = v) onto building-local axes
 export function unitYaw(unit) { const [vx, vz] = unit.frame.V; return Math.atan2(vx, vz); }
 
+// ---------- Real interiors (V3) ----------
+// The layout of a unit as drawn on the plans: rooms, outdoor spaces, inner outline, doors, windows, fixtures, columns.
+// Shape and conventions: header of data-rooms.js and notes/V3-data.md. All floors of a plate share one object — do not mutate.
+//   interiorOf(unit)      → UNIT-LOCAL [u, v]: u along the entrance wall, v from the hall edge (v = 0) into the flat; the same
+//                           frame as unitToLocal / unitToWorld / unitYaw, so unitToLocal(unit, u, v) gives building-local.
+//                           The entrance opening is centred at u = unit.door.u; rooms may reach outside 0…width / 0…depth
+//                           (width / depth describe the old fitted box, not the flat).
+//   interiorLocalOf(unit) → BUILDING-LOCAL [x, z] (the frame of unit.poly and of the plan image)
+//   roomsOf(unit)         → indoor rooms then outdoor spaces (outdoor: true) of interiorOf(unit); [] when there is none
+// Each accepts a unit object, a unit id or a TYPES key. null when the layout has no valid interior (unit.interior false).
+const _typeOf = u => (typeof u === 'string' ? (_byId.get(u)?.type ?? u) : u?.type);
+export function interiorOf(unit) { return interiorU(_typeOf(unit)); }
+export function interiorLocalOf(unit) { return ROOMS[_typeOf(unit)] ?? null; }
+export function roomsOf(unit) { const I = interiorOf(unit); return I ? [...I.rooms, ...I.outdoor.map(r => ({ ...r, outdoor: true }))] : []; }
+
 export function buildingCenter(bId) {                                    // world [x, z] of the typical plate's bbox centre
   const o = footprintOf(bId); let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
   for (const [x, z] of o) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
@@ -354,9 +397,39 @@ export const CONTEXT_BLOCKS = SITE.context.map(c => ({ ...c, ...bboxOf(c.poly), 
 export const PODIUM = SITE.podium;
 export const COURTYARD = SITE.courtyard;
 export const SITE_CENTER = SITE.courtyard.center;
-export const PARKING = { ...SITE.parking, ...bboxOf(SITE.parking.poly) };
-export const BASEMENT = bboxOf(SITE.parking.poly);                       // LEGACY = bbox of PARKING
-export const RAMPS = SITE.parking.ramps;
+// V6-parking: PARKING / RAMPS carry the car park of the working drawing (src/parking-plan.pdf → js/data-parking.js): bays, aisles,
+// lanes, walls, columns, rooms, doors, ramps with their 3D centre lines, the drivable raster … Interface: notes/V6-parking.md §1.
+const _PK = PARKING_DATA || null;
+export const PARKING = { ...SITE.parking, ...(_PK ? (({ ramps, ...rest }) => rest)(_PK) : {}), ...bboxOf((_PK || SITE.parking).poly) };
+export const BASEMENT = bboxOf(PARKING.poly);                            // LEGACY = bbox of PARKING
+export const RAMPS = _PK ? _PK.ramps : SITE.parking.ramps;
+PARKING.ramps = RAMPS;
+let _pkBits = null;
+const _pkGrid = () => { const g = PARKING.driveMesh && PARKING.driveMesh.grid; if (!g) return null;
+  if (!_pkBits) { const s = typeof atob === 'function' ? atob(g.bits) : Buffer.from(g.bits, 'base64').toString('binary'); _pkBits = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) _pkBits[i] = s.charCodeAt(i); }
+  return g; };
+const _pkCell = (g, x, z) => { const i = Math.floor((x - g.x0) / g.cell), j = Math.floor((z - g.z0) / g.cell); if (i < 0 || j < 0 || i >= g.nx || j >= g.nz) return false; const k = j * g.nx + i; return !!(_pkBits[k >> 3] & (1 << (k & 7))); };
+/** May a car be at world (x, z) of level −1 (aisles, bays, ramps; walls, rooms, columns and kerbs excluded)? r = clearance to keep (m). */
+export function parkingDrivable(x, z, r = 0) {
+  const g = _pkGrid(); if (!g) return false;
+  if (!_pkCell(g, x, z)) return false;
+  if (r > 0) { const n = Math.max(1, Math.ceil(r / g.cell)); for (let a = 0; a < 8; a++) for (let k = 1; k <= n; k++) { const d = r * k / n; if (!_pkCell(g, x + Math.cos(a * Math.PI / 4) * d, z + Math.sin(a * Math.PI / 4) * d)) return false; } }
+  return true;
+}
+/** Level of the ramp surface at a world coordinate ALONG a ramp's axis (piecewise 0 / 10 % / 18 % / 10 % / 0). */
+export function rampY(r, at) {
+  const st = r.stations; if (!st) { const t = Math.max(0, Math.min(1, (at - (r.axis === 'z' ? r.from[1] : r.from[0])) / ((r.axis === 'z' ? r.to[1] - r.from[1] : r.to[0] - r.from[0]) || 1))); return r.y0 + (r.y1 - r.y0) * t; }
+  const inc = st[st.length - 1].at > st[0].at;
+  for (let i = 0; i + 1 < st.length; i++) { const a = st[i], b = st[i + 1], lo = Math.min(a.at, b.at), hi = Math.max(a.at, b.at); if (at >= lo && at <= hi) return a.y + (b.y - a.y) * (at - a.at) / ((b.at - a.at) || 1); }
+  return (inc ? at < st[0].at : at > st[0].at) ? st[0].y : st[st.length - 1].y;
+}
+/** y of the floor / ramp surface under world (x, z) of level −1 or of a ramp up to its top; null outside the car park. */
+export function parkingFloorY(x, z) {
+  for (const r of RAMPS) { if (!r.poly) continue; const ax = r.axis === 'z', a = ax ? z : x, c = ax ? x : z, t = ax ? r.topPoint[2] : r.topPoint[0], f = r.stations[1].at;
+    if (c >= r.inner[0] && c <= r.inner[1] && a >= Math.min(t, f) && a <= Math.max(t, f)) return rampY(r, a); }
+  return _inPolyXZ(PARKING.poly, x, z) ? PARKING.y : null;
+}
+function _inPolyXZ(p, x, z) { let c = false; for (let i = 0, j = p.length - 1; i < p.length; j = i++) { const a = p[i], b = p[j]; if ((a[1] > z) !== (b[1] > z) && x < (b[0] - a[0]) * (z - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; }
 export const RAMP = RAMPS[0] ? { x0: RAMPS[0].x0, x1: RAMPS[0].x1, z0: RAMPS[0].z0, z1: RAMPS[0].z1, open: RAMPS[0].open, axis: RAMPS[0].axis, top: RAMPS[0].top } : null;   // LEGACY
 export const SITE_EXTRAS = SITE.extras;
 export const LANDMARKS = [];   // none for this project
