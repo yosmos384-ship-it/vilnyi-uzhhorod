@@ -897,12 +897,37 @@ function unlockAudio(n = 3) {
     while (P.length < n) { const a = new Audio(); a.setAttribute('playsinline', ''); a.preload = 'auto'; a.src = SILENT_WAV; a.volume = 0; const pr = a.play(); if (pr && pr.catch) pr.catch(() => {}); a.volume = 1; P.push(a); }
   } catch (e) { /* no audio here */ }
 }
+// V21 (v0.7.2): the walkthrough fills the VISIBLE part of the screen. iPhone Safari keeps a page zoom (a pinch, or the
+// automatic zoom on a small form field) and its toolbars cover the bottom of the layout viewport: #walk (position:fixed;
+// inset:0) then reached past the right edge and under the toolbar, and the drive HUD was cut (owner's picture 2026-10-10).
+// While it is open: the page zoom is reset / locked (viewport meta maximum-scale=1) and #walk follows window.visualViewport.
+let vvOn = null;
+function walkViewport(on) {
+  const W = $('#walk'), meta = document.querySelector('meta[name=viewport]'), vv = window.visualViewport;
+  if (on) {
+    if (meta && meta.dataset.base == null) { meta.dataset.base = meta.content; meta.content = meta.dataset.base.replace(/,\s*maximum-scale=[^,]*/g, '') + ', maximum-scale=1'; }
+    if (!vvOn && vv) {
+      vvOn = () => {
+        if (W.hidden) return;
+        const s = W.style, full = vv.scale <= 1.001 && Math.abs(vv.width - innerWidth) < 1 && Math.abs(vv.height - innerHeight) < 1 && !vv.offsetLeft && !vv.offsetTop;
+        if (full) { s.left = s.top = s.width = s.height = s.right = s.bottom = ''; return; }
+        s.right = s.bottom = 'auto'; s.left = vv.offsetLeft + 'px'; s.top = vv.offsetTop + 'px'; s.width = vv.width + 'px'; s.height = vv.height + 'px';
+      };
+      vv.addEventListener('resize', vvOn); vv.addEventListener('scroll', vvOn); window.addEventListener('resize', vvOn);
+    }
+    if (vvOn) { vvOn(); requestAnimationFrame(vvOn); setTimeout(vvOn, 350); }   // after the zoom reset has settled
+  } else {
+    if (meta && meta.dataset.base != null) { meta.content = meta.dataset.base; delete meta.dataset.base; }
+    if (vvOn && vv) { vv.removeEventListener('resize', vvOn); vv.removeEventListener('scroll', vvOn); window.removeEventListener('resize', vvOn); }
+    vvOn = null; const s = W.style; s.left = s.top = s.width = s.height = s.right = s.bottom = '';
+  }
+}
 async function openWalk(unitId, start, mode, room, from) {
   if (!F.walk) return;                                   // PROJECT.features.walk = false: no walkthrough at all
   unlockAudio();                                          // (still inside the visitor's tap)
   closePhoto(true);
   walkArgs = { unitId, start, mode };
-  const W = $('#walk'); W.hidden = false; W.classList.remove('is-ready'); document.documentElement.classList.add('walk-open');
+  const W = $('#walk'); W.hidden = false; W.classList.remove('is-ready'); document.documentElement.classList.add('walk-open'); walkViewport(true);
   // A modal <dialog> sits in the top layer above any z-index, so step out of the unit sheet while walking
   if (dlgU().open) { walkFromUnit = true; dlgU().close(); }
   $('#walkVeil').hidden = false; $('#walkVeil').classList.remove('failed');
@@ -941,6 +966,7 @@ function closeWalk() {
   try { walk?.dispose(); } catch (e) { /* ignore */ }
   walk = null; $('#walkStage').innerHTML = ''; W.hidden = true;
   document.documentElement.classList.remove('walk-open');
+  walkViewport(false);
   if (walkFromUnit && S.unit) { walkFromUnit = false; renderUnit(); dlgU().showModal(); }
   if (!(dlgU().open && phoneSheet())) resumeHero();
   const back = walkReturn && walkReturn.isConnected ? walkReturn : null; walkReturn = null;
@@ -1073,7 +1099,7 @@ async function openPhoto({ unitId, styleId, timeMode, room, u, v, yaw, onBack } 
   closePhoto(true);
   if (!overWalk) {
     walkArgs = { unitId, start: 'apartment', mode: 'walk' };
-    W.hidden = false; W.classList.remove('is-ready'); document.documentElement.classList.add('walk-open');
+    W.hidden = false; W.classList.remove('is-ready'); document.documentElement.classList.add('walk-open'); walkViewport(true);
     if (dlgU().open) { walkFromUnit = true; dlgU().close(); }
     $('#walkVeil').hidden = false; $('#walkVeil').classList.remove('failed'); $('#walkRetry').hidden = true;
     showStill(unitId, 'apartment', roomRef(room));

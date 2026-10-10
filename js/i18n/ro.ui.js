@@ -474,6 +474,7 @@ export default {
   "walk.car.indR": "Semnalizare dreapta",
   "walk.car.hazard": "Avarii",
   "walk.car.wipers": "Ștergătoare",
+  "walk.car.more": "Mai multe comenzi",
   "walk.car.door": "Ușă",
   "walk.game.takePolice": "Ia mașina de poliție",
   "walk.game.policeStolen": "Ați furat o mașină de poliție — poliția vă caută!",

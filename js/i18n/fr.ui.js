@@ -474,6 +474,7 @@ export default {
   "walk.car.indR": "Clignotant droit",
   "walk.car.hazard": "Feux de détresse",
   "walk.car.wipers": "Essuie-glaces",
+  "walk.car.more": "Plus de commandes",
   "walk.car.door": "Portière",
   "walk.game.takePolice": "Prendre la voiture de police",
   "walk.game.policeStolen": "Vous avez volé une voiture de police — la police vous recherche !",

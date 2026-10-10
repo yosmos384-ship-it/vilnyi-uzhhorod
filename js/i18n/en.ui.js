@@ -473,6 +473,7 @@ export default {
   "walk.car.indR": "Right indicator",
   "walk.car.hazard": "Hazard lights",
   "walk.car.wipers": "Wipers",
+  "walk.car.more": "More controls",
   "walk.car.door": "Door",
   "walk.game.takePolice": "Take the police car",
   "walk.game.policeStolen": "You stole a patrol car — the police are after you!",

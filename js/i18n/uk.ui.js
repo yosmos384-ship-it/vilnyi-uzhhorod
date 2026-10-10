@@ -475,6 +475,7 @@ export default {
   "walk.car.indR": "Поворот праворуч",
   "walk.car.hazard": "Аварійна сигналізація",
   "walk.car.wipers": "Двірники",
+  "walk.car.more": "Інші кнопки",
   "walk.car.door": "Двері",
   "walk.game.takePolice": "Забрати поліцейське авто",
   "walk.game.policeStolen": "Ви викрали патрульне авто — поліція вже шукає вас!",

@@ -475,6 +475,7 @@ export default {
   "walk.car.indR": "איתות ימינה",
   "walk.car.hazard": "אורות חירום",
   "walk.car.wipers": "מגבים",
+  "walk.car.more": "פקדים נוספים",
   "walk.car.door": "דלת",
   "walk.game.takePolice": "לקחת את ניידת המשטרה",
   "walk.game.policeStolen": "גנבתם ניידת — המשטרה כבר מחפשת אתכם!",

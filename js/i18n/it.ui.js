@@ -474,6 +474,7 @@ export default {
   "walk.car.indR": "Freccia destra",
   "walk.car.hazard": "Luci di emergenza",
   "walk.car.wipers": "Tergicristalli",
+  "walk.car.more": "Altri comandi",
   "walk.car.door": "Portiera",
   "walk.game.takePolice": "Prendi l’auto della polizia",
   "walk.game.policeStolen": "Hai rubato un’auto della polizia — la polizia ti cerca!",

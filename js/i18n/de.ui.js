@@ -473,6 +473,7 @@ export default {
   "walk.car.indR": "Blinker rechts",
   "walk.car.hazard": "Warnblinker",
   "walk.car.wipers": "Scheibenwischer",
+  "walk.car.more": "Weitere Bedienelemente",
   "walk.car.door": "Tür",
   "walk.game.takePolice": "Streifenwagen nehmen",
   "walk.game.policeStolen": "Sie haben einen Streifenwagen gestohlen — die Polizei sucht Sie!",

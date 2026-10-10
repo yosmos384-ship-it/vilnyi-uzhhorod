@@ -463,7 +463,7 @@ const CSS = `
 .vw-top,.vw-tools,.vw-map,.vw-mapbtn,.vw-pad,.vw-bottom,.vw-lift{transition:opacity .45s ease}
 .vw-top{position:absolute;top:calc(10px + var(--st));left:calc(10px + var(--sl));right:calc(10px + var(--sr));display:flex;gap:8px;align-items:flex-start;justify-content:space-between;pointer-events:none}
 .vw-top>*{pointer-events:auto}
-.vw-title{padding:7px 12px;min-width:0;max-width:min(58vw,460px)}
+.vw-title{padding:7px 12px;min-width:0;max-width:min(58%,460px)}
 .vw-title .t1{unicode-bidi:plaintext;text-align:start;font-family:"Cormorant Garamond","Bodoni Moda",Georgia,serif;font-size:15px;letter-spacing:.04em;color:var(--g2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .vw-title .t2{font-size:11.5px;opacity:.88;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .vw-title .t2 b{color:var(--g);font-weight:600}
@@ -597,7 +597,7 @@ const CSS = `
 .vw.phone .vw-liftmusic{inset-inline-end:auto;inset-inline-start:calc(116px + var(--sl));bottom:calc(46px + var(--sb));width:36px;height:36px}
 .vw.driving .vw-liftmusic,.vw.m360 .vw-liftmusic{display:none!important}
 .vw.phone.lmusic:not(.incar):not(.riding) .vw-liftmusic{inset-inline-start:calc(14px + var(--sl));bottom:calc(168px + var(--sb));width:40px;height:40px;opacity:1!important}
-.vw-tandem{display:none;position:absolute;inset-inline-start:calc(10px + var(--sl));bottom:calc(214px + var(--sb));align-items:center;gap:7px;padding:6px 10px;border-radius:16px;font:600 11.5px/1.2 Manrope,Heebo,sans-serif;max-width:min(260px,60vw);text-align:start;touch-action:manipulation}
+.vw-tandem{display:none;position:absolute;inset-inline-start:calc(10px + var(--sl));bottom:calc(214px + var(--sb));align-items:center;gap:7px;padding:6px 10px;border-radius:16px;font:600 11.5px/1.2 Manrope,Heebo,sans-serif;max-width:min(260px,60%);text-align:start;touch-action:manipulation}
 .vw-tandem i{flex:none;width:12px;height:12px;border-radius:3px;background:#d9902b;box-shadow:0 0 0 1px rgba(255,255,255,.35)}
 .vw-tandem b{flex:none;font-weight:700;color:#f0b25a}
 .vw-tandem[aria-pressed=true]{border-color:#d9902b;background:rgba(217,144,43,.22)}
@@ -698,7 +698,7 @@ const CSS = `
 .vw-pedals button.on i{background:repeating-linear-gradient(0deg,rgba(0,0,0,.35) 0 3px,transparent 3px 8px)}
 .vw.phone .vw-spdo{width:104px;height:104px;bottom:calc(16px + var(--sb))}
 .vw.phone .vw-spdo .num b{font-size:32px}
-.vw-dhint{position:absolute;left:calc(12px + var(--sl));bottom:calc(16px + var(--sb));padding:8px 12px;font-size:11px;letter-spacing:.03em;max-width:min(360px,34vw);line-height:1.45;color:#e9dfc8}
+.vw-dhint{position:absolute;left:calc(12px + var(--sl));bottom:calc(16px + var(--sb));padding:8px 12px;font-size:11px;letter-spacing:.03em;max-width:min(360px,34%);line-height:1.45;color:#e9dfc8}
 .vw.phone .vw-dhint{display:none}
 .vw.pano .vw-hud>*:not(.vw-fade):not(.vw-center){display:none!important}
 .vw.pano .vw-center{opacity:1!important}

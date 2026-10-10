@@ -105,18 +105,39 @@ const CSS = `
   .vw.phone .vw-spdo .num b{font-size:29px}
   .vw.phone .vw-dname{bottom:calc(254px + var(--sb))}
   .vw.phone .vw-dxr{bottom:calc(150px + var(--sb))}
-  .vw.phone .vw-dtop{flex-wrap:wrap;justify-content:flex-end;max-width:calc(100vw - 20px)}
+  .vw.phone .vw-dtop{flex-wrap:wrap;justify-content:flex-end;max-width:calc(100% - 20px - var(--sl) - var(--sr))}
 }
 @media (orientation:landscape){
   .vw.phone .vw-dxr{bottom:calc(142px + var(--sb));flex-wrap:wrap-reverse;justify-content:flex-end;max-width:100px}
   .vw.phone .vw-steer{left:calc(18px + var(--sl))}
 }
+.vw-dmenu{display:contents}
+.vw-dmorebtn{display:none!important}
+.vw.phone .vw-dmorebtn{display:inline-flex!important;position:relative}
+.vw-dmorebtn.lit::after{content:"";position:absolute;top:5px;right:5px;width:6px;height:6px;border-radius:50%;background:#f0b04a;box-shadow:0 0 5px #f0b04a}
+.vw.phone .vw-dmenu{display:none;position:absolute;top:calc(100% + 6px);right:0;gap:6px;padding:6px;border-radius:14px;background:rgba(12,11,9,.86);border:1px solid rgba(201,164,92,.32);z-index:4;flex-wrap:nowrap}
+.vw[dir=rtl].phone .vw-dmenu{right:auto;left:0}
+.vw.phone.dmenu-open .vw-dmenu{display:flex}
+.vw.phone.drive-deck .vw-dmenu{top:auto;bottom:calc(100% + 6px)}
+.vw.phone .vw-dtop [data-k=carview] .lbl{display:none}.vw.phone .vw-dtop [data-k=carview]{width:40px;padding:0;justify-content:center}
+.vw.driving .vw-drive{container-type:size;container-name:vwdrive}
+@container vwdrive (max-width:352px){
+  .vw.phone:not(.drive-deck) .vw-spdo{width:74px!important;height:74px!important}
+  .vw.phone:not(.drive-deck) .vw-spdo .num b{font-size:23px!important}
+}
+/* V21: © OpenStreetMap (environment.js puts it bottom-right) was lying over the gas pedal on phones (and took its taps) */
+.vw.phone.driving .vrc-osm-attribution{right:auto!important;left:calc(8px + var(--sl))!important;bottom:calc(134px + var(--sb))!important}
+@media (orientation:landscape){.vw.phone.driving .vrc-osm-attribution{bottom:calc(124px + var(--sb))!important}}
+.vw.phone.driving.drive-deck .vrc-osm-attribution{left:auto!important;right:calc(6px + var(--sr))!important;bottom:calc(var(--deck) + 4px)!important}
+/* V21: desktop chase view — the radio button and the radio bar were centred on the speedometer (overlap) */
+.vw.driving:not(.phone):not(.drive-fp) .vw-dradiobtn{left:calc(50% - 120px)!important;bottom:calc(22px + var(--sb))!important}
+.vw.driving:not(.phone):not(.drive-fp) .vw-dradio{bottom:calc(152px + var(--sb))!important}
 .vw.tilt .vw-steer{opacity:.35}
 .vw:not(.phone) .vw-dhand{display:none}
 .vw.drive-fp:not(.phone) .vw-spdo{opacity:0;pointer-events:none}
 .vw.drive-fp:not(.phone) .vw-dradio{bottom:calc(22px + var(--sb))}
 .vw.drive-fp:not(.phone) .vw-dname{bottom:calc(70px + var(--sb))}
-.vw-dradio{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(150px + var(--sb));display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:999px;border:1px solid var(--ln);background:var(--bg);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);direction:ltr;max-width:calc(100vw - 16px)}
+.vw-dradio{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(150px + var(--sb));display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:999px;border:1px solid var(--ln);background:var(--bg);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);direction:ltr;max-width:calc(100% - 16px - var(--sl) - var(--sr))}
 .vw-dradio button{pointer-events:auto;width:34px;height:34px;flex:none;border-radius:50%;border:0;background:transparent;color:var(--g2);display:inline-flex;align-items:center;justify-content:center;font-size:13px;touch-action:manipulation}
 .vw-dradio button:active{background:rgba(201,164,92,.25)}
 .vw-dradio .st{min-width:0;max-width:200px;padding:0 6px;display:flex;flex-direction:column;align-items:center;line-height:1.15;pointer-events:none!important;unicode-bidi:plaintext}
@@ -143,7 +164,7 @@ const CSS = `
 .vw.phone .vw-dround{width:42px;height:42px}.vw.phone .vw-dgear{height:42px;min-width:52px;font-size:14px}
 .vw.phone .vw-dround.on{background:linear-gradient(180deg,#f0d596,#b88a3c)}
 .vw.phone .vw-dx{gap:6px}
-.vw.phone .vw-steer{width:140px;height:52px;border-radius:26px;left:calc(10px + var(--sl));bottom:calc(14px + var(--sb));background:rgba(12,11,9,.36);border-color:rgba(201,164,92,.26);-webkit-backdrop-filter:none;backdrop-filter:none}
+.vw.phone .vw-steer{width:clamp(100px,calc(100% - 300px - var(--sl) - var(--sr)),160px);height:52px;border-radius:26px;left:calc(10px + var(--sl));bottom:calc(14px + var(--sb));background:rgba(12,11,9,.36);border-color:rgba(201,164,92,.26);-webkit-backdrop-filter:none;backdrop-filter:none}
 .vw.phone .vw-steer .knob{width:42px;height:42px;margin:-21px 0 0 -21px;opacity:.9}
 .vw.phone .vw-pedals{right:calc(10px + var(--sr));bottom:calc(12px + var(--sb));gap:7px}
 .vw.phone .vw-pedals button{background:linear-gradient(180deg,rgba(40,36,28,.45),rgba(10,10,10,.5));border-color:rgba(201,164,92,.3)}
@@ -179,7 +200,7 @@ const CSS = `
 .vw.drive-deck .vw-dradio{display:flex!important;bottom:calc(var(--deck) - 178px)!important;left:50%!important;transform:translateX(-50%)!important;width:calc(100% - 20px);justify-content:space-between;background:rgba(0,0,0,.35)}
 .vw.drive-deck .vw-dradio .st{max-width:none;flex:1}
 .vw.drive-deck .vw-dradiobtn{display:none}
-.vw.drive-deck .vw-steer{width:min(200px,calc(100vw - 186px));height:70px;border-radius:35px;bottom:calc(16px + var(--sb))}
+.vw.drive-deck .vw-steer{width:clamp(100px,calc(100% - 186px - var(--sl) - var(--sr)),200px);height:70px;border-radius:35px;bottom:calc(16px + var(--sb))}
 .vw.drive-deck .vw-steer .knob{width:52px;height:52px;margin:-26px 0 0 -26px}
 .vw.drive-deck .vw-pedals .brake{width:66px;height:88px}.vw.drive-deck .vw-pedals .gas{width:58px;height:126px}
 .vw.drive-deck .vw-dxr{right:auto;left:calc(10px + var(--sl));bottom:calc(100px + var(--sb))!important}
@@ -187,6 +208,7 @@ const CSS = `
 .vw.drive-deck .vw-dhint{display:none}
 `;
 const ICON = {
+  more: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
   indL: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 12l8-7v4.5h10v5H11V19z"/></svg>',
   indR: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 12l-8-7v4.5H3v5h10V19z"/></svg>',
   hazard: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5L21.5 20h-19z"/><path d="M12 9.5L16.4 17H7.6z"/></svg>',
@@ -638,7 +660,7 @@ export const driveMixin = {
       for (const e of this.solids) if (e.o === rec.collider) e.box = null;
       this.drive = null;
       this._driveViewport(0); this._paniniSet(null);
-      this.root.classList.remove('driving', 'tilt', 'drive-fp');
+      this.root.classList.remove('driving', 'tilt', 'drive-fp', 'dmenu-open');
       this._tiltStop();
       this._applyFov();
       this._trafficObstacles(true);
@@ -1198,7 +1220,16 @@ export const driveMixin = {
     rbtn.addEventListener('pointerdown', ev => ev.stopPropagation());
     e.drive.appendChild(rbtn); e.dradioBtn = rbtn;
     const top = e.drive.querySelector('.vw-dtop');
-    const mk = (kd, html) => { const b = document.createElement('button'); b.className = 'vw-btn vw-ghost vw-ico'; b.dataset.kd = kd; b.innerHTML = html; top.insertBefore(b, top.firstChild); return b; };
+    // V21: the less-used buttons (reset, wipers, hazard, tilt) sit in .vw-dmenu: on a desktop it is display:contents (the row as
+    // before); on a phone it folds behind a «⋯» button and opens as a small panel, so the top row fits one line on any phone
+    const menu = document.createElement('div'); menu.className = 'vw-dmenu'; menu.setAttribute('role', 'group'); top.insertBefore(menu, top.firstChild);
+    const more = document.createElement('button'); more.className = 'vw-btn vw-ghost vw-ico vw-dmorebtn'; more.dataset.kd = 'more'; more.setAttribute('aria-haspopup', 'true'); more.setAttribute('aria-expanded', 'false'); more.innerHTML = ICON.more; top.insertBefore(more, top.firstChild);
+    e.dmenu = menu; e.dmore = more;
+    more.addEventListener('click', ev => { ev.stopPropagation(); this._driveMenu(!this.root.classList.contains('dmenu-open')); });
+    more.addEventListener('pointerdown', ev => ev.stopPropagation());
+    menu.addEventListener('click', ev => { if (ev.target.closest('button')) setTimeout(() => this._driveMenu(false), 160); });
+    this.root.addEventListener('pointerdown', ev => { if (this.root.classList.contains('dmenu-open') && !ev.target.closest('.vw-dmenu,.vw-dmorebtn')) this._driveMenu(false); }, true);
+    const mk = (kd, html) => { const b = document.createElement('button'); b.className = 'vw-btn vw-ghost vw-ico'; b.dataset.kd = kd; b.innerHTML = html; menu.insertBefore(b, menu.firstChild); return b; };
     e.dreset = mk('reset', ICON.reset);
     e.dwipers = mk('wipers', ICON.wipers); e.dhazard = mk('hazard', ICON.hazard);                       // V19: wipers, hazard lights
     if (this._isTouch && typeof window.DeviceOrientationEvent !== 'undefined') e.dtilt = mk('tilt', ICON.tilt);
@@ -1214,6 +1245,10 @@ export const driveMixin = {
     e.dhorn.addEventListener('pointerdown', hOn); for (const n of ['pointerup', 'pointercancel', 'lostpointercapture']) e.dhorn.addEventListener(n, hOff);
     e.dhorn.addEventListener('contextmenu', ev => ev.preventDefault());
   },
+  _driveMenu(open) {
+    const e = this.el; if (!e || !e.dmore) return;
+    this.root.classList.toggle('dmenu-open', !!open); e.dmore.setAttribute('aria-expanded', open ? 'true' : 'false'); e.dmore.classList.toggle('on', !!open);
+  },
   _renderDriveHud(force) {
     const D = this.drive, e = this.el; if (!D || !e) return;
     const ctl = D.ctl, kmh = Math.round(Math.abs(ctl.v) * 3.6), lim = ctl.y < -0.8 || this._rampDist(ctl.x, ctl.z) < 1 ? CAR_PARK_LIMIT : STREET_LIMIT;
@@ -1223,6 +1258,7 @@ export const driveMixin = {
       const f = Math.min(1, kmh / (lim === CAR_PARK_LIMIT ? 40 : Math.max(120, ctl.perf.vmax))); e.arc.style.strokeDasharray = `${(141.4 * f).toFixed(1)} 200`;
       if (e.dgear) for (const i of e.dgear.querySelectorAll('i')) i.classList.toggle('on', i.dataset.g === (ctl.reversing ? 'R' : 'D'));
       if (e.dindL) { e.dindL.classList.toggle('on', D.ind === 1); e.dindR.classList.toggle('on', D.ind === -1); e.dhazard.classList.toggle('on', D.ind === 2); e.dwipers.classList.toggle('on', !!D.wipers); }
+      if (e.dmore) e.dmore.classList.toggle('lit', D.ind === 2 || !!D.wipers || !!D.tiltOn);
     }
     if (force || lim !== this._lastLim) { this._lastLim = lim; e.lim.textContent = String(lim); if (!force && lim === CAR_PARK_LIMIT && this.el) this._toast(this.t('walk.car.parkLimit').replace('{n}', CAR_PARK_LIMIT), 2600); }
     e.spdo.classList.toggle('over', kmh > lim + 2);
@@ -1233,7 +1269,7 @@ export const driveMixin = {
       e.dhint.textContent = this.t('walk.car.hint');
       if (e.dname) e.dname.innerHTML = `<b>${ctl.S.name}</b>${D.car.plate ? ' · ' + D.car.plate : ''}`;
       const lab = (b, k) => { if (b) { b.setAttribute('aria-label', this.t(k)); b.title = this.t(k); } };
-      lab(e.dindL, 'walk.car.indL'); lab(e.dindR, 'walk.car.indR'); lab(e.dhazard, 'walk.car.hazard'); lab(e.dwipers, 'walk.car.wipers'); lab(e.dhorn, 'walk.car.horn'); lab(e.dhand, 'walk.car.handbrake'); lab(e.dreset, 'walk.car.resetBtn'); lab(e.dtilt, 'walk.car.tilt'); lab(e.carSound, 'walk.car.sound');
+      lab(e.dindL, 'walk.car.indL'); lab(e.dindR, 'walk.car.indR'); lab(e.dhazard, 'walk.car.hazard'); lab(e.dwipers, 'walk.car.wipers'); lab(e.dhorn, 'walk.car.horn'); lab(e.dhand, 'walk.car.handbrake'); lab(e.dreset, 'walk.car.resetBtn'); lab(e.dmore, 'walk.car.more'); lab(e.carView, D.view === 'fp' ? 'walk.car.chase' : 'walk.car.cockpit'); lab(e.dtilt, 'walk.car.tilt'); lab(e.carSound, 'walk.car.sound');
       this._radioBar(null);
       if (e.dradio) { e.dradio.setAttribute('aria-label', this.t('walk.radio.title')); for (const [kr, key] of [['prev', 'walk.radio.prev'], ['next', 'walk.radio.next'], ['down', 'walk.radio.volDown'], ['up', 'walk.radio.volUp'], ['power', 'walk.radio.power']]) lab(e.dradio.querySelector(`[data-kr=${kr}]`), key); this._radioHud(); }
       if (e.dtilt) e.dtilt.classList.toggle('on', !!D.tiltOn);

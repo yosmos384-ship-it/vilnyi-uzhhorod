@@ -1086,3 +1086,7 @@ html.modal-open .fab, html.walk-open .fab, html.pano-open .fab, html:has(dialog[
 .bp-b .bt i { display: block; width: 7px; background: linear-gradient(var(--gold-hi), var(--gold-lo)); opacity: .85; }
 .bp-x { position: absolute; top: 14px; inset-inline-end: 14px; }
 @media (max-width: 380px) { .bp-grid { grid-template-columns: 1fr; } .bp-b { min-height: 0; } }
+
+/* V21 (v0.7.2): iPhone Safari zooms the page in when a form field under 16 px gets the focus, and the zoom stayed on into the
+   walkthrough (drive HUD cut on the right / bottom). Touch screens get 16 px fields. */
+@media (pointer: coarse) { .sel2 select, .ls-head select { font-size: 16px; } }
