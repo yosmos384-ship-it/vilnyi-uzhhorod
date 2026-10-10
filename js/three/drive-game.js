@@ -93,11 +93,37 @@ export const gameMixin = {
       // arrest → fine sheet → back on foot at the complex
       police.on('police:respawn', () => { this._gameRespawn(); });
       people.on('people:hit', ev => { if (ev && ev.byPlayer && navigator.vibrate) try { navigator.vibrate(ev.severity === 'hard' ? 160 : 60); } catch { /* */ } });
+      // V19: patrol cars the visitor can steal — fleet cars dressed in the patrol livery (parked at a kerb, or taken from a
+      // stopped patrol unit); getting into one is reported at once (wanted level 2) and the beacon flashes while driving
+      if (this.fleet && this.fleet.setDresser) this.fleet.setDresser((car, r) => PO.dressPatrol(car.group, cars.carSpec(r.kind), null));
+      offs.push(hooks.on('enter', ({ car }) => { if (car && car.livery === 'police' && !car._stolen) { car._stolen = true; try { police.report('policeCar', { pos: { x: car.x, z: car.z } }); } catch { /* */ } this._toast(this.t('walk.game.policeStolen'), 2600); } }));
+      try { this._gamePatrolParks(CD); } catch (e) { console.warn('[game] patrol cars', e); }
       this._game = { people, police, hud, offs, errs: 0 };
       this._gameHud();
       return this._game;
     })().catch(e => { console.warn('[game] off for this visit:', e && e.message ? e.message : e); this._game = null; return null; });
     return this._gameP;
+  },
+  // V19: two parked patrol cars at a kerb — on вул. Грушевського by the complex, and on вул. Собранецька behind the GT start
+  _gamePatrolParks(CD) {
+    if (!this.fleet || this._patrolParked) return; this._patrolParked = true;
+    const kerb = (x0, z0, rx, back = 0) => {
+      let best = null;
+      for (const r of CD.roadsNear(x0, z0, 220)) { if (!r.car || !r.name || !rx.test(r.name.uk || '')) continue; const p = r.pts;
+        for (let i = 0; i < p.length - 1; i++) { const a = p[i], b = p[i + 1], dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz || 1; let t = ((x0 - a[0]) * dx + (z0 - a[1]) * dz) / l2; t = Math.max(0.15, Math.min(0.85, t));
+          const px = a[0] + dx * t, pz = a[1] + dz * t, d = Math.hypot(x0 - px, z0 - pz); if (!best || d < best.d) best = { r, d, p: [px, pz], f: [dx / Math.sqrt(l2), dz / Math.sqrt(l2)] }; } }
+      if (!best) return null;
+      const { r, p, f } = best; let nx = x0 - p[0], nz = z0 - p[1]; const al = nx * f[0] + nz * f[1]; nx -= f[0] * al; nz -= f[1] * al; const nl = Math.hypot(nx, nz); if (nl < 1e-3) { nx = -f[1]; nz = f[0]; } else { nx /= nl; nz /= nl; }
+      const off = Math.max(1.2, (r.w || 7) / 2 - 1.15); let yaw = Math.atan2(f[0], f[1]); if (nx * -f[1] + nz * f[0] < 0) yaw += Math.PI;
+      const x = p[0] + nx * off - Math.sin(yaw) * back, z = p[1] + nz * off - Math.cos(yaw) * back;
+      return { x, z, yaw };
+    };
+    const spots = [];
+    const a = kerb(40, 8, /Грушевськ/); if (a) spots.push(a);
+    const gt = this.fleet.records.find(r => r.id === 'gt-vilnyi'); if (gt) { spots.push({ x: gt.x - Math.sin(gt.yaw) * 9.5, z: gt.z - Math.cos(gt.yaw) * 9.5, yaw: gt.yaw }); }
+    spots.forEach((q, i) => { const rec = this.fleet.addOne({ id: 'patrol-park-' + i, kind: 'ev', colour: 'white', livery: 'police', x: q.x, y: 0, z: q.z, yaw: q.yaw, src: 'patrol' }); rec.police = true; });
+    if (spots.length && this._registerCars) this._registerCars();
+    this._patrolSpots = spots;
   },
   async _gameRespawn() {
     for (let i = 0; i < 60 && this.busy; i++) await sleep(100);
@@ -159,7 +185,10 @@ export const gameMixin = {
     if (!this._chipRec) {
       const P = this.player.pos, fx = -Math.sin(this.player.yaw), fz = -Math.cos(this.player.yaw);
       this.forEachTrafficCar(c => { const dx = c.x - P.x, dz = c.z - P.z, d = Math.hypot(dx, dz); if (d < bd && (d < 3.2 || (dx * fx + dz * fz) / (d || 1) > 0.5)) { bd = d; best = c; } });
+      // V19: a patrol unit standing (or crawling) next to the visitor can be carjacked like any car
+      const G = this._game; if (G && G.police) for (const u of G.police.units) { if (Math.abs(u.v || 0) > 1.5) continue; const dx = u.x - P.x, dz = u.z - P.z, d = Math.hypot(dx, dz); if (d < bd && (d < 3.6 || (dx * fx + dz * fz) / (d || 1) > 0.5)) { bd = d; best = { policeUnit: u }; } }
     }
+    if (best && this._gTake && best.policeUnit && this._gTake.policeUnit === best.policeUnit) return;
     if (best === this._gTake) return;
     this._gTake = best;
     if (!e.gtake) {
@@ -168,10 +197,11 @@ export const gameMixin = {
       b.addEventListener('pointerdown', ev => ev.stopPropagation());
       e.hud.appendChild(b); e.gtake = b;
     }
-    e.gtake.textContent = this.t('walk.game.take');
+    e.gtake.textContent = this.t(best && best.policeUnit ? 'walk.game.takePolice' : 'walk.game.take');
     e.gtake.style.display = best ? 'inline-flex' : 'none';
   },
   async _gameTake(c) {
+    if (c && c.policeUnit) return this._gamePoliceTake(c.policeUnit);
     if (!c || this.busy || this.drive || c.taken) return;
     if (this._gameNotice(() => this._gameTake(c))) return;
     // the tap: radio, car sound and the people's audio may start now
@@ -187,5 +217,21 @@ export const gameMixin = {
       const rec = await this.takeCar(c);
       if (!rec) { this.stopCar(c, false); this._radioStop(); }
     } catch (e) { console.warn('[game] take', e); this._radioStop(); }
+  },
+  // V19: carjack a patrol unit — the crew loses its car (the police report it: wanted level 2), the visitor drives it away
+  async _gamePoliceTake(u) {
+    const G = this._game; if (!G || this.busy || this.drive) return;
+    if (this._gameNotice(() => this._gamePoliceTake(u))) return;
+    this._radioStart(); this._carAudio(); this._gameAudioResume();
+    if (this.el && this.el.gtake) this.el.gtake.style.display = 'none';
+    this._gTake = null; this._gtT = performance.now() + 2500;
+    let pose = null; try { pose = G.police.stealUnit(u); } catch (e) { console.warn('[game] steal', e); }
+    if (!pose) { this._radioStop(); return; }
+    const rec = this.fleet.addOne({ id: 'police-' + u.id + '-' + Date.now().toString(36), kind: 'ev', colour: 'white', livery: 'police', x: pose.x, y: 0, z: pose.z, yaw: pose.yaw, src: 'taken' });
+    rec.police = true; rec._stolen = true;
+    if (this._registerCars) this._registerCars();
+    this._toast(this.t('walk.game.policeStolen'), 2600);
+    await this._enterCar(rec, { gesture: false });
+    if (!this.drive) this._radioStop();
   },
 };

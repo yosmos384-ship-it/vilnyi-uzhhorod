@@ -12,27 +12,27 @@ const angDiff = (a, b) => { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; if
 const rng = seed => { let s = (seed >>> 0) || 1; return () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296); };
 
 /** Heat an offence adds, and the heat each wanted level starts at. */
-export const OFFENCES = { nudge: 0.5, hit: 1.5, hitHard: 3, kill: 2, body: 0.3, crash: 1, carjack: 2, witness: 1, speeding: 1, ram: 1.5, flee: 0.5, roadblock: 1 };
+export const OFFENCES = { nudge: 0.5, hit: 1.5, hitHard: 3, kill: 2, body: 0.3, crash: 1, carjack: 2, policeCar: 4, witness: 1, speeding: 1, ram: 1.5, flee: 0.5, roadblock: 1 };
 export const LEVEL_HEAT = [0, 1, 3, 6, 10, 15];
 const UNITS_AT = [1, 1, 2, 3, 4, 5], TOP_SPEED = [16, 36, 44, 52, 60, 66];                    // m/s
 export const POLICE_STRINGS = {
   uk: { order: 'Водію, негайно зупиніться! Притисніться праворуч!', orderPlate: 'Водій авто {p}, негайно зупиніться!', wanted: 'Розшук', arrested: 'Вас затримано', fine: 'Штраф', total: 'Разом', back: 'Ви повертаєтесь до комплексу пішки', lost: 'Поліція втратила вас з поля зору', seen: 'Вас помітив патруль',
-    nudge: 'Наїзд на пішохода', hit: 'Наїзд на пішохода з травмами', hitHard: 'Тяжкий наїзд на пішохода', kill: 'ДТП із загиблим', body: 'Наїзд на потерпілого', crash: 'Зіткнення з автомобілем', carjack: 'Незаконне заволодіння автомобілем', witness: 'Виклик поліції свідком', speeding: 'Перевищення швидкості', ram: 'Таран патрульного авто', flee: 'Невиконання вимоги про зупинку', roadblock: 'Прорив блокпоста' },
+    nudge: 'Наїзд на пішохода', hit: 'Наїзд на пішохода з травмами', hitHard: 'Тяжкий наїзд на пішохода', kill: 'ДТП із загиблим', body: 'Наїзд на потерпілого', crash: 'Зіткнення з автомобілем', carjack: 'Незаконне заволодіння автомобілем', policeCar: 'Викрадення патрульного автомобіля', witness: 'Виклик поліції свідком', speeding: 'Перевищення швидкості', ram: 'Таран патрульного авто', flee: 'Невиконання вимоги про зупинку', roadblock: 'Прорив блокпоста' },
   en: { order: 'Driver, stop the car now! Pull over to the right!', orderPlate: 'Driver of {p}, stop the car now!', wanted: 'Wanted', arrested: 'You are detained', fine: 'Fine', total: 'Total', back: 'You return to the complex on foot', lost: 'The police lost sight of you', seen: 'A patrol has spotted you',
-    nudge: 'Hitting a pedestrian', hit: 'Injuring a pedestrian', hitHard: 'Seriously injuring a pedestrian', kill: 'Fatal road accident', body: 'Driving over a casualty', crash: 'Collision with a vehicle', carjack: 'Taking a vehicle unlawfully', witness: 'Reported by a witness', speeding: 'Speeding', ram: 'Ramming a patrol car', flee: 'Failing to stop for the police', roadblock: 'Breaking through a roadblock' },
+    nudge: 'Hitting a pedestrian', hit: 'Injuring a pedestrian', hitHard: 'Seriously injuring a pedestrian', kill: 'Fatal road accident', body: 'Driving over a casualty', crash: 'Collision with a vehicle', carjack: 'Taking a vehicle unlawfully', policeCar: 'Stealing a patrol car', witness: 'Reported by a witness', speeding: 'Speeding', ram: 'Ramming a patrol car', flee: 'Failing to stop for the police', roadblock: 'Breaking through a roadblock' },
   he: { order: 'נהג, עצור מיד! היצמד לימין!', orderPlate: 'נהג הרכב {p}, עצור מיד!', wanted: 'מבוקש', arrested: 'נעצרת', fine: 'קנס', total: 'סה"כ', back: 'חוזרים למתחם ברגל', lost: 'המשטרה איבדה אותך', seen: 'ניידת זיהתה אותך',
-    nudge: 'פגיעה בהולך רגל', hit: 'פציעת הולך רגל', hitHard: 'פציעה קשה של הולך רגל', kill: 'תאונה קטלנית', body: 'דריסת נפגע', crash: 'התנגשות ברכב', carjack: 'נטילת רכב שלא כדין', witness: 'דיווח של עד', speeding: 'מהירות מופרזת', ram: 'נגיחה בניידת', flee: 'אי־ציות להוראת עצירה', roadblock: 'פריצת מחסום' },
+    nudge: 'פגיעה בהולך רגל', hit: 'פציעת הולך רגל', hitHard: 'פציעה קשה של הולך רגל', kill: 'תאונה קטלנית', body: 'דריסת נפגע', crash: 'התנגשות ברכב', carjack: 'נטילת רכב שלא כדין', policeCar: 'גניבת ניידת משטרה', witness: 'דיווח של עד', speeding: 'מהירות מופרזת', ram: 'נגיחה בניידת', flee: 'אי־ציות להוראת עצירה', roadblock: 'פריצת מחסום' },
   ro: { order: 'Șofer, opriți imediat! Trageți pe dreapta!', orderPlate: 'Șoferul mașinii {p}, opriți imediat!', wanted: 'Urmărit', arrested: 'Sunteți reținut', fine: 'Amendă', total: 'Total', back: 'Vă întoarceți pe jos la complex', lost: 'Poliția v-a pierdut din vedere', seen: 'O patrulă v-a observat',
-    nudge: 'Lovirea unui pieton', hit: 'Rănirea unui pieton', hitHard: 'Rănirea gravă a unui pieton', kill: 'Accident mortal', body: 'Trecere peste o victimă', crash: 'Coliziune cu un vehicul', carjack: 'Luarea ilegală a unui vehicul', witness: 'Sesizare de la un martor', speeding: 'Depășirea vitezei', ram: 'Lovirea mașinii de patrulare', flee: 'Neoprire la semnalul poliției', roadblock: 'Forțarea unui baraj' },
+    nudge: 'Lovirea unui pieton', hit: 'Rănirea unui pieton', hitHard: 'Rănirea gravă a unui pieton', kill: 'Accident mortal', body: 'Trecere peste o victimă', crash: 'Coliziune cu un vehicul', carjack: 'Luarea ilegală a unui vehicul', policeCar: 'Furtul unei mașini de poliție', witness: 'Sesizare de la un martor', speeding: 'Depășirea vitezei', ram: 'Lovirea mașinii de patrulare', flee: 'Neoprire la semnalul poliției', roadblock: 'Forțarea unui baraj' },
   de: { order: 'Fahrer, sofort anhalten! Rechts ranfahren!', orderPlate: 'Fahrer des Wagens {p}, sofort anhalten!', wanted: 'Gesucht', arrested: 'Sie sind festgenommen', fine: 'Bußgeld', total: 'Gesamt', back: 'Sie kehren zu Fuß zum Komplex zurück', lost: 'Die Polizei hat Sie aus den Augen verloren', seen: 'Eine Streife hat Sie bemerkt',
-    nudge: 'Fußgänger angefahren', hit: 'Fußgänger verletzt', hitHard: 'Fußgänger schwer verletzt', kill: 'Unfall mit Todesfolge', body: 'Überfahren eines Verletzten', crash: 'Zusammenstoß mit einem Fahrzeug', carjack: 'Unbefugte Inbesitznahme eines Fahrzeugs', witness: 'Anzeige eines Zeugen', speeding: 'Geschwindigkeitsüberschreitung', ram: 'Rammen eines Streifenwagens', flee: 'Missachtung des Haltesignals', roadblock: 'Durchbrechen einer Straßensperre' },
+    nudge: 'Fußgänger angefahren', hit: 'Fußgänger verletzt', hitHard: 'Fußgänger schwer verletzt', kill: 'Unfall mit Todesfolge', body: 'Überfahren eines Verletzten', crash: 'Zusammenstoß mit einem Fahrzeug', carjack: 'Unbefugte Inbesitznahme eines Fahrzeugs', policeCar: 'Diebstahl eines Streifenwagens', witness: 'Anzeige eines Zeugen', speeding: 'Geschwindigkeitsüberschreitung', ram: 'Rammen eines Streifenwagens', flee: 'Missachtung des Haltesignals', roadblock: 'Durchbrechen einer Straßensperre' },
   fr: { order: 'Conducteur, arrêtez-vous immédiatement ! Serrez à droite !', orderPlate: 'Conducteur du véhicule {p}, arrêtez-vous !', wanted: 'Recherché', arrested: 'Vous êtes interpellé', fine: 'Amende', total: 'Total', back: 'Vous revenez à pied au complexe', lost: 'La police vous a perdu de vue', seen: 'Une patrouille vous a repéré',
-    nudge: 'Piéton heurté', hit: 'Piéton blessé', hitHard: 'Piéton grièvement blessé', kill: 'Accident mortel', body: 'Passage sur une victime', crash: 'Collision avec un véhicule', carjack: 'Prise illégale d\'un véhicule', witness: 'Signalement d\'un témoin', speeding: 'Excès de vitesse', ram: 'Percussion d\'une voiture de patrouille', flee: 'Refus d\'obtempérer', roadblock: 'Forçage d\'un barrage' },
+    nudge: 'Piéton heurté', hit: 'Piéton blessé', hitHard: 'Piéton grièvement blessé', kill: 'Accident mortel', body: 'Passage sur une victime', crash: 'Collision avec un véhicule', carjack: 'Prise illégale d\'un véhicule', policeCar: 'Vol d\'une voiture de police', witness: 'Signalement d\'un témoin', speeding: 'Excès de vitesse', ram: 'Percussion d\'une voiture de patrouille', flee: 'Refus d\'obtempérer', roadblock: 'Forçage d\'un barrage' },
   it: { order: 'Conducente, si fermi subito! Accosti a destra!', orderPlate: 'Conducente dell\'auto {p}, si fermi subito!', wanted: 'Ricercato', arrested: 'Lei è in stato di fermo', fine: 'Multa', total: 'Totale', back: 'Torna al complesso a piedi', lost: 'La polizia l\'ha persa di vista', seen: 'Una pattuglia l\'ha notata',
-    nudge: 'Urto a un pedone', hit: 'Ferimento di un pedone', hitHard: 'Grave ferimento di un pedone', kill: 'Incidente mortale', body: 'Passaggio su un ferito', crash: 'Collisione con un veicolo', carjack: 'Impossessamento illecito di un veicolo', witness: 'Segnalazione di un testimone', speeding: 'Eccesso di velocità', ram: 'Speronamento di un\'auto di pattuglia', flee: 'Mancato arresto all\'alt', roadblock: 'Forzatura di un posto di blocco' },
+    nudge: 'Urto a un pedone', hit: 'Ferimento di un pedone', hitHard: 'Grave ferimento di un pedone', kill: 'Incidente mortale', body: 'Passaggio su un ferito', crash: 'Collisione con un veicolo', carjack: 'Impossessamento illecito di un veicolo', policeCar: 'Furto di un\'auto della polizia', witness: 'Segnalazione di un testimone', speeding: 'Eccesso di velocità', ram: 'Speronamento di un\'auto di pattuglia', flee: 'Mancato arresto all\'alt', roadblock: 'Forzatura di un posto di blocco' },
 };
 /** Fictional fines of the game, in hryvnias. */
-export const FINES = { nudge: 1700, hit: 8500, hitHard: 17000, kill: 51000, body: 3400, crash: 3400, carjack: 34000, witness: 0, speeding: 1700, ram: 17000, flee: 5100, roadblock: 8500 };
+export const FINES = { nudge: 1700, hit: 8500, hitHard: 17000, kill: 51000, body: 3400, crash: 3400, carjack: 34000, policeCar: 68000, witness: 0, speeding: 1700, ram: 17000, flee: 5100, roadblock: 8500 };
 
 // ---- the patrol car model (generic, built here: no model files, nobody else's module needed) ---------------------------------------
 const CAR = { L: 4.55, W: 1.82, H: 1.5, wb: 2.7 };
@@ -106,6 +106,16 @@ export function createPatrolCar({ base = null, light = null } = {}) {
     dispose() { if (light && light.userData.owner === g) { light.intensity = 0; light.userData.owner = null; } glowTex.dispose(); gB.material.dispose(); gR.material.dispose(); blue.dispose(); red.dispose(); for (const o of own) o.dispose(); if (base && base.dispose) base.dispose(); g.parent?.remove(g); } };
 }
 
+/** V19: dress a car of the driving code as a patrol car (livery + light bar as children of its group, no light of its own:
+ *  `light` = the host's shared police light slot or null) → { setLights(on, t, night), dispose() } */
+export function dressPatrol(group, dims, light = null) {
+  const fake = light || { position: new THREE.Vector3(), color: new THREE.Color(), intensity: 0, userData: {} };
+  const P = createPatrolCar({ base: { group: new THREE.Group(), L: dims.L, W: dims.W, H: dims.H }, light: fake });
+  const kids = P.group.children.filter(c => c.type !== 'Group');
+  for (const c of kids) group.add(c);
+  return { setLights: (on, t, night) => P.setLights(on, t, night, false), dispose() { for (const c of kids) group.remove(c); P.dispose(); } };
+}
+
 // ---- A* on the drivable road graph ---------------------------------------------------------------------------------------------------
 function makeRouter(R) {
   const N = R.nodes.length, gS = new Float32Array(N), from = new Int32Array(N), stamp = new Int32Array(N); let run = 0;
@@ -154,7 +164,7 @@ export function createPolice(scene, opts = {}) {
   // ---- units ----------------------------------------------------------------------------------------------------------------------------
   function spawnUnit(mode = 'respond', at = null) {
     if (!city || !city.roads) return null; const R = city.roads; let best = -1, bs = -1e9;
-    if (at == null) { for (let k = 0; k < 60; k++) { const i = Math.floor(rnd() * R.nodes.length), n = R.nodes[i]; if (!n.edges.length) continue; const d = hyp(n.x - P.x, n.z - P.z); if (d < (mode === 'patrol' ? 90 : 60) || d > (mode === 'patrol' ? 320 : 230) || !hidden(n.x, n.z)) continue; if (units.some(u => hyp(u.x - n.x, u.z - n.z) < 25)) continue;
+    if (at == null) { for (let k = 0; k < 60; k++) { const i = Math.floor(rnd() * R.nodes.length), n = R.nodes[i]; if (!n.edges.length || (city.blocked && city.blocked(n.x, n.z))) continue; const d = hyp(n.x - P.x, n.z - P.z); if (d < (mode === 'patrol' ? 90 : 60) || d > (mode === 'patrol' ? 320 : 230) || !hidden(n.x, n.z)) continue; if (units.some(u => hyp(u.x - n.x, u.z - n.z) < 25)) continue;
       const ahead = ((n.x - P.x) * P.vx + (n.z - P.z) * P.vz) / (d * (P.speed || 1) + 1e-6), s = -Math.abs(d - (mode === 'patrol' ? 170 : 110)) / 100 + (mode === 'patrol' ? 0 : ahead * 0.6) + rnd() * 0.3; if (s > bs) { bs = s; best = i; } } }
     else best = at;
     if (best < 0) return null; const n = R.nodes[best], e = R.edges[n.edges[0]], o = R.nodes[e.a === best ? e.b : e.a];
@@ -192,7 +202,7 @@ export function createPolice(scene, opts = {}) {
     for (let k = 0; k < 14 && dist < 150; k++) { const n = R.nodes[node]; let be = -1, bd = 1.1; for (const ei of n.edges) { const e = R.edges[ei], o = R.nodes[e.a === node ? e.b : e.a]; if ((e.a === node ? e.b : e.a) === prev) continue; const da = Math.abs(angDiff(Math.atan2(o.x - n.x, o.z - n.z), heading)); if (da < bd) { bd = da; be = ei; } } if (be < 0) break; const e = R.edges[be], nx = e.a === node ? e.b : e.a; heading = Math.atan2(R.nodes[nx].x - n.x, R.nodes[nx].z - n.z); dist += e.len; prev = node; node = nx; edge = e; }
     if (!edge || dist < 90) return false; const A = R.nodes[prev], Z = R.nodes[node], mx = lerp(A.x, Z.x, 0.5), mz = lerp(A.z, Z.z, 0.5), yaw = Math.atan2(Z.x - A.x, Z.z - A.z); if (!hidden(mx, mz) || hyp(mx - P.x, mz - P.z) < 80) return false;
     const b = { x: mx, z: mz, yaw, units: [], born: time, passed: false }, w = edge.w || 8, px = Math.cos(yaw), pz = -Math.sin(yaw);
-    for (const s of [-1, 1]) { const u = spawnUnit('block', prev); if (!u) continue; u.x = mx + px * s * (w / 4 - 0.1) + Math.sin(yaw) * s * 0.9; u.z = mz + pz * s * (w / 4 - 0.1) + Math.cos(yaw) * s * 0.9; u.yaw = yaw + Math.PI / 2 + s * 0.22; u.block = b; u.v = 0; b.units.push(u);
+    for (const s of [-1, 1]) { const u = spawnUnit('block', prev); if (!u) continue; u.x = mx + px * s * (w / 4 - 0.1) + Math.sin(yaw) * s * 0.9; u.z = mz + pz * s * (w / 4 - 0.1) + Math.cos(yaw) * s * 0.9; u.yaw = yaw + Math.PI / 2 + s * 0.22; if (city.blocked && city.blocked(u.x, u.z)) { removeUnit(u); continue; } u.block = b; u.v = 0; b.units.push(u);
       if (people) { const a = people.makeActor({ role: 'police', x: u.x - Math.sin(yaw) * 3.2 + px * s * 1.5, z: u.z - Math.cos(yaw) * 3.2 + pz * s * 1.5, yaw: yaw + Math.PI }); a.pose('wave'); u.officers.push(a); } }
     blocks.push(b); emit('police:roadblock', { x: mx, z: mz, yaw }); return true;
   }
@@ -349,6 +359,8 @@ export function createPolice(scene, opts = {}) {
     setEnabled(on) { enabled = !!on; if (!on) api.clear(); }, setLang(l) { api.lang = l; renderHud(); },
     /** Boxes of the patrol cars for the car physics of the driving code: → [{ x, z, yaw, L, W, v, unit }] */
     colliders() { return units.map(u => ({ x: u.x, z: u.z, yaw: u.yaw, L: u.L, W: u.W, v: u.v, unit: u })); },
+    /** V19: the visitor takes a stopped patrol car (on foot, next to it): the unit is gone, its crew calls it in → the pose of the car */
+    stealUnit(u) { if (!units.includes(u)) return null; const pose = { x: u.x, z: u.z, yaw: u.yaw, L: u.L || u.car.L, W: u.W || u.car.W }; removeUnit(u); report('policeCar', { pos: { x: pose.x, z: pose.z } }); emit('police:stolen', { pose }); return pose; },
     spawnUnit, placeRoadblock, state: () => ({ wanted, heat: +heat.toFixed(2), seen, unseen: +unseen.toFixed(1), units: units.map(u => ({ id: u.id, mode: u.mode, x: +u.x.toFixed(1), z: +u.z.toFixed(1), v: +u.v.toFixed(1), d: +hyp(u.x - P.x, u.z - P.z).toFixed(1), officers: u.officers.length })), blocks: blocks.length, arrest: arrest ? +arrest.t.toFixed(1) : null }),
     dispose() { disposed = true; for (const u of [...units]) removeUnit(u); for (const [e, f] of subs) people.off(e, f); if (hud) hud.remove(); if (ownAudio) audio.dispose(); root.parent?.remove(root); },
   };

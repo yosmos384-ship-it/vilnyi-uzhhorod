@@ -1044,7 +1044,7 @@ function coffeeTable(m, o = {}) {
     lathe(g, [[0, 0], [0.05, 0], [0.065, 0.04], [0.06, 0.08], [0.03, 0.095], [0, 0.1]], m.blackMetal, -0.27, top + 0.02, -0.16, 18);
     for (const dx of [-0.12, -0.07]) lathe(g, [[0, 0], [0.022, 0], [0.028, 0.045], [0.025, 0.045], [0.02, 0.006], [0, 0.006]], m.ceramic, dx + 0.0, top + 0.02, -0.13 - (dx + 0.12) * 0.6, 14);
     g.userData.solidBox = { w: 1.12, d: 0.7, h: 0.32 };
-    return g;
+    g.userData.top = top; return g;
   }
   if (m.styleId === 'paris') {
     // round Carrara top with a brass edge on a slender brass cage, smoked-glass lower shelf; books, peonies, candles
@@ -1057,7 +1057,7 @@ function coffeeTable(m, o = {}) {
     vase(g, m, 0.18, top, -0.1, 0.2, m.ceramic, true);
     tray(g, m, 0.12, top, 0.24, 0.26, 0.16, m.brass); candle(g, m, 0.07, top + 0.008, 0.24, 0.1); candle(g, m, 0.17, top + 0.008, 0.25, 0.07);
     g.userData.solidBox = { w: 1.0, d: 1.0, h: 0.42 };
-    return g;
+    g.userData.top = top; return g;
   }
   if (s === 'milano') {
     cyl(g, 0.22, 0.26, 0.3, m.brass, 0, 0, 0, 28);
@@ -1077,7 +1077,7 @@ function coffeeTable(m, o = {}) {
   else if (s === 'nordic') { vase(g, m, 0.2, top, -0.05, 0.22, m.ceramic2); bowl(g, m, 0.05, top, 0.22, 0.1, m.ceramic, false); }
   else { bowl(g, m, 0.18, top, 0, 0.13, m.ceramic2, true); vase(g, m, -0.15, top + 0.07, 0.02, 0.2, m.pot2, false); leaf(g, m, 'lance', 0.2, 0.1, -0.15, top + 0.27, 0.02, -0.4, 0.3, 0.2, m.leaf2); leaf(g, m, 'lance', 0.18, 0.09, -0.14, top + 0.27, 0.02, 0.5, 1.8, -0.2, m.leaf2); }
   g.userData.solidBox = { w: s === 'milano' ? 1.35 : 1.0, d: s === 'milano' ? 0.85 : 1.0, h: 0.4 };
-  return g;
+  g.userData.top = top; return g;
 }
 
 function sideTable(m, o = {}) {
@@ -1091,7 +1091,7 @@ function sideTable(m, o = {}) {
 }
 
 function tableLamp(p, m, x, y, z, h = 0.5) {
-  const s = m.fam, g = grp(p, x, y, z);
+  const s = m.fam, g = grp(p, x, y, z); g.userData.piece = 'tableLamp';
   if (m.styleId === 'kyoto') {          // small washi globe on a bronze ring foot
     cyl(g, 0.06, 0.07, 0.015, m.blackMetal, 0, 0, 0, 20); for (let i = 0; i < 3; i++) { const a = i * 2.094; rod(g, 0.004, h * 0.2, m.blackMetal, Math.cos(a) * 0.05, h * 0.1, Math.sin(a) * 0.05, null, 4); }
     washiLantern(g, m, 0, h * 0.2 + h * 0.36, 0, h * 0.18, 1.0);
@@ -1768,11 +1768,29 @@ function microwave(m, o = {}) {
   g.userData.noSolid = true;
   return g;
 }
+const BURNERS = [[-0.2, -0.1, 0.1], [0.2, -0.1, 0.09], [-0.2, 0.14, 0.08], [0.2, 0.14, 0.1]];
+let HOTMAT = null;
 function hob(m, o = {}) {
   const g = new THREE.Group(), W = o.w || 0.78;
   box(g, W, 0.006, 0.52, m.applianceGlass, 0, 0, 0);
-  for (const [x, z, r] of [[-0.2, -0.1, 0.1], [0.2, -0.1, 0.09], [-0.2, 0.14, 0.08], [0.2, 0.14, 0.1]]) torus(g, r, 0.003, m.steel, x, 0.007, z, [HALF, 0, 0], Math.PI * 2, 28);
+  for (const [x, z, r] of BURNERS) torus(g, r, 0.003, m.steel, x, 0.007, z, [HALF, 0, 0], Math.PI * 2, 28);
   box(g, 0.24, 0.001, 0.03, m.steel, 0, 0.007, 0.22);
+  // V19: a tap on the hob switches the cooking zones: the rings glow up red (fade in over ~1.5 s), fade when off
+  const dyn = playGroup(g, 'hob-dyn');
+  let on = false, glow = null, tok = 0;
+  const toggle = (want) => {
+    want = want === undefined ? !on : !!want; if (want === on) return Promise.resolve(); on = want; px.userData.open = px.userData._open = want;
+    if (!HOTMAT) { HOTMAT = new THREE.MeshBasicMaterial({ color: '#ff3b12', transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }); HOTMAT.name = 'hob-hot'; }
+    if (!glow) {
+      glow = new THREE.Group(); glow.name = 'hob-glow';
+      for (const [x, z, r] of BURNERS) for (const k of [1, 0.66, 0.33]) { const ring = new THREE.Mesh(cg('hobRing' + k, () => new THREE.RingGeometry(k - 0.12, k, 40).rotateX(-HALF)), HOTMAT.clone()); ring.position.set(x, 0.0075, z); ring.scale.setScalar(r * 0.95); ring.raycast = NORAY; glow.add(ring); }
+      dyn.add(glow);
+    }
+    sfx('click');
+    const me = ++tok, from = glow.userData.k || 0, to = want ? 1 : 0; glow.visible = true;
+    return tweenMs(want ? 1500 : 2500, (q) => { if (me !== tok) return; const k = from + (to - from) * q; glow.userData.k = k; for (const c of glow.children) c.material.opacity = 0.85 * k; if (!want && q >= 1) glow.visible = false; });
+  };
+  const px = playProxy(dyn, m, 'hob', 'hob', W, 0.05, 0.52, 0, 0, 0, toggle);
   g.userData.noSolid = true;
   return g;
 }
@@ -1800,6 +1818,19 @@ function hood(m, o = {}) {
     box(g, W + 0.12, 0.02, 0.57, m.woodDark, 0, 0.08, 0);
   }
   box(g, W - 0.1, 0.004, 0.2, m.led, 0, -0.003, 0.1);
+  // V19: a tap on the hood: its lights come on over the hob and the fan runs (sound) until the next tap / after 2 min
+  const dyn = playGroup(g, 'hood-dyn');
+  let on = false, lit = null, snd = null, timer = 0;
+  const toggle = (want) => {
+    want = want === undefined ? !on : !!want; if (want === on) return Promise.resolve(); on = want; px.userData.open = px.userData._open = want;
+    clearTimeout(timer); if (snd) { snd.stop(); snd = null; }
+    if (want) {
+      if (!lit) { lit = grp(dyn, 0, 0, 0); lit.name = 'hood-light'; if (s === 'nordic') disc(lit, 0.17, m.bulb, 0, -0.004, 0.02, [HALF, 0, 0], 28); else box(lit, W - 0.12, 0.003, 0.16, m.bulb, 0, -0.006, 0.1); fxFlat(lit, m.lampGlow, 'disc', 0, -0.71, 0.03, W + 0.2, 0.75); lit.traverse(c => { if (c.isMesh) c.raycast = NORAY; }); }
+      lit.visible = true; snd = sfx('fan'); timer = setTimeout(() => toggle(false), 120000);
+    } else if (lit) lit.visible = false;
+    return Promise.resolve();
+  };
+  const px = playProxy(dyn, m, 'hood', 'hood', W, 0.14, 0.52, 0, -0.02, 0, toggle);
   g.userData.noSolid = true;
   return g;
 }
@@ -2118,6 +2149,10 @@ function kitchenRun(m, len = 3, o = {}) {
     for (const sz of [-1, 1]) box(g, SBW + 0.02, SBH, 0.004, m.steel, sxm, yT - SBH, szc + sz * (SBD / 2 + 0.008));
     for (const sx of [-1, 1]) box(g, 0.004, SBH, SBD + 0.02, m.steel, sxm + sx * (SBW / 2 + 0.008), yT - SBH, szc);
     cyl(g, 0.026, 0.026, 0.004, m.chrome, sxm, yT - SBH + 0.004, szc, 16);
+    // V19: a real empty steel bowl — a basket-strainer waste (seal ring, grid) and an overflow slot
+    cyl(g, 0.045, 0.045, 0.003, m.darkPlastic, sxm, yT - SBH + 0.003, szc, 24); cyl(g, 0.036, 0.036, 0.004, m.chrome, sxm, yT - SBH + 0.004, szc, 24);
+    for (const r of [0.012, 0.024]) torus(g, r, 0.0016, m.darkPlastic, sxm, yT - SBH + 0.0085, szc, [HALF, 0, 0], Math.PI * 2, 18);
+    box(g, 0.06, 0.012, 0.002, m.darkPlastic, sxm, yT - 0.055, szc - SBD / 2 + 0.003);
   } else { box(g, bl, 0.018, dI, inM, xc, BH - T - 0.018, zc); box(g, bl + 0.004, T, D + 0.02, m.counter, xc, BH - T, 0.01); }
   g.userData.hasWasher = mods.some(md => md[2] === 'wm');
   g.userData.hasDishwasher = mods.some(md => md[2] === 'dw');
@@ -2272,16 +2307,24 @@ function kitchenRun(m, len = 3, o = {}) {
     for (const [a, b] of cols) box(g, b - a, CH - 2.35 - 0.02, D - 0.02, front, (a + b) / 2, 2.35, -0.01);
   }
   // countertop styling
-  const cm = coffeeMachine(m); cm.position.set(x0 + 0.25 < hobL - 0.2 ? x0 + 0.22 : x1 - 0.22, BH, -0.1); g.add(cm);
+  // V19: countertop items only on free worktop — never in the sink bowl (with the tap's reach) or on the hob
+  const busy = []; if (skm) busy.push([sxm - SBW / 2 - 0.06, sxm + SBW / 2 + 0.06]); if (hobW > 0) busy.push([hobL - 0.02, hobR + 0.02]);
+  const spot = (x, hw) => {
+    for (let d = 0; d <= bl; d += 0.04) for (const sg of d ? [1, -1] : [1]) {
+      const c = x + sg * d; if (c - hw < x0 + 0.02 || c + hw > x1 - 0.02) continue;
+      if (busy.every(([a, b]) => c + hw <= a || c - hw >= b)) { busy.push([c - hw, c + hw]); return c; }
+    }
+    return null;
+  };
+  { const cx = o.plain ? null : spot(x0 + 0.25 < hobL - 0.2 ? x0 + 0.22 : x1 - 0.22, 0.15); if (cx !== null) { const cm = coffeeMachine(m); cm.position.set(cx, BH, -0.1); g.add(cm); } }
   if (o.compact && (bl < 1.9 || part) || o.plain && bl < 1.2) { g.userData.solidBox = { w: len, d: D, h: BH }; return g; }   // (V3: a short run has no room for the styling set)
-  kettle(g, m, sinkX + (hobX > sinkX ? 0.55 : -0.55), BH, -0.12);
-  const bx = (sinkX + hobX) / 2;
-  box(g, 0.4, 0.025, 0.28, s === 'milano' ? m.woodDark : m.woodLight, bx, BH, 0.02, [0, 0.12, 0]);
-  bread(g, m, bx + 0.05, BH + 0.025, 0.02);
-  for (let i = 0; i < 2; i++) lathe(g, [[0, 0], [0.03, 0], [0.03, 0.2], [0.012, 0.24], [0.01, 0.28], [0, 0.28]], i ? m.oil : m.bottle, hobX + hobW / 2 + 0.12 + i * 0.07, BH, -0.2, 12);
-  lathe(g, [[0, 0], [0.05, 0], [0.055, 0.15], [0, 0.15]], m.ceramic, hobX - hobW / 2 - 0.12, BH, -0.2, 16);
-  for (let i = 0; i < 4; i++) rod(g, 0.006, 0.28, i % 2 ? m.woodLight : m.steel, hobX - hobW / 2 - 0.12 + (i - 1.5) * 0.012, BH + 0.2, -0.2, [0.1 * (i - 1.5), 0, 0.08 * (i - 1.5)], 6);
-  plantSmall(g, m, sinkX - 0.35 * Math.sign(hobX - sinkX || 1), BH, -0.2, 0.22, 1.2);
+  { const kx = spot(sinkX + (hobX > sinkX ? 0.55 : -0.55), 0.1); if (kx !== null) kettle(g, m, kx, BH, -0.12); }
+  const bx = spot((sinkX + hobX) / 2, 0.22);
+  if (bx !== null) { box(g, 0.4, 0.025, 0.28, s === 'milano' ? m.woodDark : m.woodLight, bx, BH, 0.02, [0, 0.12, 0]); bread(g, m, bx + 0.05, BH + 0.025, 0.02); }
+  { const ox = spot(hobX + hobW / 2 + 0.155, 0.075); if (ox !== null) for (let i = 0; i < 2; i++) lathe(g, [[0, 0], [0.03, 0], [0.03, 0.2], [0.012, 0.24], [0.01, 0.28], [0, 0.28]], i ? m.oil : m.bottle, ox - 0.035 + i * 0.07, BH, -0.2, 12); }
+  { const ux = spot(hobX - hobW / 2 - 0.12, 0.06); if (ux !== null) { lathe(g, [[0, 0], [0.05, 0], [0.055, 0.15], [0, 0.15]], m.ceramic, ux, BH, -0.2, 16);
+    for (let i = 0; i < 4; i++) rod(g, 0.006, 0.28, i % 2 ? m.woodLight : m.steel, ux + (i - 1.5) * 0.012, BH + 0.2, -0.2, [0.1 * (i - 1.5), 0, 0.08 * (i - 1.5)], 6); } }
+  { const px = spot(sinkX - 0.35 * Math.sign(hobX - sinkX || 1), 0.08); if (px !== null) plantSmall(g, m, px, BH, -0.2, 0.22, 1.2); }
   g.userData.solidBox = { w: len, d: D, h: BH };
   return g;
 }
@@ -2601,7 +2644,7 @@ function sfx(kind) {
     if (!SFX) { const ac = new AC(), n = ac.sampleRate, buf = ac.createBuffer(1, n, n), d = buf.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; SFX = { ac, buf }; }
     const { ac, buf } = SFX; if (ac.state === 'suspended') ac.resume().catch(() => {});
     // [centre Hz, end Hz, Q, volume, attack s, hold s, release s]
-    const [f0, f1, q, vol, att, hold, rel] = { tap: [3200, 3200, 0.6, 0.03, 0.15, 3, 3], bath: [1500, 1500, 0.5, 0.045, 0.2, 4, 3], shower: [4600, 4600, 0.4, 0.04, 0.3, 5, 4], flush: [1100, 320, 0.7, 0.1, 0.12, 1.9, 1.6], pump: [1300, 700, 1.2, 0.05, 0.01, 0.05, 0.1] }[kind];
+    const [f0, f1, q, vol, att, hold, rel] = { tap: [3200, 3200, 0.6, 0.03, 0.15, 3, 3], bath: [1500, 1500, 0.5, 0.045, 0.2, 4, 3], shower: [4600, 4600, 0.4, 0.04, 0.3, 5, 4], fan: [520, 520, 0.45, 0.05, 0.6, 600, 0.6], click: [2400, 1800, 2, 0.05, 0.003, 0.02, 0.04], flush: [1100, 320, 0.7, 0.1, 0.12, 1.9, 1.6], pump: [1300, 700, 1.2, 0.05, 0.01, 0.05, 0.1] }[kind];
     const t = ac.currentTime + 0.01, src = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
     src.buffer = buf; src.loop = true; f.type = 'bandpass'; f.Q.value = q; f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + att + hold + rel);
     g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + att); g.gain.setValueAtTime(vol, t + att + hold); g.gain.linearRampToValueAtTime(0, t + att + hold + rel);
@@ -2877,15 +2920,23 @@ function vanity(m, o = {}) {           // floating vanity, back at z=0, basin(s)
     out.proxy(0.16, 0.21, 0.3, bx, H, tz + 0.09);       // kept below the mirror cabinet's door
     return out;
   });
-  // accessories
-  lathe(g, [[0, 0], [0.03, 0], [0.03, 0.14], [0.012, 0.16], [0.006, 0.19], [0, 0.19]], s === 'milano' ? m.ceramic2 : m.ceramic, L / 2 - 0.1, H, 0.12, 12);
-  lathe(g, [[0, 0], [0.035, 0], [0.035, 0.1], [0, 0.1]], m.bottle, L / 2 - 0.2, H, 0.1, 12);
-  tray(g, m, -L / 2 + 0.16, H, 0.14, 0.2, 0.14);
-  sph(g, 0.03, m.ceramic, -L / 2 + 0.12, H + 0.025, 0.14, [1.3, 0.6, 1], 10);
-  // folded towel stack (rounded folds)
-  soft(g, 0.3, 0.055, 0.21, m.towel, L / 2 - 0.2, H, D - 0.13, null, { e: [0.12, 0.7, 0.3], seg: 16 });
-  soft(g, 0.3, 0.05, 0.2, m.towel, L / 2 - 0.2, H + 0.05, D - 0.13, [0, 0.05, 0], { e: [0.12, 0.7, 0.3], seg: 16 });
-  soft(g, 0.28, 0.048, 0.19, m.towel2, L / 2 - 0.2, H + 0.097, D - 0.13, [0, -0.04, 0], { e: [0.12, 0.7, 0.3], seg: 16 });
+  // V19: every basin is a clean, empty bowl — a chrome waste with its dark seal ring at the bottom, nothing standing in it
+  const RB = m.styleId === 'kyoto' ? 0.21 : s === 'nordic' && m.styleId !== 'monaco' ? 0.224 : 0.2;
+  const yDrain = m.styleId === 'kyoto' ? 0.031 : m.styleId === 'monaco' ? 0.026 : s === 'nordic' ? 0.015 : 0.021;
+  const zDrain = m.styleId === 'kyoto' ? D / 2 + 0.04 : m.styleId === 'monaco' ? D / 2 + 0.05 : s === 'nordic' ? D / 2 + 0.03 : D / 2 + 0.05;
+  for (const bx of basins) { cyl(g, 0.026, 0.026, 0.002, m.darkPlastic, bx, H + yDrain, zDrain, 20); cyl(g, 0.019, 0.019, 0.003, m.chrome, bx, H + yDrain + 0.001, zDrain, 20); }
+  // accessories only on the free counter beside the basins (a narrow vanity keeps them off the bowl or leaves them out)
+  const free = []; { let a = -L / 2 + 0.03; for (const bx of basins.slice().sort((p, q) => p - q)) { if (bx - RB - 0.025 > a) free.push([a, bx - RB - 0.025]); a = bx + RB + 0.025; } if (L / 2 - 0.03 > a) free.push([a, L / 2 - 0.03]); }
+  const take = (w, fromRight) => { const order = fromRight ? free.slice().reverse() : free; for (const sp of order) if (sp[1] - sp[0] >= w) { const x = fromRight ? sp[1] - w / 2 : sp[0] + w / 2; if (fromRight) sp[1] -= w + 0.02; else sp[0] += w + 0.02; return x; } return null; };
+  const xT = take(0.32, true);
+  if (xT !== null) {   // folded towel stack (rounded folds)
+    soft(g, 0.3, 0.055, 0.21, m.towel, xT, H, D - 0.13, null, { e: [0.12, 0.7, 0.3], seg: 16 });
+    soft(g, 0.3, 0.05, 0.2, m.towel, xT, H + 0.05, D - 0.13, [0, 0.05, 0], { e: [0.12, 0.7, 0.3], seg: 16 });
+    soft(g, 0.28, 0.048, 0.19, m.towel2, xT, H + 0.097, D - 0.13, [0, -0.04, 0], { e: [0.12, 0.7, 0.3], seg: 16 });
+  }
+  const xB = take(0.08, true); if (xB !== null) lathe(g, [[0, 0], [0.03, 0], [0.03, 0.14], [0.012, 0.16], [0.006, 0.19], [0, 0.19]], s === 'milano' ? m.ceramic2 : m.ceramic, xB, H, 0.12, 12);
+  const xC = take(0.08, true); if (xC !== null) lathe(g, [[0, 0], [0.035, 0], [0.035, 0.1], [0, 0.1]], m.bottle, xC, H, 0.1, 12);
+  const xS = take(0.22, false); if (xS !== null) { tray(g, m, xS, H, 0.14, 0.2, 0.14); sph(g, 0.03, m.ceramic, xS - 0.04, H + 0.025, 0.14, [1.3, 0.6, 1], 10); }
   g.userData.solidBox = { w: L, d: D, h: H, z: D / 2 };
   return g;
 }
@@ -3560,6 +3611,33 @@ function curtainSwitch(m, o = {}) {
   g.userData.noSolid = true; g.userData.ao = null;
   return g;
 }
+// V19: room light switch — the same plate family as the curtain switch, one rocker; its group (o.id) is the room's
+// light circuit (apartment.js hangs the lights of the room on the group's listener). open = lights ON.
+function lightSwitch(m, o = {}) {
+  const s = m.fam, g = new THREE.Group(), id = o.id || 'light', S = 0.086;
+  const plateM = s === 'milano' ? m.brass : s === 'nordic' ? m.plastic : m.ceramic;
+  box(g, S, S, 0.009, plateM, 0, -S / 2, 0.0045);
+  if (s === 'riviera') box(g, S - 0.012, S - 0.012, 0.002, m.brass, 0, -S / 2 + 0.006, 0.009);
+  const face = s === 'milano' ? m.applianceGlass : s === 'nordic' ? m.plastic : m.ceramic;
+  const rk = mover(g, 0, 0, 0.011, { type: 'hinge', axis: 'x', angle: -0.2, dur: 140, group: id, part: 'light', tag: 'lightSwitch' });
+  const kh = S - 0.022, kw = S - 0.022, key = grp(rk, 0, 0, 0); key.rotation.x = 0.1;
+  box(key, kw, kh, 0.008, face, 0, -kh / 2, 0);
+  box(key, 0.012, 0.004, 0.001, s === 'milano' ? m.led : m.darkPlastic, 0, kh * 0.32, 0.0085);
+  g.userData.noSolid = true; g.userData.ao = null;
+  return g;
+}
+// V19: the TV remote lying on the coffee table / beside the sofa (body along z, buttons up; origin bottom centre)
+function remote(m, o = {}) {
+  const g = new THREE.Group();
+  rbox(g, 0.047, 0.017, 0.178, 0.006, m.darkPlastic, 0, 0, 0);
+  box(g, 0.036, 0.0015, 0.05, m.blackMetal, 0, 0.017, 0.055);                      // glossy top panel
+  cyl(g, 0.0055, 0.0055, 0.003, m.led, -0.012, 0.0172, 0.071, 12);                // power
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) cyl(g, 0.004, 0.004, 0.0025, m.steel, (c - 1) * 0.012, 0.0172, 0.03 - r * 0.012, 8);
+  torus(g, 0.011, 0.0025, m.steel, 0, 0.0175, -0.032, [HALF, 0, 0], Math.PI * 2, 16);
+  for (const sx of [-1, 1]) box(g, 0.006, 0.002, 0.026, m.steel, sx * 0.015, 0.0172, -0.062);
+  g.userData.noSolid = true;
+  return g;
+}
 function throwBlanket(m, o = {}) { const g = new THREE.Group(); box(g, o.w || 0.5, 0.03, o.d || 0.4, m.throw, 0, 0, 0); g.userData.noSolid = true; return g; }
 
 // ================================================================== OUTDOOR
@@ -3917,12 +3995,14 @@ const F0 = {
   bed, nightstand, wardrobe, desk, overhead, tower, hallWardrobe, dressing, pantry, washerCab, shelfTower, wallShelves,
   kitchenRun, island, fridge, oven, hob, hood, dishwasher, microwave, washer, sink, coffeeMachine,
   bathtub, shower, toilet, vanity, mirror, towelRail,
-  plant, floorLamp, pendant, rug, artFrame, curtains, motorCurtains, curtainSwitch, throwBlanket, laundryTower,
+  plant, floorLamp, pendant, rug, artFrame, curtains, motorCurtains, curtainSwitch, lightSwitch, remote, throwBlanket, laundryTower,
   outdoorLounge, outdoorTable, outdoorChair, planter,
 };
 // every piece knows its name (openable fronts report which piece they belong to: 'wardrobe', 'fridge', …)
 export const F = {};
 for (const [k, fn] of Object.entries(F0)) F[k] = (...args) => { const g = fn(...args); if (!g.userData.piece) g.userData.piece = k; return g; };
+// V19: the water play for other builders (WC rooms of the common areas): running taps, flush sound
+export const PLAY = { waterOutlet, playGroup, playProxy, sfx };
 // small helpers reused by apartment.js (decor on shelves / walls)
 export const FX = { mouldFrame, bloom, box, rbox, cyl, rod, sph, lathe, torus, disc, plane, grp, bookRow, bookStack, vase, candle, bowl, plantSmall, sconce, tableLamp, tap, glass, plate, HALF,
   soft, softGeo, clothGeo, fxQuad, fxFlat, fxWallZ, sofaBedSize };

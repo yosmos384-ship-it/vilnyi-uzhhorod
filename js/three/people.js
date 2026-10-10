@@ -243,9 +243,27 @@ export function createPeople(scene, opts = {}) {
       if (u < 0.5 * n || (near1 && u < 0.7 * n)) react(p, 'flee', x, z); else if (u < 0.5 * n + 0.2 && p.T.acc.phone) react(p, 'film', x, z, 6 + rnd() * 6); else if (u < 0.5 * n + 0.32) react(p, 'shout', x, z, 2.5); else if (u < 0.5 * n + 0.4) react(p, 'cower', x, z, 4); else lookAt(p, x, z, 5); }
     return seen;
   }
-  function hornAt(pos, radius = 24) {
+  // V19: a honk. dir = { fx, fz, hw } (the honking car's heading and half width): people on the carriageway IN FRONT of the
+  // car (within 26 m, inside a lane-wide corridor) get off the road — on a zebra they hurry across, anywhere else they
+  // step aside to the nearer side of the car's path; everybody near looks at the car.
+  function hornAt(pos, radius = 24, dir = null) {
     const x = pos.x ?? pos[0], z = pos.z ?? pos[2] ?? pos[1];
-    for (const p of people) { if (p.gone || p.car || UPRIGHT_BUSY[p.state]) continue; const d = hyp(p.x - x, p.z - z); if (d > radius) continue; lookAt(p, x, z, 1.8); if ((p.state === 'cross' || (city && city.onRoad(p.x, p.z))) && d < 14) { p.hurry = time + 3; } else if (d < 5 && hash(p.id, 12) < 0.3 && p.state === 'walk') { react(p, 'look', x, z, 1.2); p.pose = 'stand'; } }
+    const fx = dir ? dir.fx : 0, fz = dir ? dir.fz : 0, hw = dir ? (dir.hw || 0.95) : 0, R = Math.max(radius, dir ? 26 : 0);
+    for (const p of people) {
+      if (p.gone || p.car || UPRIGHT_BUSY[p.state]) continue; const d = hyp(p.x - x, p.z - z); if (d > R) continue;
+      const onRoad = p.state === 'cross' || (city && city.onRoad(p.x, p.z));
+      const lz = dir ? (p.x - x) * fx + (p.z - z) * fz : 0, lx = dir ? (p.x - x) * fz - (p.z - z) * fx : 0, ahead = dir && lz > 0.5 && Math.abs(lx) < hw + 2.6;
+      if (d <= radius || ahead) lookAt(p, x, z, 1.8);
+      if (onRoad && (ahead || (!dir && d < 14))) {
+        p.hurry = time + 4; p.honked = time;
+        if (p.state !== 'cross' && p.state !== 'dodge') {   // not on a zebra: off the car's path at once
+          const sd = lx >= 0 ? 1 : -1, gap = hw + 2.2 - Math.abs(lx);
+          p.tx = p.x + fz * sd * Math.max(1.2, gap) + fx * 0.4; p.tz = p.z - fx * sd * Math.max(1.2, gap) + fz * 0.4; p.fx = x; p.fz = z;
+          setState(p, 'dodge'); p.until = time + 1.4; if (p.anchor) { p.anchor.p = null; p.anchor = null; }
+          if (hash(p.id, 31) < 0.35) audio.shout(p.x, p.z, p.T.voice, 'hey');
+        }
+      } else if (d < 5 && hash(p.id, 12) < 0.3 && p.state === 'walk') { react(p, 'look', x, z, 1.2); p.pose = 'stand'; }
+    }
     emit('people:horn', { x, z });
   }
 
@@ -576,6 +594,7 @@ export function createPeople(scene, opts = {}) {
   };
   // horn from the driving code
   drive.on('drive:collision', d => { if (d && (d.hard || (d.speed || 0) > 4)) api.onImpact({ car: d.car, pos: d.point ? { x: d.point[0], z: d.point[2] } : null, speed: d.speed }); });
-  drive.on('drive:horn', d => { const c = drive.player(); const pos = d?.pos || (c ? { x: c.x, z: c.z } : null); if (pos) hornAt(pos); });
+  drive.on('drive:horn', d => { if (d && d.on === false) return; const c = drive.player(); const pos = d?.pos || (c ? { x: c.x, z: c.z } : d && d.car ? { x: d.car.x, z: d.car.z } : null);
+    const yaw = c ? c.yaw : d && d.car ? d.car.yaw : null; if (pos) hornAt(pos, 24, yaw != null && isFinite(yaw) ? { fx: Math.sin(yaw), fz: Math.cos(yaw), hw: c ? c.W / 2 : 0.95 } : null); });
   return api;
 }

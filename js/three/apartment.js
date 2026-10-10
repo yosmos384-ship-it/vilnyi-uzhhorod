@@ -17,6 +17,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { TYPES, GEOM, LEVELS, ROOM_DEFAULTS, interiorOf, plateOf, unitsOn, unitToLocal } from '../data.js';
 import { getMaterials, tickTv } from './materials.js';
 import { F, FX } from './furniture.js';
+import { collectInteractables } from './interact.js';
 
 const CH = LEVELS.ceiling;            // clear ceiling height (2.8)
 const BD = GEOM.balconyDepth;         // depth of a balcony / glazed balcony (1.5)
@@ -320,7 +321,7 @@ function buildMovers(ctx, sg, root) {
     if (mv.spec.proxy === false) continue;
     const px = new THREE.Mesh(UBOX, COLMAT);
     const sp = mv.spec, door = sp.door || null, part = door ? 'balconyDoor' : sp.curtain ? (sp.part || 'curtain') : (sp.part || 'cabinet');
-    px.name = door ? 'balcony-door' : sp.curtain ? 'curtain-' + part : 'cabinet-front'; px.matrixAutoUpdate = false;
+    px.name = door ? 'balcony-door' : sp.curtain ? 'curtain-' + part : sp.tag === 'lightSwitch' ? 'light-switch' : sp.tag === 'window' ? 'window-sash' : 'cabinet-front'; px.matrixAutoUpdate = false;
     px.userData.action = door ? { type: 'aptDoor', unitId: unit.id, part, door } : sp.curtain ? { type: 'aptDoor', unitId: unit.id, part, curtain: sp.group } : { type: 'aptDoor', unitId: unit.id, part };
     px.userData.cabinet = !door && !sp.curtain && !sp.idoor; px.userData.open = false;
     if (sp.idoor) { px.name = 'interior-door'; px.userData.interiorDoor = sp.idoor; px.userData.action.door = sp.idoor; }
@@ -342,7 +343,7 @@ function buildMovers(ctx, sg, root) {
     closeAll: () => {
       const ps = [], done = new Set();
       for (const mv of MV) {
-        if (!mv.open || mv.spec.door || mv.spec.curtain || mv.spec.idoor) continue;
+        if (!mv.open || mv.spec.door || mv.spec.curtain || mv.spec.idoor || mv.spec.keep || mv.spec.tag === 'lightSwitch') continue;
         if (mv.group) { if (!done.has(mv.group)) { done.add(mv.group); ps.push(mv.group.toggle(false)); } }
         else ps.push(toggle(mv, false));
       }
@@ -3191,6 +3192,23 @@ function rpWindow(ctx, S, e, op, t) {
     A.ebox(frm, e.a, e.d, e.n, x0, x1, w0, w1, yb, yb + 0.045);
     if (!cut || yt < H - 0.001) A.ebox(frm, e.a, e.d, e.n, x0, x1, w0, w1, yt - 0.045, yt);
     if (!cut && !curved && yb < 0.3 && yt > 2.2 && (S.out || op.win.kind === 'panoramic')) A.ebox(frm, e.a, e.d, e.n, a0, a1, w0, w1, 1.06, 1.1);
+    // V19: the first pane of a straight window is a tilt sash (bottom-hinged, the top tilts into the room at a tap)
+    const tilt = !cut && !curved && !S.out && len >= 0.45 && yt - yb > 0.7;
+    if (tilt) {
+      const n = Math.max(1, Math.round(len / 1.2)), pw = len / n, sx0 = a0 + ft, sx1 = n > 1 ? a0 + pw - ft / 2 : a1 - ft, sy0 = yb + 0.045, sy1 = yt - 0.045;
+      if (n > 1) A.ebox(m.glazing, e.a, e.d, e.n, a0 + pw, a1 - 0.02, g - 0.006, g + 0.006, yb + 0.03, yt - 0.03);
+      const sw = sx1 - sx0, sh = sy1 - sy0, th = Math.atan2(-e.d[1], e.d[0]), zl = [-e.d[1], e.d[0]], sgn = (zl[0] * -e.n[0] + zl[1] * -e.n[1]) >= 0 ? 1 : -1;
+      const base = Pt(sx0, g), mv = new THREE.Group(); mv.position.set(base[0], sy0, base[1]); mv.rotation.y = th;
+      mv.userData.mover = { type: 'hinge', axis: 'x', angle: 0.105 * sgn, dur: 750, tag: 'window', part: 'window', keep: true };
+      const fw = 0.045, dz = 0.056;
+      FX.box(mv, sw, fw, dz, frm, sw / 2, 0, 0); FX.box(mv, sw, fw, dz, frm, sw / 2, sh - fw, 0);
+      FX.box(mv, fw, sh - 2 * fw, dz, frm, fw / 2, fw, 0); FX.box(mv, fw, sh - 2 * fw, dz, frm, sw - fw / 2, fw, 0);
+      FX.box(mv, sw - 2 * fw + 0.01, sh - 2 * fw + 0.01, 0.012, m.glazing, sw / 2, fw - 0.005, 0);
+      const hz = sgn * (dz / 2 + 0.012), hx = sw - fw / 2;                       // tilt-and-turn handle on the room side
+      FX.box(mv, 0.03, 0.07, 0.012, m.steel, hx, sh / 2 - 0.035, sgn * (dz / 2 + 0.006));
+      FX.box(mv, 0.016, 0.13, 0.016, m.steel, hx, sh / 2 - 0.13, hz);
+      sg.add(mv);
+    } else
     A.ebox(m.glazing, e.a, e.d, e.n, curved ? x0 : a0 + 0.02, curved ? x1 : a1 - 0.02, g - 0.006, g + 0.006, yb + 0.03, yt - (cut ? 0 : 0.03));
   }
   ocollider(cg, Pt((a0 + a1) / 2, g), e.d, len / 2, 0.05, Math.max(0.02, Math.min(op.y0, 2.0)), 2.2).name = 'col-glass';
@@ -3202,13 +3220,14 @@ function rpWindow(ctx, S, e, op, t) {
   }
   ctx.wins.push({ S, e, op, t, g, len, mid: Pt((a0 + a1) / 2, 0), nin: [-e.n[0], -e.n[1]] });
 }
-function rpDownlight(ctx, u, y, v) {
+function rpDownlight(ctx, u, y, v, lit = null) {
   const { m, sg } = ctx;
   if (ctx.cut) return;
   (ctx.downs ||= []).push([u, v]);                               // V18: the ceiling speakers keep clear of the downlights
   FX.cyl(sg, 0.05, 0.05, 0.004, m.fam === 'nordic' ? m.blackMetal : m.metal, u, y - 0.006, v, 20);
-  FX.disc(sg, 0.036, m.lightEmit, u, y - 0.0065, v, [HALF, 0, 0], 16);
-  FX.bloom(sg, u, y - 0.03, v, 0.22, 0.5);
+  if (lit) FX.disc(sg, 0.036, m.metal, u, y - 0.006, v, [HALF, 0, 0], 16);   // V19: the dark lens of a switched-off downlight
+  FX.disc(lit || sg, 0.036, m.lightEmit, u, y - 0.0065, v, [HALF, 0, 0], 16);
+  FX.bloom(lit || sg, u, y - 0.03, v, 0.22, 0.5);
 }
 
 // ---------------------------------------------------------------- doors
@@ -5036,19 +5055,113 @@ function rpFreeRect(ctx, S, o = {}) {
   return best;
 }
 // Recessed downlights on a grid inside every room + the lamps' light pools.
+// V19: every room is its own lighting circuit — its downlights' lit lenses, halos and floor pools live in one small
+// unbaked group (lit-<room>), switched by a wall switch beside the way in (F.lightSwitch: a mover group whose listener
+// shows / hides the group and tells the walkthrough to dim the room's real lights: window 'vrc:apt-light').
 function rpLights(ctx) {
   const { P, m, sg, cut } = ctx;
   if (cut) return;
+  ctx.circuits = [];
   for (const S of P.rooms) {
+    const lt = new THREE.Group();
     const [u0, v0, u1, v1] = S.box, nu = Math.max(1, Math.round((u1 - u0) / 1.5)), nv = Math.max(1, Math.round((v1 - v0) / 1.5));
     let n = 0;
     for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) {
       const p = [u0 + (u1 - u0) * (i + 0.5) / nu, v0 + (v1 - v0) * (j + 0.5) / nv];
       if (!pointInPoly(p, S.poly) || polyDist(p, S.poly) < 0.35) continue;
-      rpDownlight(ctx, p[0], CH, p[1]); n++;
-      FX.fxFlat(sg, m.glowFaint, 'disc', p[0], 0.005, p[1], S.kind === 'bath' ? 1.35 : 1.7, S.kind === 'bath' ? 1.35 : 1.7);
+      rpDownlight(ctx, p[0], CH, p[1], lt); n++;
+      FX.fxFlat(lt, m.glowFaint, 'disc', p[0], 0.005, p[1], S.kind === 'bath' ? 1.35 : 1.7, S.kind === 'bath' ? 1.35 : 1.7);
     }
-    if (!n) { rpDownlight(ctx, S.c[0], CH, S.c[1]); FX.fxFlat(sg, m.glowFaint, 'disc', S.c[0], 0.005, S.c[1], 1.4, 1.4); }
+    if (!n) { rpDownlight(ctx, S.c[0], CH, S.c[1], lt); FX.fxFlat(lt, m.glowFaint, 'disc', S.c[0], 0.005, S.c[1], 1.4, 1.4); }
+    const id = 'light-' + S.id, out = new THREE.Group(); out.name = 'lit-' + S.id; out.userData.keep = true;
+    bake(lt, out); const h = bloomMesh(lt, m); if (h) out.add(h);
+    lt.traverse(o => { if (o.isMesh && o.geometry && !o.geometry.userData.shared) { /* source geometries are cached kit geometry */ } });
+    sg.add(out);
+    const rec = { id, room: S.id, group: out, on: true, switch: null };
+    // the switch: on a plain wall stretch of the room, beside the door you come in by (the curtain switch keeps its place)
+    const dr = P.doors.find(d => d.rooms && d.rooms.includes(S.id) && d.type !== 'balcony') || null;
+    const ref = dr ? dr.p : S.c;
+    if (S.segs && S.segs.length) {
+      const sp = rpWallSpot(ctx, S, 0.14, 0.05, { tall: true, passages: false, score: (p) => -Math.hypot(p[0] - ref[0], p[1] - ref[1]) });
+      if (sp) {
+        const sw = F.lightSwitch(m, { id });
+        sw.position.set(sp.p[0], 1.1, sp.p[1]); sw.rotation.y = sp.ang; sg.add(sw);
+        rec.switch = { u: sp.p[0], v: sp.p[1], y: 1.1 };
+        ctx.occ.push({ c: add2(sp.p, sp.nin, 0.03), d: sp.d, hl: 0.1, hw: 0.03, h: 0.2, tag: 'switch', room: S.id, wallOnly: true });
+      }
+    }
+    ctx.circuits.push(rec);
+  }
+}
+// V19: the TV remote — on the coffee table of the TV's room, else on a side table, else on the sofa seat beside the arm.
+// Unbaked (it is picked up: hidden while the visitor holds it) with a finger-sized tap box; part 'remote'.
+function rpRemote(ctx) {
+  const { m, sg, cut, unit, P } = ctx;
+  if (cut) return;
+  sg.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(sg.matrixWorld).invert(), w = new THREE.Vector3(), q = new THREE.Quaternion();
+  let tvRoom = null; const pieces = [];
+  sg.traverse(o => {
+    const ud = o.userData || {};
+    if (ud.tvScreen && !tvRoom) { o.getWorldPosition(w).applyMatrix4(inv); o.getWorldQuaternion(q); const n = new THREE.Vector3(0, 0, 1).applyQuaternion(q); tvRoom = P.rooms.find(r => pointInPoly([w.x + n.x * 0.5, w.z + n.z * 0.5], r.poly)) || null; }
+    if (ud.piece === 'coffeeTable' || ud.piece === 'sideTable' || ud.piece === 'sofa' || ud.piece === 'sofaBed' || ud.piece === 'sofaBook') pieces.push(o);
+  });
+  const roomOf = (o) => { o.getWorldPosition(w).applyMatrix4(inv); return P.rooms.find(r => pointInPoly([w.x, w.z], r.poly)) || null; };
+  const inRoom = pieces.filter(o => !tvRoom || roomOf(o) === tvRoom);
+  const pick = (k) => inRoom.find(o => k.includes(o.userData.piece)) || pieces.find(o => k.includes(o.userData.piece));
+  let at = null, ry = 0, where = null;
+  const ct = pick(['coffeeTable']), st = !ct && pick(['sideTable']), so = !ct && !st && pick(['sofa', 'sofaBed', 'sofaBook']);
+  if (ct) { const p = ct.localToWorld(new THREE.Vector3(0.18, ct.userData.top ?? 0.4, 0.12)).applyMatrix4(inv); ct.getWorldQuaternion(q); at = p; ry = new THREE.Euler().setFromQuaternion(q).y + 0.35; where = 'coffeeTable'; }
+  else if (st) { const p = st.localToWorld(new THREE.Vector3(0.1, 0.525, 0.07)).applyMatrix4(inv); at = p; ry = 0.6; where = 'sideTable'; }
+  else if (so) {   // the seat beside one arm (from the sofa's footprint record: centre, long axis, half length)
+    const R = ctx.occ.find(q => /sofa/i.test(q.tag || '') && (!tvRoom || q.room === tvRoom.id)) || ctx.occ.find(q => /sofa/i.test(q.tag || ''));
+    if (R) { const c = add2(R.c, R.d, Math.max(0, R.hl - 0.34)); at = new THREE.Vector3(c[0], 0.45, c[1]); ry = Math.atan2(R.d[0], R.d[1]) + 0.25; where = 'sofa'; } }
+  if (!at) {        // no seating in the TV's room (a kitchen-dining room): on the table there, else a sideboard / desk / bed
+    const ok = q => q.h >= 0.4 && q.h <= 1.0 && q.hl > 0.2 && q.hw > 0.15;
+    const R = ['table', 'dining', 'sideboard', 'tvUnit', 'desk', 'nightstand', 'bed'].map(k => ctx.occ.find(q => (q.tag || '') === k && ok(q) && (!tvRoom || q.room === tvRoom.id)) || ctx.occ.find(q => (q.tag || '') === k && ok(q))).find(Boolean);
+    if (R) { const c = add2(R.c, R.d, Math.min(0.3, R.hl * 0.5)); at = new THREE.Vector3(c[0], R.h + 0.002, c[1]); ry = Math.atan2(R.d[0], R.d[1]) + 0.4; where = R.tag; }
+  }
+  if (!at) return;
+  const r = new THREE.Group(); bake(F.remote(m), r); r.position.copy(at); r.rotation.y = ry; r.userData.keep = true; r.name = 'tv-remote';   // 4 draw calls
+  r.traverse(o => { if (o.isMesh) o.raycast = NO_RAYCAST; });
+  if (!COLMAT) { COLMAT = new THREE.MeshBasicMaterial({ visible: false }); COLMAT.name = 'collider'; }
+  const px = new THREE.Mesh(UBOX, COLMAT); px.name = 'tv-remote'; px.position.set(0, 0.03, 0); px.scale.set(0.16, 0.08, 0.3); r.add(px);
+  const ud = px.userData; ud.piece = 'remote'; ud.open = ud._open = false; ud.keepState = true; ud.action = { type: 'aptDoor', unitId: unit.id, part: 'remote' };
+  ud.toggle = (on) => { const want = on === undefined ? !ud.open : !!on; ud.open = ud._open = want; for (const c of r.children) if (c !== px) c.visible = !want; return Promise.resolve(); };
+  sg.add(r);
+  ctx.remote = { where, room: tvRoom ? tvRoom.id : null, proxy: px, group: r };
+}
+// V19: lamps (floor / table / pendant / chandelier / sconce) switch on and off at a tap: the bulbs, light pools and halos
+// of each lamp go into one small unbaked group with an invisible tap box around the lamp.
+const LAMP_PIECES = new Set(['floorLamp', 'tableLamp', 'pendant', 'chandelier', 'lanternPendant', 'globeChandelier', 'sconce']);
+function rpLampsLive(ctx) {
+  const { m, sg, cut, unit } = ctx;
+  if (cut) return;
+  const LIT = new Set([m.bulb, m.glow, m.glowFaint, m.lampGlow, m.lightEmit]);
+  sg.updateMatrixWorld(true);
+  const lamps = [];
+  sg.traverse(o => { if (o.userData && LAMP_PIECES.has(o.userData.piece)) { for (let p = o.parent; p; p = p.parent) if (p.userData && LAMP_PIECES.has(p.userData.piece)) return; lamps.push(o); } });
+  ctx.lamps = [];
+  const inv = new THREE.Matrix4().copy(sg.matrixWorld).invert();
+  for (const L of lamps) {
+    const parts = [];
+    L.traverse(o => { if ((o.isMesh && LIT.has(o.material)) || (o.userData && o.userData.bloom)) parts.push(o); });
+    if (!parts.length) continue;
+    const tmp = new THREE.Group(); tmp.matrixAutoUpdate = false;
+    for (const o of parts) { const M = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld); o.parent.remove(o); M.decompose(o.position, o.quaternion, o.scale); tmp.add(o); }
+    tmp.updateMatrixWorld(true);
+    const out = new THREE.Group(); out.name = 'lamp-lit'; out.userData.keep = true;
+    bake(tmp, out); const h = bloomMesh(tmp, m); if (h) out.add(h);
+    sg.add(out);
+    const bb = new THREE.Box3().setFromObject(L), c = bb.getCenter(new THREE.Vector3()).applyMatrix4(inv), sz = bb.getSize(new THREE.Vector3());
+    if (!COLMAT) { COLMAT = new THREE.MeshBasicMaterial({ visible: false }); COLMAT.name = 'collider'; }
+    const px = new THREE.Mesh(UBOX, COLMAT); px.name = 'lamp-' + L.userData.piece; px.userData.keep = true;
+    px.position.copy(c); px.scale.set(Math.max(0.12, Math.min(sz.x, 0.7)), Math.max(0.12, sz.y), Math.max(0.12, Math.min(sz.z, 0.7)));
+    let on = true;
+    const ud = px.userData; ud.piece = L.userData.piece; ud.open = ud._open = true; ud.action = { type: 'aptDoor', unitId: unit.id, part: 'lamp' }; ud.keepState = true;
+    ud.toggle = (want) => { want = want === undefined ? !on : !!want; on = want; ud.open = ud._open = want; out.visible = want; return Promise.resolve(); };
+    sg.add(px);
+    ctx.lamps.push({ piece: L.userData.piece, proxy: px, group: out, get on() { return on; }, toggle: ud.toggle });
   }
 }
 // ---------------------------------------------------------------- V18: built-in surround sound (owner, 10 Oct)
@@ -5307,7 +5420,9 @@ function buildReal(unit, styleId, opts, I) {
     { const tR = performance.now(); rpRules(ctx); ctx.msRules = performance.now() - tR; }
     rpCurtains(ctx);
     rpLights(ctx);
+    try { rpLampsLive(ctx); } catch (e) { ctx.notes.push('lamps: ' + (e && e.message)); }      // V19: lamps switch on / off
     try { rpEnsureTv(ctx); } catch (e) { ctx.notes.push('tv: ' + (e && e.message)); }          // V18: a TV in every flat (Kvartal 95 channel)
+    try { rpRemote(ctx); } catch (e) { ctx.notes.push('remote: ' + (e && e.message)); }        // V19: the TV remote on the coffee table / by the sofa
     try { rpSpeakers(ctx); } catch (e) { ctx.notes.push('speakers: ' + (e && e.message)); }   // V18: surround sound (never breaks a flat)
   } finally { CUR_M = null; }
   const baked = new THREE.Group(); baked.name = 'baked';
@@ -5326,6 +5441,18 @@ function buildReal(unit, styleId, opts, I) {
   const idoors = cut ? [] : wireBalconyDoors({ unit, balconyDoors: ctx.idoors }, movers, 'interiorDoor');
   for (const d of ctx.doors) if (d.type === 'balcony' || d.type === 'interior') { const live = typeof d.toggle === 'function'; d.state = live ? 'closed' : 'fixed'; }
   const curtains = movers ? wireCurtains(ctx, movers) : [];
+  // V19: room circuits — the switch's mover group carries the state (open = on); lights start on
+  const circuits = (ctx.circuits || []).map(c => {
+    const g = movers && movers.groups.get(c.id);
+    const rec = { id: c.id, room: c.room, group: c.group, switch: c.switch, get on() { return c.on; },
+      toggle: (on) => { if (g) return g.toggle(on); const want = on === undefined ? !c.on : !!on; apply(want); return Promise.resolve(); } };
+    const apply = (on) => {
+      c.on = on; c.group.visible = on;
+      try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('vrc:apt-light', { detail: { unitId: unit.id, room: c.room, on } })); } catch { /* no DOM */ }
+    };
+    if (g) { for (const mv of g.mvs) if (mv.proxy) { mv.proxy.userData.keepState = true; mv.proxy.userData.room = c.room; } g.listeners.push(apply); g.toggle(true, { instant: true }); }
+    return rec;
+  });
   const T2 = performance.now();
   const halos = cut ? null : bloomMesh(sg, m);
   bake(sg, baked);
@@ -5336,6 +5463,7 @@ function buildReal(unit, styleId, opts, I) {
   root.add(cg);
   const lights = cut ? [Object.assign(new THREE.HemisphereLight(0xfff1e0, 0x9a8a74, 1.5), { name: 'apt-fill' })] : buildLights(ctx);
   lights.forEach(l => root.add(l));
+  for (const l of lights) { const S = P.rooms.find(r => pointInPoly([l.position.x, l.position.z], r.poly)); if (S) l.userData.room = S.id; }   // V19: circuit
   const group = root;
   // interior doors rest open (opts.doors: 'closed' → shut until someone comes near)
   const doorsMode = opts.doors === 'closed' ? 'closed' : 'open';
@@ -5470,7 +5598,7 @@ function buildReal(unit, styleId, opts, I) {
     stats: { meshes: baked.children.length + (ctx.door ? 2 : 0) + (movers ? movers.batches : 0), colliders: cg.children.length, fronts: movers ? movers.count : 0, windows: ctx.wins.length, windowIds: new Set(ctx.wins.map(w => w.op.win.id)).size,
       ms: { furnish: Math.round(T1 - T0), fronts: Math.round(T2 - T1), bake: Math.round(T3 - T2), beds: Math.round(ctx.msBeds || 0), sb: Math.round(ctx.msSb || 0), rules: Math.round(ctx.msRules || 0) } },
     doorLeaf: ctx.door ? ctx.door.leaf : null,
-    cabinets: movers ? movers.proxies.filter(p => !p.userData.balconyDoor && !p.userData.curtain && !p.userData.interiorDoor) : [], closeCabinets: movers ? movers.closeAll : () => Promise.resolve(),
+    cabinets: movers ? movers.proxies.filter(p => !p.userData.balconyDoor && !p.userData.curtain && !p.userData.interiorDoor && !p.userData.keepState) : [], closeCabinets: movers ? movers.closeAll : () => Promise.resolve(),
     balconyDoors: bdoors, interiorDoors: idoors,
     openBalconyDoor: () => { const d = mainDoor(); return d ? d.toggle(true) : Promise.resolve(); },
     openDoors: (o = {}) => Promise.all(idoors.map(d => d.toggle(true, o))), closeDoors: (o = {}) => Promise.all(idoors.map(d => d.toggle(false, o))),
@@ -5479,6 +5607,9 @@ function buildReal(unit, styleId, opts, I) {
     speakers: ctx.speakers || [],
     tvs, setTvs: (on) => Promise.all(tvs.map(t => t.toggle(on))),
     laundry: ctx.laundry, island: ctx.island || null, snooker: null, game: null, fixtures,
+    circuits, lamps: ctx.lamps || [], remote: ctx.remote || null,
+    // V19: every tap target of the flat in one registry ({kind, name, piece, part, proxy, toggle, state}; interact.js)
+    interactables: cut ? [] : collectInteractables(root, { extra: sofaBed && !sofaBed.fixed ? [{ kind: 'sofaBed', name: 'sofa-bed', piece: 'sofaBed', part: null, proxy: sofaBed.collider || sofaBed.bedCollider, toggle: (on) => sofaBed.toggle(on), state: () => !!sofaBed.open }] : [] }),
     closeBalconyDoors: () => Promise.all(bdoors.filter(d => d.open).map(d => d.toggle(false))),
     dispose: disposeAll,
   };

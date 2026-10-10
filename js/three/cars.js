@@ -947,7 +947,8 @@ export function createFleet({ maxDetailed = 4, detailRadius = 24, farRadius = 23
     for (const [id, car] of detailed) if (![...want].some(r => r.id === id)) { car.group.visible = false; }
     for (const r of want) {
       let car = detailed.get(r.id);
-      if (!car) { car = createCar(r.kind, r.colour, { interior: hashStr(r.id) % INTERIORS.length, plate: hashStr(r.id + '#') % PLATES.n }); detailed.set(r.id, car); group.add(car.group); car.setLights(false); }
+      if (!car) { car = createCar(r.kind, r.colour, { interior: hashStr(r.id) % INTERIORS.length, plate: hashStr(r.id + '#') % PLATES.n }); detailed.set(r.id, car); group.add(car.group); car.setLights(false);
+        if (r.livery && dresser) { try { car.livery = dresser(car, r); } catch (e) { console.warn('[cars] livery', e); } } }   // V19: a patrol car
       car.group.visible = true; syncCar(r, car);
     }
     // evict stale detailed cars
@@ -1016,12 +1017,15 @@ export function createFleet({ maxDetailed = 4, detailRadius = 24, farRadius = 23
     return best;
   }
   // one more car at run time (a traffic car taken over by the visitor): no clash test, the pose is the caller's
+  let dresser = null;
+  // V19: change the look of a record (a parked car turned into a patrol car): its detailed model is rebuilt on the next update
+  function restyle(rec, o = {}) { Object.assign(rec, o); const car = detailed.get(rec.id); if (car) { try { if (car.livery) car.livery.dispose(); car.dispose(); } catch { /* */ } detailed.delete(rec.id); } dirty = true; }
   function addOne(c) {
-    const kind = carSpec(c.kind).kind, rec = { id: c.id || 'car:' + records.length, kind, colour: c.colour || 'black', x: c.x, y: c.y || 0, z: c.z, yaw: c.yaw, pitch: 0, src: c.src || 'taken', index: records.length, bay: null, home: { x: c.x, y: c.y || 0, z: c.z, yaw: c.yaw }, driver: c.driver ?? null, disabled: false, moved: true };
+    const kind = carSpec(c.kind).kind, rec = { id: c.id || 'car:' + records.length, kind, colour: c.colour || 'black', livery: c.livery || null, x: c.x, y: c.y || 0, z: c.z, yaw: c.yaw, pitch: 0, src: c.src || 'taken', index: records.length, bay: null, home: { x: c.x, y: c.y || 0, z: c.z, yaw: c.yaw }, driver: c.driver ?? null, disabled: false, moved: true };
     rec.collider = colliderFor(rec); place(rec); records.push(rec); dirty = true; return rec;
   }
   return {
-    group, colliders, records, add, addOne, update, raycast, nearest, distTo,
+    group, colliders, records, add, addOne, update, raycast, nearest, distTo, restyle, setDresser(fn) { dresser = fn; },
     byId(id) { return records.find(r => r.id === id) || null; },
     carOf(rec) { return detailed.get(rec.id) || null; },
     setFocus(rec) { focus = rec; dirty = true; },

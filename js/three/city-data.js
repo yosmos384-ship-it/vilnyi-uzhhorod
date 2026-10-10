@@ -39,6 +39,13 @@ export function offsetLine(pts, off) {
   return out;
 }
 /** Point and direction at running length s of a road. */
+// V19: how far from a junction node the pavements of road r end (and its zebra lies): beyond the carriageway and the
+// pavement of every other road meeting there (≥ the old r.w / 2 + 3), at most 45 % of a short road
+function endCut(r, nodeId) {
+  const N = CITY.graph && CITY.graph.nodes[nodeId]; let c = r.w / 2 + 3;
+  if (N) for (const e of N.edges) { if (e === r.id) continue; const o = CITY.roads[e]; if (o && o.car) c = Math.max(c, o.w / 2 + Math.max(o.swL || 0, o.swR || 0) + 0.6); }
+  return Math.min(r.len * 0.45, c);
+}
 export function pointAt(road, s) {
   const c = road.cum, p = road.pts; s = Math.max(0, Math.min(road.len, s)); let i = 1; while (i < c.length - 1 && c[i] < s) i++;
   const l = c[i] - c[i - 1] || 1, t = (s - c[i - 1]) / l, a = p[i - 1], b = p[i];
@@ -135,6 +142,19 @@ function build(D) {
   });
   CITY.crossings = D.crossings.map((c, id) => { const road = roads[c[2]], o = { id, x: c[0] / 10, z: c[1] / 10, road: c[2], heading: c[3] / 100, len: road.w, w: road.cls === 'secondary' ? 4 : 3.2, zebra: c[4], signal: c[5] };
     gCross.add(Math.floor(o.x / 60), Math.floor(o.z / 60), id); tileRec(...tileOf(o.x, o.z)).crossings.push(id); return o; });
+  // V19 (owner): pedestrians cross only on zebra crossings — OSM's marked crossings plus one zebra across every car-road arm of
+  // a junction (3+ car roads, or a signalled corner) that has no OSM crossing within 22 m on that road; generated ones carry
+  // gen: 1, sit where the pavements end at the junction (the sidewalk graph's crossing links) and use the junction's signal
+  for (const n of gn) {
+    if ((n.carDeg || 0) < 3 && !(n.signal >= 0 && (n.carDeg || 0) >= 2)) continue;
+    for (const e of n.edges) {
+      const r = roads[e]; if (!r.car || r.cls === 'service' || r.tunnel || r.near || r.surface !== 'asphalt' || !(r.swL > 0 && r.swR > 0) || r.len < 14) continue;
+      const cut = endCut(r, n.id), q = pointAt(r, r.a === n.id ? cut : r.len - cut);
+      if (crossingsNear(q.x, q.z, 22).some(c => c.road === r.id)) continue;
+      const id = CITY.crossings.length, o = { id, x: q.x, z: q.z, road: r.id, heading: Math.atan2(q.dz, -q.dx), len: r.w, w: r.cls === 'secondary' ? 4 : 3.2, zebra: 1, signal: n.signal >= 0 ? n.signal : -1, gen: 1 };
+      CITY.crossings.push(o); gCross.add(Math.floor(o.x / 60), Math.floor(o.z / 60), id); tileRec(...tileOf(o.x, o.z)).crossings.push(id);
+    }
+  }
   CITY.busStops = D.stops.map((s, id) => { const o = { id, x: s[0] / 10, z: s[1] / 10, road: s[2], heading: s[3] / 100, name: D.names[s[4]] }; tileRec(...tileOf(o.x, o.z)).stops.push(id); return o; });
   CITY.rails = D.rails.map((r, id) => { const pts = decPts(r[1]), o = { id, pts, bridge: r[0] & 1, narrow: (r[0] >> 1) & 1, tracks: 1 };
     const seen = new Set(); for (let i = 0; i < pts.length - 1; i++) { const n = Math.max(1, Math.ceil(hyp(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]) / 100)); for (let k = 0; k <= n; k++) { const t = tileOf(pts[i][0] + (pts[i + 1][0] - pts[i][0]) * k / n, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * k / n), key = tileKey(...t); if (!seen.has(key)) { seen.add(key); tileRec(...t).rails.push(id); } } }
@@ -377,16 +397,26 @@ function buildSidewalks() {
     for (const [side, w] of sides) {
       const off = side ? (r.w / 2 + w / 2) * side : 0, line = side ? offsetLine(r.pts, off) : r.pts;
       const sw = { id: _sw.length, road: r.id, side, w, pts: line }; _sw.push(sw);
-      const cut = side ? Math.min(r.len * 0.3, r.w / 2 + 3) : 0, ids = [], n = Math.max(1, Math.ceil((r.len - 2 * cut) / 35));
-      for (let k = 0; k <= n; k++) { const q = pointAt(r, cut + (r.len - 2 * cut) * k / n); const id = addNode(q.x - q.dz * off, q.z + q.dx * off); if (ids.length) link(ids[ids.length - 1], id); ids.push(id); }
+      // V19: a pavement ends where the crossing roads' own pavements run (not inside a wider road's carriageway)
+      const cA = side ? endCut(r, r.a) : 0, cB = side ? endCut(r, r.b) : 0, ids = [], n = Math.max(1, Math.ceil((r.len - cA - cB) / 35));
+      for (let k = 0; k <= n; k++) { const q = pointAt(r, cA + (r.len - cA - cB) * k / n); const id = addNode(q.x - q.dz * off, q.z + q.dx * off); if (ids.length) link(ids[ids.length - 1], id); ids.push(id); }
       rec[side] = ids; atNode[r.a].push({ id: ids[0], road: r, side }); atNode[r.b].push({ id: ids[ids.length - 1], road: r, side });
     }
   }
+  // V19: a pavement link never runs over a carriageway except on a zebra crossing
+  const overCar = (a, b) => { for (const t of [0.2, 0.35, 0.5, 0.65, 0.8]) { const x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t, q = roadAt0(x, z, 12, true); if (q && q.road.cls !== 'service' && q.dist < q.road.w / 2 - 0.25) return true; } return false; };
   for (let g = 0; g < G.length; g++) {                // junctions: link the pavement ends around the node; across a carriageway = crossing link
-    const L = atNode[g]; for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) { const a = L[i], b = L[j]; link(a.id, b.id);
-      if (a.road === b.road && a.side && b.side && a.side !== b.side) { const xs = crossingsNear(G[g].x, G[g].z, 22).filter(c => c.road === a.road.id); nodes[a.id].crossing = nodes[b.id].crossing = xs.length ? xs[0].id : -2; } }
+    const L = atNode[g]; for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) { const a = L[i], b = L[j];
+      if (a.road === b.road && a.side && b.side && a.side !== b.side) {
+        const xs = crossingsNear(G[g].x, G[g].z, 22).filter(c => c.road === a.road.id && c.zebra);
+        if (!xs.length) continue;                     // (no zebra here: nobody crosses this arm at this corner)
+        link(a.id, b.id); nodes[a.id].crossing = nodes[b.id].crossing = xs[0].id; continue;
+      }
+      if (overCar(nodes[a.id], nodes[b.id])) continue;  // a diagonal over the junction's carriageway
+      link(a.id, b.id); }
   }
-  for (const c of CITY.crossings) {                   // mid-block crossings
+  for (const c of CITY.crossings) {                   // mid-block crossings (zebras only)
+    if (!c.zebra || c.gen) continue;
     const rec = runNodes.get(c.road); if (!rec || !rec[1] || !rec[-1]) continue; const r = CITY.roads[c.road], off = r.w / 2 + 1;
     const ux = Math.sin(c.heading), uz = Math.cos(c.heading); const pair = [];
     for (const side of [1, -1]) { const x = c.x + ux * off * side, z = c.z + uz * off * side; const id = addNode(x, z); nodes[id].crossing = c.id; pair.push(id);
@@ -394,6 +424,19 @@ function buildSidewalks() {
       const sideIds = rec[1].includes(best) ? rec[1] : rec[-1]; const sorted = sideIds.map(k => [hyp(nodes[k].x - x, nodes[k].z - z), k]).sort((p, q) => p[0] - q[0]); link(id, sorted[0][1]); if (sorted[1]) link(id, sorted[1][1]); }
     link(pair[0], pair[1]);
   }
+  // V19: last pass — any remaining pavement link that cuts across a carriageway (not along it, not a zebra link) is removed
+  // (every non-service car road whose carriageway holds the point counts — not only the nearest road, a service lane can overlap)
+  const carriage = (x, z) => { let best = null; for (const r of roadsNear(x, z, 14)) { if (!r.car || r.cls === 'service') continue; const p = r.pts;
+      for (let i = 0; i < p.length - 1; i++) { const a = p[i], c = p[i + 1], ex = c[0] - a[0], ez = c[1] - a[1], l2 = ex * ex + ez * ez || 1; let t = ((x - a[0]) * ex + (z - a[1]) * ez) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const d = hyp(x - a[0] - ex * t, z - a[1] - ez * t); if (d < r.w / 2 - 0.1 && (!best || d - r.w / 2 < best.dist - best.road.w / 2)) best = { road: r, dist: d, heading: Math.atan2(ex, ez) }; } } return best; };
+  { let cut = 0; const tA = [0.06, 0.2, 0.35, 0.5, 0.65, 0.8, 0.94];
+    for (const n of nodes) for (const m of [...n.links]) { if (m < n.id) continue; const b = nodes[m]; if (n.crossing >= 0 && n.crossing === b.crossing) continue;
+      const dx = b.x - n.x, dz = b.z - n.z, l = Math.hypot(dx, dz) || 1;
+      for (const t of tA) { const q = carriage(n.x + dx * t, n.z + dz * t); if (!q) continue;
+        if (Math.abs(Math.sin(q.heading) * dx / l + Math.cos(q.heading) * dz / l) > 0.7 && !(q.road.swL > 0 || q.road.swR > 0)) break;   // along a small road without pavements
+        // (a pavement line that has strayed onto the carriageway of a road WITH pavements is removed as well)
+        n.links = n.links.filter(k => k !== m); b.links = b.links.filter(k => k !== n.id); cut++; break; } }
+    CITY.paveCut = cut; }
   _sg = { nodes,
     nearest(x, z, r = 80) { let best = -1, bd = 1e9; gN.query(x, z, r, id => { const d = hyp(nodes[id].x - x, nodes[id].z - z); if (d < bd) { bd = d; best = id; } }); return best; },
     near(x, z, r) { const out = []; gN.query(x, z, r, id => { if (hyp(nodes[id].x - x, nodes[id].z - z) <= r) out.push(id); }); return out; },

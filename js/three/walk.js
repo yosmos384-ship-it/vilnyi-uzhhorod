@@ -653,6 +653,10 @@ const CSS = `
 .vw-pano{position:absolute;inset:0;z-index:3;background:#050505}
 .vw-carchip{position:absolute;left:50%;bottom:calc(100px + var(--sb));transform:translateX(-50%);display:none;height:42px;padding:0 18px;font-size:12.5px;z-index:2}
 .vw-carchip.show{display:inline-flex;animation:vwpop .35s ease}
+.vw-carops{position:absolute;left:50%;bottom:calc(150px + var(--sb));transform:translateX(-50%);display:none;gap:8px;z-index:2}
+.vw-carops.show{display:flex;animation:vwpop .35s ease}
+.vw-carops button{width:42px;height:42px;padding:0;border-radius:50%;justify-content:center}
+.vw.driving .vw-carops{display:none!important}
 .vw-sofachip{position:absolute;left:50%;bottom:calc(100px + var(--sb));transform:translateX(-50%);display:none;height:40px;padding:0 16px;font-size:12.5px;z-index:2;gap:8px;align-items:center;unicode-bidi:plaintext}
 .vw-sofachip.show{display:inline-flex;animation:vwpop .35s ease}
 .vw.driving .vw-sofachip{display:none!important}
@@ -1229,7 +1233,7 @@ export class Walkthrough {
       const hh = ((pos.y - uY) % uH + uH) % uH;
       const drop = hh > 1.9 ? Math.min(0.55, hh - 1.75) : 0;
       pos.y -= drop;
-      specs.push({ pos, color: l.color.clone(), intensity: l.intensity * (drop ? 0.74 : 1), distance: l.distance, decay: l.decay });
+      specs.push({ pos, color: l.color.clone(), intensity: l.intensity * (drop ? 0.74 : 1), distance: l.distance, decay: l.decay, room: l.userData.room || null, off: false });
       l.parent.remove(l);
     }
     if (!apt.doorLeaf) apt.group.traverse(o => { if (!apt.doorLeaf && o.userData && o.userData.action && o.userData.action.type === 'aptDoor') apt.doorLeaf = o; });
@@ -1265,7 +1269,7 @@ export class Walkthrough {
     const k = this._lampK();
     const apply = () => pool.forEach((l, i) => {
       const s = e.lights[i];
-      if (s) { l.position.copy(s.pos); l.color.copy(s.color); l.distance = s.distance; l.decay = s.decay; l.userData.base = s.intensity; } else l.userData.base = 0;
+      if (s) { l.position.copy(s.pos); l.color.copy(s.color); l.distance = s.distance; l.decay = s.decay; l.userData.base = s.off ? 0 : s.intensity; } else l.userData.base = 0;
       l.userData.to = l.userData.base * k;
       l.intensity = 0;
     });
@@ -1273,6 +1277,19 @@ export class Walkthrough {
     // quick cross-fade: out, move, in
     tween(160, k => { if (token === this._lightTok) pool.forEach((l, i) => { l.intensity = from[i] * (1 - k); }); })
       .then(() => { if (token !== this._lightTok) return; apply(); return tween(420, k => { if (token === this._lightTok) pool.forEach(l => { l.intensity = l.userData.to * k; }); }); });
+  }
+
+  // V19: a light switch in a flat → the real lights of that room (the walkthrough's light pool) fade out / back in
+  _onAptLight({ unitId, room, on }) {
+    const e = unitId && this.loaded && this.loaded.get(unitId); if (!e || !room) return;
+    const pool = this._lightPool, k = this._lampK();
+    e.lights.forEach((s, i) => {
+      if (s.room !== room) return;
+      s.off = !on;
+      if (!pool || this.apt !== e.apt || !pool[i]) return;
+      const l = pool[i], from = l.intensity, to = (on ? s.intensity : 0) * k; l.userData.base = on ? s.intensity : 0; l.userData.to = to;
+      tween(on ? 260 : 160, q => { l.intensity = from + (to - from) * q; });
+    });
   }
 
   _disposeEntry(e) {
@@ -2276,6 +2293,7 @@ export class Walkthrough {
   async _doAction(a) {
     const act = a.action;
     if (act.type === 'aptDoor' && act.part === 'balconyDoor') return this._tapBalconyDoor(a);
+    if (act.type === 'aptDoor' && act.part === 'remote') { this._click?.(0.3); const H = await this._homeMedia(); if (H && H.inside) H.openRemote(a.obj); return; }   // V19: pick up the TV remote
     if (act.type === 'aptDoor' && act.part === 'tv') { this._click?.(0.3); const H = await this._homeMedia(); if (H && H.inside) return H.tapTv(a.obj); return this._toggleDoor(a.obj); }   // V18: the TV takes / gives back the sound
     if (act.type === 'aptDoor') return act.part ? (this._click?.(0.35), this._toggleDoor(a.obj)) : this._onAptDoor(act.unitId, a.obj);
     if (act.type === 'sofaBed') return this._sofaToggle(act.unitId);
@@ -4075,6 +4093,7 @@ export class Walkthrough {
       </div>
       <div class="vw-ucard vw-panel"><div class="ut"><div class="u1"></div><div class="u2"></div></div><button class="vw-btn vw-gold" data-k="ureserve"></button></div>
       <button class="vw-carchip vw-btn vw-gold" data-k="carenter"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M3.5 15.5v-3l2.2-4.6A2 2 0 0 1 7.5 6.8h9a2 2 0 0 1 1.8 1.1l2.2 4.6v3"/><path d="M2.8 15.5h18.4v2.4H2.8z"/><circle cx="7" cy="18.3" r="1.6"/><circle cx="17" cy="18.3" r="1.6"/><path d="M5.2 12.3h13.6"/></svg><span class="lbl"></span></button>
+      <div class="vw-carops" role="group"><button class="vw-btn vw-ghost" data-k="cardoor"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M4 20V9l6-5h10v16z"/><path d="M4 11h16M15 14h2"/></svg></button><button class="vw-btn vw-ghost" data-k="carhorn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10v4h3l6 4V6l-6 4z"/><path d="M16.5 9.5c1 .7 1.5 1.5 1.5 2.5s-.5 1.8-1.5 2.5M19 7c1.6 1.3 2.5 3 2.5 5s-.9 3.7-2.5 5"/></svg></button><button class="vw-btn vw-ghost" data-k="carflash"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M10 6c-4 0-6 2.5-6 6s2 6 6 6c1.5 0 2-1 2-6s-.5-6-2-6z"/><path d="M15 8h6M15 12h6M15 16h6"/></svg></button></div>
       <button class="vw-sofachip vw-btn vw-gold" data-k="sofabed"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M3 18v-6.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2V18"/><path d="M3 15h18"/><path d="M6.5 9.5V8a1.5 1.5 0 0 1 1.5-1.5h8A1.5 1.5 0 0 1 17.5 8v1.5"/><path d="M5 18v1.5M19 18v1.5"/></svg><span class="lbl"></span></button>
       <div class="vw-drive">
         <div class="vw-dtop"><button class="vw-btn vw-ghost vw-ico" data-k="carlights"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 5.5C8 5.5 6 8.6 6 12s2 6.5 6.5 6.5c1.6 0 2.5-2.9 2.5-6.5s-.9-6.5-2.5-6.5z"/><path d="M17.5 8h4M17.5 12h4M17.5 16h4"/></svg></button><button class="vw-btn vw-ghost vw-ico" data-k="carsound"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path class="on" d="M15.5 9.2a4 4 0 0 1 0 5.6M18 7a7 7 0 0 1 0 10"/><path class="off" d="M16 9.5l5 5M21 9.5l-5 5"/></svg></button><button class="vw-btn vw-ghost" data-k="carview"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span class="lbl"></span></button><button class="vw-btn vw-gold" data-k="carexit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M3.5 15.5v-3l2.2-4.6A2 2 0 0 1 7.5 6.8h9a2 2 0 0 1 1.8 1.1l2.2 4.6v3"/><path d="M2.8 15.5h18.4v2.4H2.8z"/><circle cx="7" cy="18.3" r="1.6"/><circle cx="17" cy="18.3" r="1.6"/><path d="M5.2 12.3h13.6"/></svg><span class="lbl"></span></button></div>
@@ -4097,7 +4116,7 @@ export class Walkthrough {
       help: q('.vw-help'), loading: q('.vw-loading'),
       gear: q('[data-k=gear]'), zoom: q('.vw-zoom'), zv: q('.vw-zoom .zv'), mapBtn: q('.vw-mapbtn'), prow: q('.vw-prow span'),
       modes: q('.vw-modes'), soon: q('.vw-modes .soon'), light: q('.vw-light'),
-      carChip: q('.vw-carchip'), sofaChip: q('.vw-sofachip'), drive: q('.vw-drive'), carView: q('[data-k=carview]'), carExit: q('[data-k=carexit]'), carLights: q('[data-k=carlights]'), carSound: q('[data-k=carsound]'),
+      carChip: q('.vw-carchip'), carOps: q('.vw-carops'), sofaChip: q('.vw-sofachip'), drive: q('.vw-drive'), carView: q('[data-k=carview]'), carExit: q('[data-k=carexit]'), carLights: q('[data-k=carlights]'), carSound: q('[data-k=carsound]'),
       spdo: q('.vw-spdo'), spd: q('.vw-spdo .spd'), gear: q('.vw-spdo .gear'), lim: q('.vw-spdo .lim'), arc: q('.vw-spdo .arc'),
       steerPad: q('.vw-steer'), knob: q('.vw-steer .knob'), gas: q('.vw-pedals .gas'), brake: q('.vw-pedals .brake'), dhint: q('.vw-dhint'),
       floorsBtn: q('[data-k=floors]'), liftMusic: q('[data-k=liftmusic]'), tandem: q('[data-k=tandem]'), ucard: q('.vw-ucard'), u1: q('.vw-ucard .u1'), u2: q('.vw-ucard .u2'), ureserve: q('[data-k=ureserve]'),
@@ -4452,6 +4471,8 @@ export class Walkthrough {
     window.addEventListener('keydown', this._h.key);
     window.addEventListener('keyup', this._h.keyup);
     window.addEventListener('blur', this._h.blur);
+    this._h.aptLight = ev => this._onAptLight(ev.detail || {});          // V19: a room's light switch
+    window.addEventListener('vrc:apt-light', this._h.aptLight);
     document.addEventListener('visibilitychange', this._h.vis);
     e.hud.addEventListener('click', this._h.hud);
     // hold-to-move pad
@@ -4492,6 +4513,7 @@ export class Walkthrough {
     this.root.removeEventListener('pointerdown', h.poke, true);
     this.root.removeEventListener('gesturestart', h.gesture); this.root.removeEventListener('gesturechange', h.gesture);
     window.removeEventListener('orientationchange', h.orient);
+    if (h.aptLight) window.removeEventListener('vrc:apt-light', h.aptLight);
     window.removeEventListener('keydown', h.key); window.removeEventListener('keyup', h.keyup); window.removeEventListener('blur', h.blur);
     document.removeEventListener('visibilitychange', h.vis);
     this.el.hud.removeEventListener('click', h.hud);
@@ -4920,7 +4942,7 @@ export class Walkthrough {
     const wall = this._cast(solids, ray.ray.origin, ray.ray.direction, hit.distance).find(h => !h.object.userData.floor);
     return wall && wall.distance < hit.distance - 0.3 ? null : hit.rec;
   }
-  _hideCarChip() { this._chipRec = null; this._chipNear = false; this.el && this.el.carChip.classList.remove('show'); }
+  _hideCarChip() { const r = this._chipRec; this._chipRec = null; this._chipNear = false; if (this.el) { this.el.carChip.classList.remove('show'); this.el.carOps && this.el.carOps.classList.remove('show'); } if (r && this._carOpsReset) this._carOpsReset(r); }
   _carChipWatch() {
     const now = performance.now(); if (now - (this._ccT || 0) < 250) return; this._ccT = now;
     if (!this.fleet || this.drive || this.mode !== 'walk') return;
@@ -4969,6 +4991,7 @@ export class Walkthrough {
     if (k === 'tandem') { this._tandemOn = !this._tandemOn; b.setAttribute('aria-pressed', String(this._tandemOn)); if (this._tandemOn && this._phone && !this._mapOpen) this._setMapOpen(true); return this._drawMap(); }
     if (k === 'floors') { this._liftGridOpen = !this._liftGridOpen; return this._renderLiftPanel(); }
     if (k === 'carenter') return this._enterCar(this._chipRec);
+    if (k === 'cardoor' || k === 'carhorn' || k === 'carflash') return this._carOp && this._carOp(k);   // V19: a parked car's door, horn, lights
     if (k === 'sofabed') return this._sofaUnit && this._sofaToggle(this._sofaUnit);
     if (k === 'carexit') return this._exitCar();
     if (k === 'carview') return this._toggleCarView();

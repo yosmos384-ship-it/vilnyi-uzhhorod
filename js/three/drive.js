@@ -32,6 +32,46 @@ const carMass = S => ((S.perf && S.perf.mass) || 1) * 1600;
 const TICK_MS = 100;                                  // drive:tick events (10 per second)
 // V10 driver's view: the resting gaze turns this much towards the middle of the car (rad; + = the driver's side) and down
 const FP_YAW = -0.1, FP_PITCH = -0.07;
+// V19: bonnet + instruments in the driver's view. S = carSpec, eye = the head point (car frame: +z forward, +x driver's side).
+// → { raise (m), pts: [bonnet front corners, bonnet rear point, cluster corners] (car frame), hoodRear, binnacle }
+const _hRay = new THREE.Raycaster(), _hV = new THREE.Vector3(), _hD = new THREE.Vector3(), _hM = new THREE.Matrix4();
+const HOOD_SKIP = /glass|mirror|cluster|screen|wiper|plate/i;
+function fpHoodKeys(S, eye, car = null) {
+  const sh = S.sh || [], G = S.gh || {}; if (!sh.length || G.zA == null) return { raise: 0, pts: [] };
+  // measured on the car's own meshes (car frame): the bonnet surface under the target, then the lowest seat height (1 cm steps,
+  // ≤ 12 cm, under the roof) from which nothing of the cabin / body stands between the eye and the bonnet
+  if (car && car.group) {
+    try {
+      const meshes = []; car.group.updateMatrixWorld(true); _hM.copy(car.group.matrixWorld).invert();
+      car.group.traverse(o => { if (o.isMesh && o.visible !== false && !HOOD_SKIP.test(o.name || '') && !(o.parent && /cockpit-mirror/.test(o.parent.name || ''))) meshes.push(o); });
+      const W = (x, y, z) => car.group.localToWorld(_hV.set(x, y, z)).clone();
+      const zA = G.zA, zT = zA + 0.24, x = (S.driverX ?? eye.x) * 0.6;
+      const top = W(x, S.H + 0.5, zT); _hRay.set(top, _hD.set(0, -1, 0).transformDirection(car.group.matrixWorld)); _hRay.far = S.H + 1;
+      const hit = _hRay.intersectObjects(meshes.filter(m => m.name === 'paint'), false)[0];
+      if (hit) {
+        const T = hit.point.clone().applyMatrix4(_hM); T.y += 0.025;
+        const clear = (dy) => { const e = W(eye.x, eye.y + dy, eye.z), t = W(T.x, T.y, T.z), d = t.clone().sub(e), L = d.length(); _hRay.set(e, d.divideScalar(L)); _hRay.far = L - 0.05; return !_hRay.intersectObjects(meshes, false).length; };
+        const cap = Math.min(0.12, Math.max(0, (S.H - 0.1) - eye.y)); let raise = null;
+        for (let dy = 0; dy <= cap + 1e-6; dy += 0.01) if (clear(dy)) { raise = dy; break; }
+        const base = fpHoodKeys(S, eye, null);
+        base.raise = raise == null ? cap : Math.min(cap, raise + 0.015); base.measured = raise != null; base.hoodRear = { x: T.x, y: T.y, z: T.z }; base.pts[3] = new THREE.Vector3(T.x, T.y, T.z);
+        return base;
+      }
+    } catch (e) { /* fall back to the estimate */ }
+  }
+  const shf = z => { if (z <= sh[0][0]) return sh[0][1]; for (let i = 1; i < sh.length; i++) if (z <= sh[i][0]) { const [z0, y0] = sh[i - 1], [z1, y1] = sh[i]; return y0 + (y1 - y0) * (z - z0) / (z1 - z0 || 1); } return sh[sh.length - 1][1]; };
+  const zA = G.zA, zN = sh[sh.length - 1][0] - 0.16, dh = shf(zA) - 0.035, dRear = (S.seat ?? eye.z) + 0.68;
+  const T = { x: eye.x * 0.6, y: shf(zA + 0.22) + 0.02, z: zA + 0.22 };                      // the bonnet just ahead of the windscreen
+  const occ = [{ y: dh + 0.155, z: dRear + 0.02 }, { y: shf(zA - 0.04) + 0.012, z: zA - 0.04 }];   // binnacle top, dash top at the glass
+  let need = eye.y;
+  for (const O of occ) { const a = (O.z - eye.z) / (T.z - eye.z); if (a > 0 && a < 1) need = Math.max(need, (O.y - a * T.y) / (1 - a) + 0.03); }
+  const cap = Math.min(0.12, Math.max(0, (S.H - 0.11) - eye.y));
+  const raise = Math.max(0, Math.min(cap, need - eye.y));
+  const yN = shf(zN) + 0.01, hw = (S.W || 1.9) * 0.36, cx = S.driverX ?? eye.x, cy = dh + 0.085, cz = dRear + 0.023;
+  const P = (x, y, z) => new THREE.Vector3(x, y, z);
+  const pts = [P(hw, yN, zN), P(-hw, yN, zN), P(0, yN + 0.01, zN), P(T.x, T.y, T.z), P(cx - 0.17, cy - 0.06, cz), P(cx + 0.17, cy - 0.06, cz), P(cx - 0.17, cy + 0.06, cz), P(cx + 0.17, cy + 0.06, cz)];
+  return { raise, need: +(need - eye.y).toFixed(3), pts, hoodRear: T, front: { y: yN, z: zN }, cluster: { x: cx, y: cy, z: cz } };
+}
 // camera-frame point (x right, y up, −z ahead) → projection plane: Panini d = 1 (pan) or a plain lens; and back to a plain lens
 const NOOP = function () {};
 function fpProj(x, y, z, pan) { const d = Math.max(0.02, -z); if (!pan) return [x / d, y / d]; const th = Math.atan2(x, d), S = 2 / (1 + Math.cos(th)); return [S * Math.sin(th), S * y / Math.hypot(x, d)]; }
@@ -68,7 +108,7 @@ const CSS = `
   .vw.phone .vw-dtop{flex-wrap:wrap;justify-content:flex-end;max-width:calc(100vw - 20px)}
 }
 @media (orientation:landscape){
-  .vw.phone .vw-dxr{bottom:calc(142px + var(--sb))}
+  .vw.phone .vw-dxr{bottom:calc(142px + var(--sb));flex-wrap:wrap-reverse;justify-content:flex-end;max-width:100px}
   .vw.phone .vw-steer{left:calc(18px + var(--sl))}
 }
 .vw.tilt .vw-steer{opacity:.35}
@@ -147,6 +187,10 @@ const CSS = `
 .vw.drive-deck .vw-dhint{display:none}
 `;
 const ICON = {
+  indL: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 12l8-7v4.5h10v5H11V19z"/></svg>',
+  indR: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 12l-8-7v4.5H3v5h10V19z"/></svg>',
+  hazard: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5L21.5 20h-19z"/><path d="M12 9.5L16.4 17H7.6z"/></svg>',
+  wipers: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M3 19a13 13 0 0 1 18 0"/><path d="M8 19l-2.5-9M16 19l2.5-9"/></svg>',
   horn: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10v4h3l6 4V6l-6 4z"/><path d="M16.5 9.5c1 .7 1.5 1.5 1.5 2.5s-.5 1.800-1.500 2.500M19 7c1.600 1.300 2.500 3 2.500 5s-.9 3.700-2.500 5"/></svg>',
   tilt: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="8" height="18" rx="1.8" transform="rotate(-20 12 12)"/><path d="M3 8c.6-2 1.800-3.400 3.500-4.200M21 16c-.6 2-1.800 3.400-3.500 4.200"/></svg>',
   reset: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.600-5.900"/><path d="M4 4v4.500h4.500"/></svg>',
@@ -497,10 +541,27 @@ export const driveMixin = {
 
   // ======================= entering / leaving =======================
   _showCarChip(rec, ms = 7000) {
+    if (this._chipRec && this._chipRec !== rec) this._carOpsReset(this._chipRec);
     this._chipRec = rec; this.el.carChip.classList.add('show');
+    if (this.el.carOps) { this.el.carOps.classList.add('show'); for (const [k, key] of [['cardoor', 'walk.car.door'], ['carhorn', 'walk.car.horn'], ['carflash', 'walk.car.lights']]) { const b = this.el.carOps.querySelector(`[data-k=${k}]`); if (b) { b.title = this.t(key); b.setAttribute('aria-label', this.t(key)); } } }
     const S = this.mods.cars.carSpec(rec.kind), lbl = this.el.carChip.querySelector('.lbl');
     if (lbl) lbl.textContent = this.t('walk.car.enter') + (S.name ? ' · ' + S.name : '');
     clearTimeout(this._chipT); if (ms) this._chipT = setTimeout(() => { if (!this._chipNear) this._hideCarChip(); }, ms);
+  },
+  // V19: a parked car seen on foot — its door opens / closes, the horn sounds, the headlights go on / off (detailed model, ≤ 24 m)
+  _carOp(k) {
+    const rec = this._chipRec; if (!rec || !this.fleet || this.drive) return;
+    this._showCarChip(rec);
+    const car = this.fleet.carOf(rec); rec._ops = rec._ops || { door: 0, lights: false };
+    if (k === 'cardoor') { const to = rec._ops.door > 0.5 ? 0 : 1, from = rec._ops.door; rec._ops.door = to; this._click?.(0.4); return this._doorSwing(car, from, to, 420); }
+    if (k === 'carhorn') { const A = this._carAudio(); if (A) { try { A.horn(true, this.mods.cars.carSpec(rec.kind)); setTimeout(() => { try { A.horn(false); } catch { /* */ } }, 420); } catch { /* */ } } this._emitDrive && this._emitDrive('drive:horn', { car: rec, on: true }); if (this.people && this.people.hornAt) try { this.people.hornAt({ x: rec.x, z: rec.z }); } catch { /* */ } return; }
+    if (k === 'carflash') { rec._ops.lights = !rec._ops.lights; if (car && car.setLights) car.setLights(rec._ops.lights); return; }
+  },
+  _carOpsReset(rec) {
+    if (!rec || !rec._ops) return;
+    const car = this.fleet && this.fleet.carOf(rec);
+    if (car) { if (rec._ops.door > 0) this._doorSwing(car, rec._ops.door, 0, 380); if (rec._ops.lights && car.setLights) car.setLights(false); }
+    rec._ops = null;
   },
   async _doorSwing(car, from, to, ms) {
     if (!car || !car.setDoor) return;
@@ -510,6 +571,7 @@ export const driveMixin = {
   async _enterCar(rec = this._chipRec, { gesture = true } = {}) {
     if (!rec || !this.fleet || this.drive || this.riding || this.busy) return;
     if (gesture && this._gameNotice && this._gameNotice(() => this._enterCar(rec, { gesture: true }))) return;   // V9: first drive → the game-mode notice
+    if (rec._ops) { rec._ops = null; }                                  // V19: door / lights set from outside are taken over by the drive
     this.busy = true; this._hideCarChip();
     // FIRST, still inside the tap / key press that got us here: the radio and the audio context (browsers demand a gesture)
     if (gesture) { this._radioStart(); this._carAudio(); if (this._gameAudioResume) this._gameAudioResume(); }
@@ -626,7 +688,11 @@ export const driveMixin = {
     const car = D.car, pan = this._paniniOK(), aspect = W / Math.max(1, H), key = W + 'x' + H + (pan ? 'p' : 'r');
     if (D.fpf && D.fpf.key === key) return D.fpf;
     const S = car.spec, eye = (car.head || car.eye).clone(); { const rw = S.gh && S.gh.roofW; if (rw) eye.x = Math.min(eye.x, rw - 0.22); }   // under a narrow roof the head is nearer the middle
-    const K = car.glassKeys ? car.glassKeys(eye) : { screen: [], sides: [] }, pts = [...K.screen, ...K.sides.flat()];
+    // V19 (owner): the driver sees the whole bonnet and the instruments — the seat goes up (per car, ≤ 12 cm, under the roof)
+    // until the line of sight to the bonnet just ahead of the windscreen clears the instrument binnacle and the dash top;
+    // the bonnet's front edge and the instrument cluster join the glass in the points the view is framed on
+    const hk = fpHoodKeys(S, eye, car); eye.y += hk.raise;
+    const K = car.glassKeys ? car.glassKeys(eye) : { screen: [], sides: [] }, pts = [...K.screen, ...K.sides.flat(), ...hk.pts];
     const o = new THREE.Object3D(); o.position.copy(eye); o.rotation.set(FP_PITCH, Math.PI + FP_YAW, 0, 'YXZ'); o.updateMatrixWorld(true);
     const inv = o.matrixWorld.clone().invert(), q = new THREE.Vector3();
     let u0 = -0.9, u1 = 0.9, v0 = -0.3, v1 = 0.35;                       // fallback (no glass found): a plain wide view
@@ -637,7 +703,7 @@ export const driveMixin = {
     let deck = 0, Wf, Hf, vTop;
     if (aspect < FP_DECK_ASPECT) {
       Wf = Wu; const px = W / Wf;                                        // px per projection unit across
-      const top = FP_DECK_TOP / px, HfMax = 2 * Math.tan(FP_VMAX / 2 * Math.PI / 180), need = Hv + top + 0.3;   // + a strip of dashboard
+      const top = FP_DECK_TOP / px, HfMax = 2 * Math.tan(FP_VMAX / 2 * Math.PI / 180), need = Hv + top + (hk.pts.length ? 0.08 : 0.3);   // + a strip of dashboard (V19: the instruments are among the key points already)
       Hf = Math.min(HfMax, Math.max(need, H * FP_BAND_MIN / px));
       const band = Math.round(Math.min(H - FP_DECK_MIN, Hf * px)); Hf = band / px; deck = H - band;
       // spare height: half above the glass (headliner, mirror — or sky in an open car), half below (dashboard, wheel)
@@ -659,7 +725,7 @@ export const driveMixin = {
         const [u, v] = fpInv(xp, yp, pan); s0 = Math.min(s0, u); s1 = Math.max(s1, u); t0 = Math.min(t0, v); t1 = Math.max(t1, v); } }
     const Ws = s1 - s0, Hs = t1 - t0, suc = (s0 + s1) / 2, svc = (t0 + t1) / 2;
     const src = { uc: suc, vc: svc, W: Ws, H: Hs, aspect: Ws / Hs, fov: 2 * Math.atan(Hs / 2) * 180 / Math.PI, sx: 2 * suc / Ws, sy: 2 * svc / Hs };
-    D.fpf = { key, eye, deck, pan, out, src, hfov: 2 * Math.atan(pan ? Math.tan(2 * Math.atan(Wf / 4)) : Wf / 2) * 180 / Math.PI };
+    D.fpf = { key, eye, deck, pan, out, src, hood: hk, hfov: 2 * Math.atan(pan ? Math.tan(2 * Math.atan(Wf / 4)) : Wf / 2) * 180 / Math.PI };
     return D.fpf;
   },
   _paniniOK() {
@@ -740,7 +806,7 @@ export const driveMixin = {
     if (code === 'KeyR') {
       if (ev.repeat) return true;
       if (down) D.rHold = performance.now();
-      else { const held = D.rHold ? performance.now() - D.rHold : 0; D.rHold = null; if (held < 700 && held > 0) this._toggleGear(); }
+      else D.rHold = null;                                  // (V19: no gear to toggle; R held = reset)
       return true;
     }
     if (code === 'KeyH') { if (!ev.repeat) { if (down) this._hornStart(); else this._hornStop(); } return true; }
@@ -997,7 +1063,9 @@ export const driveMixin = {
       if (Math.abs(ctl.v) > 0.3) { const n = Math.max(1, Math.ceil(dt * 60)); for (let i = 0; i < n; i++) ctl.step(dt / n, { brake: 1, gear: ctl.gear }, world); }
       else { ctl.v = 0; T.t += dt / 2.2; ctl.yaw = T.yaw0 + T.dir * Math.PI * sstep(T.t); ctl.steer = T.dir * 0.4 * Math.sin(Math.PI * clamp(T.t)); if (T.t >= 1) { D.turn = null; ctl.steer = 0; D.gear = 'D'; D.manual = false; ctl.gear = 'D'; ctl._autoR = false; } }
     } else {
-      const inp = { gas, brake, steer, hand, gear: D.gear, auto: !D.manual && !(pad.brake > 0) && !this._isTouch };   // hold-brake-to-reverse is a keyboard habit; touch has the D / R button
+      // V19: two pedals only — right = gas (forward), left = brake; holding the brake at a standstill drives backwards
+      // (keys: ↑ / W gas, ↓ / S brake-reverse). D.manual / D.gear remain only as a test hook.
+      const inp = { gas, brake, steer, hand, gear: D.manual ? D.gear : 'D', auto: !D.manual };
       const n = Math.min(6, Math.max(1, Math.ceil(dt / (1 / 60))));   // ≥ 60 Hz dynamics; the controller cuts each step into moves of ≤ 0.3 m
       const hit0 = ctl.hit; ctl.hit = 0;
       for (let i = 0; i < n; i++) ctl.step(dt / n, inp, world);
@@ -1038,6 +1106,8 @@ export const driveMixin = {
     }
     this._barrierUpdate(dt || 0.016, ctl);
     this._trafficObstacles();
+    // V19: a stolen patrol car — its beacon flashes while the visitor drives it
+    if (car.livery) { try { car.livery.setLights(D.beacon !== false, now / 1000, this.envMode === 'night'); } catch { /* look only */ } }
     // wipers
     const ck = car.cockpit;
     if (ck) { if (D.wipers || D.wipT % 1 > 0.001) { D.wipT += (dt || 0) / 1.3; if (!D.wipers && D.wipT % 1 < 0.03) D.wipT = Math.round(D.wipT); } ck.setWipers(0.5 - 0.5 * Math.cos(D.wipT * Math.PI * 2)); }
@@ -1107,11 +1177,12 @@ export const driveMixin = {
   // ======================= HUD =======================
   // extra controls for driving (gear D / R, horn, radio, tilt steering, reset) — added to walk.js' drive panel once
   _driveHudInit() {
-    const e = this.el; if (!e || e.dgear || !e.drive) return;
+    const e = this.el; if (!e || e.dxInit || !e.drive) return;
+    e.dxInit = true;                                                    // (V19: e.dgear is gone — the controls are built once)
     const st = document.createElement('style'); st.textContent = CSS; e.drive.appendChild(st);
     { const dk = document.createElement('div'); dk.className = 'vw-ddeck'; dk.setAttribute('aria-hidden', 'true'); e.drive.insertBefore(dk, e.drive.firstChild); }   // V10: portrait control deck (below the 3D band)
     const x = document.createElement('div'); x.className = 'vw-dx vw-dxr';
-    x.innerHTML = `<button class="vw-dround vw-dhand" data-kd="hand">${ICON.hand}</button><button class="vw-dround" data-kd="horn">${ICON.horn}</button><button class="vw-dgear" data-kd="gear"><i data-g="D">D</i><i data-g="R">R</i></button>`;
+    x.innerHTML = `<button class="vw-dround vw-dhand" data-kd="hand">${ICON.hand}</button><button class="vw-dround" data-kd="horn">${ICON.horn}</button><button class="vw-dround vw-dind" data-kd="indL">${ICON.indL}</button><button class="vw-dround vw-dind" data-kd="indR">${ICON.indR}</button>`;   // V19: no gear selector (two pedals)
     e.drive.appendChild(x);
     const name = document.createElement('div'); name.className = 'vw-dname'; e.drive.appendChild(name);
     // the radio: previous · station · next · quieter · louder · on / off
@@ -1129,11 +1200,13 @@ export const driveMixin = {
     const top = e.drive.querySelector('.vw-dtop');
     const mk = (kd, html) => { const b = document.createElement('button'); b.className = 'vw-btn vw-ghost vw-ico'; b.dataset.kd = kd; b.innerHTML = html; top.insertBefore(b, top.firstChild); return b; };
     e.dreset = mk('reset', ICON.reset);
+    e.dwipers = mk('wipers', ICON.wipers); e.dhazard = mk('hazard', ICON.hazard);                       // V19: wipers, hazard lights
     if (this._isTouch && typeof window.DeviceOrientationEvent !== 'undefined') e.dtilt = mk('tilt', ICON.tilt);
-    e.dgear = x.querySelector('[data-kd=gear]'); e.dhorn = x.querySelector('[data-kd=horn]'); e.dname = name; e.dhand = x.querySelector('[data-kd=hand]');
+    e.dgear = null; e.dindL = x.querySelector('[data-kd=indL]'); e.dindR = x.querySelector('[data-kd=indR]'); e.dhorn = x.querySelector('[data-kd=horn]'); e.dname = name; e.dhand = x.querySelector('[data-kd=hand]');
     { const b = e.dhand, on = ev => { ev.preventDefault(); ev.stopPropagation(); try { b.setPointerCapture(ev.pointerId); } catch { /* */ } b.classList.add('on'); if (this.drive) this.drive.pad.hand = 1; }, off = () => { b.classList.remove('on'); if (this.drive) this.drive.pad.hand = 0; };
       b.addEventListener('pointerdown', on); for (const n of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(n, off); b.addEventListener('contextmenu', ev => ev.preventDefault()); }
-    e.dgear.addEventListener('click', ev => { ev.stopPropagation(); this._toggleGear(); });
+    for (const [b, f] of [[e.dindL, () => this._setIndicator(1)], [e.dindR, () => this._setIndicator(-1)], [e.dhazard, () => this._setIndicator(2)], [e.dwipers, () => this._toggleWipers()]]) {
+      b.addEventListener('click', ev => { ev.stopPropagation(); f(); this._renderDriveHud(true); }); b.addEventListener('pointerdown', ev => ev.stopPropagation()); }
     e.dreset.addEventListener('click', ev => { ev.stopPropagation(); this._resetCar(); });
     if (e.dtilt) e.dtilt.addEventListener('click', ev => { ev.stopPropagation(); this._toggleTilt(); });
     const hOn = ev => { ev.preventDefault(); ev.stopPropagation(); try { e.dhorn.setPointerCapture(ev.pointerId); } catch { /* */ } e.dhorn.classList.add('on'); this._hornStart(); };
@@ -1149,6 +1222,7 @@ export const driveMixin = {
       this._lastKmh = kmh; this._lastGear = gear; e.spd.textContent = String(kmh); e.gear.textContent = gear;
       const f = Math.min(1, kmh / (lim === CAR_PARK_LIMIT ? 40 : Math.max(120, ctl.perf.vmax))); e.arc.style.strokeDasharray = `${(141.4 * f).toFixed(1)} 200`;
       if (e.dgear) for (const i of e.dgear.querySelectorAll('i')) i.classList.toggle('on', i.dataset.g === (ctl.reversing ? 'R' : 'D'));
+      if (e.dindL) { e.dindL.classList.toggle('on', D.ind === 1); e.dindR.classList.toggle('on', D.ind === -1); e.dhazard.classList.toggle('on', D.ind === 2); e.dwipers.classList.toggle('on', !!D.wipers); }
     }
     if (force || lim !== this._lastLim) { this._lastLim = lim; e.lim.textContent = String(lim); if (!force && lim === CAR_PARK_LIMIT && this.el) this._toast(this.t('walk.car.parkLimit').replace('{n}', CAR_PARK_LIMIT), 2600); }
     e.spdo.classList.toggle('over', kmh > lim + 2);
@@ -1159,7 +1233,7 @@ export const driveMixin = {
       e.dhint.textContent = this.t('walk.car.hint');
       if (e.dname) e.dname.innerHTML = `<b>${ctl.S.name}</b>${D.car.plate ? ' · ' + D.car.plate : ''}`;
       const lab = (b, k) => { if (b) { b.setAttribute('aria-label', this.t(k)); b.title = this.t(k); } };
-      lab(e.dgear, 'walk.car.gear'); lab(e.dhorn, 'walk.car.horn'); lab(e.dhand, 'walk.car.handbrake'); lab(e.dreset, 'walk.car.resetBtn'); lab(e.dtilt, 'walk.car.tilt'); lab(e.carSound, 'walk.car.sound');
+      lab(e.dindL, 'walk.car.indL'); lab(e.dindR, 'walk.car.indR'); lab(e.dhazard, 'walk.car.hazard'); lab(e.dwipers, 'walk.car.wipers'); lab(e.dhorn, 'walk.car.horn'); lab(e.dhand, 'walk.car.handbrake'); lab(e.dreset, 'walk.car.resetBtn'); lab(e.dtilt, 'walk.car.tilt'); lab(e.carSound, 'walk.car.sound');
       this._radioBar(null);
       if (e.dradio) { e.dradio.setAttribute('aria-label', this.t('walk.radio.title')); for (const [kr, key] of [['prev', 'walk.radio.prev'], ['next', 'walk.radio.next'], ['down', 'walk.radio.volDown'], ['up', 'walk.radio.volUp'], ['power', 'walk.radio.power']]) lab(e.dradio.querySelector(`[data-kr=${kr}]`), key); this._radioHud(); }
       if (e.dtilt) e.dtilt.classList.toggle('on', !!D.tiltOn);

@@ -14,6 +14,7 @@
 // the car park's rooms are walled by the drawing already.
 // Everything lives in the parent's frame (metres, x/z of the plan, y up from this level's floor).
 import * as THREE from 'three';
+import { PLAY } from './furniture.js';
 
 const TAU = Math.PI * 2;
 const hyp = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -163,6 +164,8 @@ class Drawer {
   // B: KIT.Batch, C: KIT.Colliders; the frame: origin o, inward unit normal n; u = (n.z, −n.x); local (a, y, d) → o + u·a + n·d
   constructor(B, C, o, n) { this.B = B; this.C = C; this.o = o; this.n = n; this.u = [n[1], -n[0]]; this.yaw = Math.atan2(n[0], n[1]); this.ortho = Math.abs(Math.sin(2 * this.yaw)) < 1e-3; }
   P(a, d) { return [this.o[0] + this.u[0] * a + this.n[0] * d, this.o[1] + this.u[1] * a + this.n[1] * d]; }
+  // V19: a tap target with its own play (built after the room's batch: running water, flush), in the room's frame
+  play(kind, a, y, d, o = {}) { if (CUR_PLAYS) { const [x, z] = this.P(a, d); CUR_PLAYS.push({ kind, x, y, z, yaw: this.yaw, o }); } }
   _mat(m) { return typeof m === 'string' ? RM(m) : m; }
   geo(m, g, a, y, d, extraYaw = 0, rx = 0, rz = 0) { const [x, z] = this.P(a, d); this.B.add(this._mat(m), g, M4(x, y, z, this.yaw + extraYaw, rx, rz)); }
   box(m, a0, a1, y0, y1, d0, d1, solid = false) {
@@ -211,9 +214,18 @@ const ITEMS = {
     D.geo('cage', new THREE.PlaneGeometry(1.0, 2.15), a - 0.3, 1.08, 1.1); D.box('galv', a + 0.2, a + 0.24, 0, 2.2, 1.07, 1.11); D.box('galv', A, a + 0.22, 0, 0.04, 1.07, 1.11);
     for (const s of [A, Bb]) { const g = new THREE.PlaneGeometry(1.1, 2.15); D.geo('cage', g, s, 1.08, 0.55, Math.PI / 2); }
     D.box('carton', a - 0.6, a - 0.15, 0, 0.45, 0.15, 0.6); D.box('carton', a - 0.6, a - 0.25, 0.45, 0.75, 0.2, 0.55); D.solid(A, Bb, 0, 2.2, 0, 1.12); } },
-  toilet: { w: 0.55, d: 0.72, draw(D, a) { D.box('ceramic', a - 0.18, a + 0.18, 0.15, 0.85, 0.02, 0.2); D.box('ceramic', a - 0.12, a + 0.12, 0, 0.38, 0.2, 0.6); D.box('ceramic', a - 0.19, a + 0.19, 0.36, 0.42, 0.2, 0.68); D.box('white', a - 0.19, a + 0.19, 0.42, 0.44, 0.22, 0.66); D.solid(a - 0.2, a + 0.2, 0, 0.6, 0, 0.68); } },
-  sink: { w: 0.6, d: 0.5, draw(D, a) { D.box('ceramic', a - 0.27, a + 0.27, 0.72, 0.86, 0.02, 0.48); D.box('ceramic', a - 0.06, a + 0.06, 0.1, 0.72, 0.03, 0.15); D.box('steel', a - 0.02, a + 0.02, 0.86, 1.02, 0.06, 0.1); D.box('steel', a - 0.02, a + 0.02, 0.99, 1.02, 0.06, 0.22);
-    D.box('mirror', a - 0.27, a + 0.27, 1.12, 1.75, 0.005, 0.015); D.solid(a - 0.28, a + 0.28, 0.7, 0.9, 0, 0.48); } },
+  toilet: { w: 0.55, d: 0.72, draw(D, a) { D.box('ceramic', a - 0.18, a + 0.18, 0.15, 0.85, 0.02, 0.2); D.box('ceramic', a - 0.12, a + 0.12, 0, 0.38, 0.2, 0.6); D.box('ceramic', a - 0.19, a + 0.19, 0.36, 0.42, 0.2, 0.68); D.box('white', a - 0.19, a + 0.19, 0.42, 0.44, 0.22, 0.66); D.solid(a - 0.2, a + 0.2, 0, 0.6, 0, 0.68);
+    D.box('steel', a - 0.09, a + 0.09, 0.95, 1.07, 0.2, 0.208); D.box('white', a - 0.085, a - 0.003, 0.955, 1.065, 0.208, 0.212); D.box('white', a + 0.003, a + 0.085, 0.955, 1.065, 0.208, 0.212);   // V19: dual flush plate
+    D.play('flush', a, 1.01, 0.21, { w: 0.22, h: 0.16, dd: 0.06 }); } },
+  // V19: a real wash basin — a ceramic rim around a recessed oval bowl with a chrome waste, the tap runs at a tap
+  sink: { w: 0.6, d: 0.5, draw(D, a) {
+    D.box('ceramic', a - 0.27, a + 0.27, 0.8, 0.86, 0.02, 0.1); D.box('ceramic', a - 0.27, a + 0.27, 0.8, 0.86, 0.42, 0.48);
+    D.box('ceramic', a - 0.27, a - 0.21, 0.8, 0.86, 0.1, 0.42); D.box('ceramic', a + 0.21, a + 0.27, 0.8, 0.86, 0.1, 0.42);
+    const bowl = new THREE.LatheGeometry([[0.001, 0], [0.12, 0.005], [0.2, 0.05], [0.215, 0.12], [0.22, 0.125]].map(([x, y]) => new THREE.Vector2(x, y)), 28); bowl.scale(1, 1, 0.75);
+    D.geo('ceramic', bowl, a, 0.735, 0.26); D.cyl('steel', a, 0.26, 0.735, 0.742, 0.022, 16); D.cyl('black', a, 0.26, 0.733, 0.738, 0.03, 16);
+    D.box('ceramic', a - 0.06, a + 0.06, 0.1, 0.74, 0.03, 0.15); D.box('steel', a - 0.02, a + 0.02, 0.86, 1.02, 0.06, 0.1); D.box('steel', a - 0.02, a + 0.02, 0.99, 1.02, 0.06, 0.22);
+    D.box('mirror', a - 0.27, a + 0.27, 1.12, 1.75, 0.005, 0.015); D.solid(a - 0.28, a + 0.28, 0.7, 0.9, 0, 0.48);
+    D.play('tap', a, 0.99, 0.2, { drop: 0.99 - 0.745, w: 0.36, h: 0.32, dd: 0.4, y0: 0.74, dc: 0.24 }); } },
   cubicle: { w: 1.0, d: 1.5, draw(D, a) { for (const s of [-0.49, 0.49]) D.box('cabinetDark', a + s - 0.015, a + s + 0.015, 0.15, 2.0, 0.0, 1.45, true); ITEMS.toilet.draw(D, a); } },
   pump: { w: 0.85, d: 0.8, draw(D, a, ctx) { const c = ctx.pipes || ['pipeRed', 'pipeBlue']; D.box('concrete', a - 0.4, a + 0.4, 0, 0.12, 0.12, 0.72); D.cyl(ctx.rnd() > 0.5 ? 'pumpBlue' : 'pumpGreen', a, 0.42, 0.12, 0.62, 0.17, 16); D.cyl('pumpBlue', a, 0.42, 0.62, 0.98, 0.12, 14);
     D.hcylU(c[0], a - 0.4, a - 0.1, 0.32, 0.42, 0.06); D.hcylU(c[0], a + 0.1, a + 0.4, 0.32, 0.42, 0.06); D.cyl(c[0], a - 0.38, 0.42, 0.32, ctx.H - 0.35, 0.055); D.cyl(c[1], a + 0.38, 0.42, 0.32, ctx.H - 0.5, 0.055);
@@ -491,8 +503,25 @@ export class RoomSet {
 }
 
 // ============================================================ build one room (contents; enclosure where asked)
+let CUR_PLAYS = null;
+const PLAY_M = { collider: null };
+// V19: the WC's basins run and its toilets flush at a tap (furniture.js water play; idle = no per-frame cost)
+function buildPlays(g, plays, r) {
+  if (!PLAY_M.collider) { PLAY_M.collider = new THREE.MeshBasicMaterial({ visible: false }); PLAY_M.collider.name = 'collider'; }
+  for (const p of plays) {
+    const dyn = PLAY.playGroup(g, 'play-' + p.kind); dyn.position.set(p.x, 0, p.z); dyn.rotation.y = p.yaw;
+    let px = null;
+    if (p.kind === 'tap') { const out = PLAY.waterOutlet(dyn, PLAY_M, 'wcSink', 'tap', { x: 0, y: p.y, z: 0, drop: p.o.drop, ring: 0.05 }); px = out.proxy(p.o.w, p.o.h, p.o.dd, 0, p.o.y0, p.o.dc - 0.2); }
+    else if (p.kind === 'flush') {
+      let busy = 0; const flush = () => { if (performance.now() < busy) return Promise.resolve(); busy = performance.now() + 5000; px.userData.open = px.userData._open = true; PLAY.sfx('flush'); setTimeout(() => { px.userData.open = px.userData._open = false; }, 3800); return Promise.resolve(); };
+      px = PLAY.playProxy(dyn, PLAY_M, 'wcToilet', 'flush', p.o.w, p.o.h, p.o.dd, 0, p.y - p.o.h / 2, 0, flush);
+    }
+    if (px) { const tg = px.userData.toggle; px.userData.action = { type: 'play', part: px.userData.playPart, room: r.id, onClick: () => tg() }; }
+  }
+}
 function buildRoom(set, r) {
   const K = set.K, g = new THREE.Group(), B = new K.Batch(), C = new K.Colliders(6), plan = PLANS[r.kind] || PLANS.tech;
+  const plays = []; CUR_PLAYS = plays;
   const H = r.h, ctx = { H, rnd: rng(hashStr(r.id)), pipes: PIPE_COL[r.kind] || null };
   if (r.enclose) enclose(set, r, B, C, plan);
   else if (r.ceil && !r.stair) {   // own ceiling under the level's ceiling (rooms under a ramp: the ramp hole of the hall ceiling must not show)
@@ -501,7 +530,9 @@ function buildRoom(set, r) {
   else if (r.kind === 'fireTank') reservoir(r, B, C, ctx);
   else furnish(set, r, B, C, plan, ctx);
   lights(r, B, plan);
+  CUR_PLAYS = null;
   B.flush(g); C.flush(g);
+  if (plays.length) try { buildPlays(g, plays, r); } catch (e) { console.warn('[rooms] plays', e); }
   return g;
 }
 
