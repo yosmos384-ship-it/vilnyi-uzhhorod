@@ -1143,6 +1143,7 @@ function buildEntrance(ctx) {
   leafG.dispose(); hg.dispose(); hdl.forEach(g => g.dispose());
   const leaf = new THREE.Mesh(leafGeo, [m.doorLeaf, m.metal]);
   leaf.name = 'apt-door-leaf';
+  wireEntranceDress(leaf, -lw / 2, lh / 2, lw, lh, lt, -lw + 0.08);
   const pivot = new THREE.Group(); pivot.name = 'apt-door-hinge';
   pivot.position.set(u1 - 0.02, 0.01, t / 2);
   pivot.add(leaf);
@@ -2538,7 +2539,7 @@ function build(unit, styleId, opts = {}) {
     disposed = true; ++seqTok;
     if (hasWin) window.removeEventListener('vrc:apt-enter', onEnter);
     baked.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
-    if (ctx.door) ctx.door.leaf.geometry.dispose();
+    if (ctx.door) ctx.door.leaf.traverse(o => { if (o.geometry) o.geometry.dispose(); });
     if (movers) movers.dispose();
   };
   // camera presets, in unit coordinates
@@ -3420,6 +3421,50 @@ function rpSideOf(unit, p, n) {
   if (Math.abs(n[0]) > Math.abs(n[1])) return n[0] < 0 ? 'left' : 'right';
   return n[1] < 0 ? 'back' : 'front';
 }
+// V20 (v0.7.1): the flat's entrance leaf and the corridor leaf it stands in for are ONE door. The corridor shows the
+// commons leaf (walnut of the building finish + brass trim) while the flat is not built; once it is, walk.js hides that
+// leaf and this one is operated — it used to wear the interior style's door material (white in Nordic / Paris, cream in
+// Riviera, dark oak in Milano) so the door changed colour the moment it was tapped. leaf.userData.dress(body, trim) puts the
+// corridor leaf's own materials on it (both faces, edges, handles) with the same world-scale veneer projection and the
+// same brass inlay lines + peephole, so it looks exactly the same closed, while opening and open; dress(null) undoes it.
+// cx, cy: centre of the leaf body in the leaf's local frame; w, h, t: its size; hx: x of the handles (peephole above them).
+function wireEntranceDress(leaf, cx, cy, w, h, t, hx) {
+  const styleMats = leaf.material.slice();
+  let trim = null, uvStyle = null;
+  leaf.userData.styleMats = styleMats;
+  leaf.userData.dress = (body, metal) => {
+    const g = leaf.geometry;
+    if (!body) {
+      if (uvStyle) { g.setAttribute('uv', uvStyle); uvStyle = null; }
+      leaf.material = styleMats; if (trim) trim.visible = false; leaf.userData.dressed = null; return;
+    }
+    if (!uvStyle) {
+      uvStyle = g.attributes.uv;
+      const p = g.attributes.position, n = g.attributes.normal, uv = new Float32Array(p.count * 2);
+      for (let i = 0; i < p.count; i++) {   // commons.js worldUV(…, 1) of a box centred on the leaf
+        const ax = Math.abs(n.getX(i)), ay = Math.abs(n.getY(i)), az = Math.abs(n.getZ(i)), x = p.getX(i) - cx, y = p.getY(i) - cy, z = p.getZ(i);
+        if (ay >= ax && ay >= az) { uv[i * 2] = x; uv[i * 2 + 1] = z; } else if (ax >= az) { uv[i * 2] = z; uv[i * 2 + 1] = y; } else { uv[i * 2] = x; uv[i * 2 + 1] = y; }
+      }
+      g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    }
+    const mt = metal || styleMats[1];
+    leaf.material = [body, mt];
+    if (!trim) {
+      // brass inlay lines at −0.55 / 0 / +0.55 m from the middle and the peephole ring 0.37 m over the handle, on both faces
+      // (as commons.js doorLeaf)
+      const parts = [], h2 = t / 2;
+      for (const s of [1, -1]) {
+        for (const y of [0.55, 0, -0.55]) { const b = new THREE.BoxGeometry(w - 0.2, 0.008, 0.005).toNonIndexed(); b.translate(cx, cy + y, s * (h2 + 0.0015)); parts.push(b); }
+        const r = new THREE.BoxGeometry(0.04, 0.04, 0.005).toNonIndexed(); r.translate(hx, 1.05 + 0.37, s * (h2 + 0.0025)); parts.push(r);
+      }
+      trim = new THREE.Mesh(mergeGeometries(parts, false), mt); parts.forEach(b => b.dispose());
+      trim.name = 'apt-door-trim'; trim.raycast = () => {};
+      leaf.add(trim);
+    }
+    trim.material = mt; trim.visible = true;
+    leaf.userData.dressed = { body, metal: mt };
+  };
+}
 function rpEntranceLeaf(ctx, rec, piv, ry, angle, lw, lh, lt) {
   const { m, unit } = ctx;
   let leafG = new THREE.BoxGeometry(lw, lh, lt).toNonIndexed();
@@ -3432,6 +3477,7 @@ function rpEntranceLeaf(ctx, rec, piv, ry, angle, lw, lh, lt) {
   const hg = mergeGeometries(hdl), leafGeo = mergeGeometries([leafG, hg], true);
   leafG.dispose(); hg.dispose(); hdl.forEach(g => g.dispose());
   const leaf = new THREE.Mesh(leafGeo, [m.doorLeaf, m.metal]); leaf.name = 'apt-door-leaf';
+  wireEntranceDress(leaf, lw / 2, lh / 2, lw, lh, lt, lw - 0.08);
   const pivot = new THREE.Group(); pivot.name = 'apt-door-hinge'; pivot.add(leaf); pivot.userData.keep = true;
   const holder = new THREE.Group(); holder.name = 'apt-door'; holder.position.set(piv[0], 0.01, piv[1]); holder.rotation.y = ry; holder.add(pivot);
   leaf.userData.solid = true; leaf.userData.dynamic = true; leaf.userData.doorLeaf = true; leaf.userData.unitId = unit.id;
@@ -5557,7 +5603,7 @@ function buildReal(unit, styleId, opts, I) {
     if (hasWin) window.removeEventListener('vrc:apt-enter', onEnter);
     baked.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
     ctx.colGeos.forEach(g => g.dispose());
-    if (ctx.door) ctx.door.leaf.geometry.dispose();
+    if (ctx.door) ctx.door.leaf.traverse(o => { if (o.geometry) o.geometry.dispose(); });
     if (movers) movers.dispose();
   };
   // ---- camera presets

@@ -1548,7 +1548,21 @@ export class Walkthrough {
         ud._solid = ud.solid; ud._action = a; ud.solid = false; delete ud.action; o.visible = false; this._hiddenDoors.push(o);
       }
     });
+    this._dressEntrances();
     this._unregister('commons'); this._registerCommons(c);
+  }
+  // V20 (v0.7.1): the operable entrance leaf of a loaded flat is the SAME door as the corridor leaf hidden for it — it takes
+  // that leaf's own materials (body + brass trim; never the gold shimmer clone), so tapping / opening a door never changes
+  // its colour, on either face, in any style or building finish. Re-run on every commons (re)build and flat (re)load.
+  _dressEntrances() {
+    for (const o of this._hiddenDoors || []) {
+      const ud = o.userData || {};
+      if (!o.isMesh || !ud.doorLeaf || !/^vrc-door-/.test(o.name || '')) continue;
+      const e = this.loaded.get(ud.unitId), fl = e && e.apt && e.apt.doorLeaf;
+      if (!fl || !fl.userData || typeof fl.userData.dress !== 'function') continue;
+      const body = ud._baseMat || o.material, tr = o.children.find(ch => ch.isMesh && ch.material);
+      try { fl.userData.dress(body, tr ? tr.material : null); } catch (err) { console.warn('[walk] entrance leaf', err); }
+    }
   }
   _registerCommons(c) {
     this._register(c.group, 'commons', false, new Set(c.lifts.map(L => L.group)));
@@ -2350,12 +2364,12 @@ export class Walkthrough {
     if (!leaf || !leaf.material || Array.isArray(leaf.material)) return () => {};
     const orig = leaf.material, m = orig.clone();
     m.emissive = new THREE.Color(0xe6c987); m.emissiveIntensity = 0;
-    leaf.material = m;
+    leaf.material = m; leaf.userData._baseMat = orig;   // V20: the flat's leaf is dressed in `orig`, never in this clone
     let alive = true;
     const t0 = performance.now();
     const step = () => { if (!alive) return; const t = (performance.now() - t0) / 1000; m.emissiveIntensity = 0.12 + 0.12 * Math.sin(t * 9); requestAnimationFrame(step); };
     step();
-    return () => { if (!alive) return; alive = false; leaf.material = orig; m.dispose(); };
+    return () => { if (!alive) return; alive = false; leaf.material = orig; delete leaf.userData._baseMat; m.dispose(); };
   }
 
   _fillUnitCard(u) {
