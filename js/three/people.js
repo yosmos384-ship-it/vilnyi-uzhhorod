@@ -17,13 +17,13 @@ const hash = (a, b = 0) => { let h = Math.imul(a ^ 0x9E3779B9, 0x85EBCA6B) ^ Mat
 
 // strings the host may show (module-local dictionary, seven languages)
 export const PEOPLE_STRINGS = {
-  uk: { pullOut: 'Витягнути водія', noBlood: 'Без крові', resists: 'Водій чинить опір!', called: 'Свідок викликав поліцію', thrown: 'Вас витягли з авто' },
-  en: { pullOut: 'Pull the driver out', noBlood: 'No blood', resists: 'The driver fights back!', called: 'A witness called the police', thrown: 'You were pulled out of the car' },
-  he: { pullOut: 'להוציא את הנהג', noBlood: 'בלי דם', resists: 'הנהג מתנגד!', called: 'עד ראייה הזעיק משטרה', thrown: 'הוציאו אותך מהרכב' },
-  ro: { pullOut: 'Scoate șoferul', noBlood: 'Fără sânge', resists: 'Șoferul se opune!', called: 'Un martor a chemat poliția', thrown: 'Ai fost scos din mașină' },
-  de: { pullOut: 'Fahrer herausziehen', noBlood: 'Ohne Blut', resists: 'Der Fahrer wehrt sich!', called: 'Ein Zeuge hat die Polizei gerufen', thrown: 'Sie wurden aus dem Auto gezogen' },
-  fr: { pullOut: 'Sortir le conducteur', noBlood: 'Sans sang', resists: 'Le conducteur résiste !', called: 'Un témoin a appelé la police', thrown: 'On vous a sorti de la voiture' },
-  it: { pullOut: 'Tira fuori il conducente', noBlood: 'Senza sangue', resists: 'Il conducente reagisce!', called: 'Un testimone ha chiamato la polizia', thrown: 'Sei stato tirato fuori dall\'auto' },
+  uk: { pullOut: 'Витягнути водія', resists: 'Водій чинить опір!', called: 'Свідок викликав поліцію', thrown: 'Вас витягли з авто' },
+  en: { pullOut: 'Pull the driver out', resists: 'The driver fights back!', called: 'A witness called the police', thrown: 'You were pulled out of the car' },
+  he: { pullOut: 'להוציא את הנהג', resists: 'הנהג מתנגד!', called: 'עד ראייה הזעיק משטרה', thrown: 'הוציאו אותך מהרכב' },
+  ro: { pullOut: 'Scoate șoferul', resists: 'Șoferul se opune!', called: 'Un martor a chemat poliția', thrown: 'Ai fost scos din mașină' },
+  de: { pullOut: 'Fahrer herausziehen', resists: 'Der Fahrer wehrt sich!', called: 'Ein Zeuge hat die Polizei gerufen', thrown: 'Sie wurden aus dem Auto gezogen' },
+  fr: { pullOut: 'Sortir le conducteur', resists: 'Le conducteur résiste !', called: 'Un témoin a appelé la police', thrown: 'On vous a sorti de la voiture' },
+  it: { pullOut: 'Tira fuori il conducente', resists: 'Il conducente reagisce!', called: 'Un testimone ha chiamato la polizia', thrown: 'Sei stato tirato fuori dall\'auto' },
 };
 export const peopleText = (key, lang = 'uk') => (PEOPLE_STRINGS[lang] || PEOPLE_STRINGS.uk)[key] ?? PEOPLE_STRINGS.uk[key] ?? key;
 

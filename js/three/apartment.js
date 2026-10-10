@@ -3205,6 +3205,7 @@ function rpWindow(ctx, S, e, op, t) {
 function rpDownlight(ctx, u, y, v) {
   const { m, sg } = ctx;
   if (ctx.cut) return;
+  (ctx.downs ||= []).push([u, v]);                               // V18: the ceiling speakers keep clear of the downlights
   FX.cyl(sg, 0.05, 0.05, 0.004, m.fam === 'nordic' ? m.blackMetal : m.metal, u, y - 0.006, v, 20);
   FX.disc(sg, 0.036, m.lightEmit, u, y - 0.0065, v, [HALF, 0, 0], 16);
   FX.bloom(sg, u, y - 0.03, v, 0.22, 0.5);
@@ -5050,6 +5051,175 @@ function rpLights(ctx) {
     if (!n) { rpDownlight(ctx, S.c[0], CH, S.c[1]); FX.fxFlat(sg, m.glowFaint, 'disc', S.c[0], 0.005, S.c[1], 1.4, 1.4); }
   }
 }
+// ---------------------------------------------------------------- V18: built-in surround sound (owner, 10 Oct)
+// Every flat: a 5.1 system in the living room — front left / right in-wall speakers flanking the TV, a slim soundbar
+// under the set (centre channel), an in-wall subwoofer low on the TV wall, two in-ceiling surrounds behind the seating —
+// and flush in-ceiling speakers in the other rooms (bedrooms 2, kitchen / hall / bathroom 1, large rooms 2). All of it is
+// derived from the room polygons, the placed TV, the windows, doors and the downlights; flush grilles (micro-perforated,
+// white on the ceiling, graphite in the wall) baked into the flat's meshes like the joinery (+2 materials = +2 draw calls).
+// The positions are published as apt.speakers (unit frame) — the walkthrough's apartment radio reads them.
+let SPK_M = null;
+function spkMats() {
+  if (SPK_M) return SPK_M;
+  let map = null;
+  try {
+    const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+    x.fillStyle = '#fff'; x.fillRect(0, 0, 64, 64); x.fillStyle = '#3a3a3a';
+    for (let j = 0; j < 8; j++) for (let i = 0; i < 8; i++) { x.beginPath(); x.arc(4 + i * 8 + (j % 2 ? 4 : 0), 4 + j * 8, 2.3, 0, Math.PI * 2); x.fill(); }
+    map = new THREE.CanvasTexture(c); map.wrapS = map.wrapT = THREE.RepeatWrapping; map.repeat.set(22, 22); map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4;
+  } catch { map = null; }                                                                  // (no DOM: a plain grille)
+  SPK_M = {
+    white: new THREE.MeshStandardMaterial({ name: 'spk.grilleWhite', color: 0xeeece7, roughness: 0.55, metalness: 0.25, map }),
+    dark: new THREE.MeshStandardMaterial({ name: 'spk.grilleDark', color: 0x55575a, roughness: 0.5, metalness: 0.45, map }),
+  };
+  return SPK_M;
+}
+// V18: the living room of every flat gets a wall TV — when the furnishing rules found no wall opposite the sofa, the
+// best plain wall stretch: no window, no door swing / passage in front, no tall furniture, the widest view across the
+// room, facing the sofa where there is one. Wall-hung (bottom edge 1.05 m), so it never blocks a way.
+function rpEnsureTv(ctx) {
+  const { P, m, cut } = ctx;
+  if (cut) return;
+  ctx.sg.updateMatrixWorld(true);
+  const have = new Set(), wp3 = new THREE.Vector3(), q4 = new THREE.Quaternion(), nv = new THREE.Vector3();
+  ctx.sg.traverse(o => { if (!o.userData || !o.userData.tvScreen) return; o.getWorldPosition(wp3); o.getWorldQuaternion(q4); nv.set(0, 0, 1).applyQuaternion(q4);
+    const pr = [wp3.x + nv.x * 0.4, wp3.z + nv.z * 0.4], S = P.rooms.find(r => pointInPoly(pr, r.poly)); if (S) have.add(S.id); });
+  let livs = P.rooms.filter(r => r.kind === 'living' && !r.out);
+  if (!livs.length) livs = P.rooms.filter(r => !r.out && r.kind === 'bedroom').sort((a, b) => b.area - a.area).slice(0, 1);
+  if (livs.some(S => have.has(S.id))) return;
+  const S = livs.sort((a, b) => b.area - a.area)[0]; if (!S || !S.segs) return;
+  const sofa = ctx.occ.find(q => q.room === S.id && /sofa/i.test(q.tag || ''));
+  let best = null;
+  for (const [hl, minAcross, loose] of [[0.65, 1.8, false], [0.52, 1.3, false], [0.47, 1.0, true]]) {
+  if (best) break;
+  for (const seg of S.segs) {
+    if (seg.len < hl * 2) continue;
+    for (let s = hl; s <= seg.len - hl + 1e-6; s += 0.1) {
+      if (seg.wins.some(q => q.s1 > s - hl - 0.05 && q.s0 < s + hl + 0.05)) continue;
+      const wp = add2(seg.a, seg.d, s), across = rayPoly(add2(wp, seg.nin, 0.05), seg.nin, S.poly);
+      if (!(across > minAcross)) continue;
+      const R = { c: add2(wp, seg.nin, 0.16), d: seg.d, hl: hl + 0.03, hw: 0.16 };
+      if (!pointInPoly(R.c, S.poly)) continue;
+      // (last pass: a wall-hung set only meets a door leaf or tall furniture — floor clearances and lamps do not matter)
+      if (ctx.zones.some(z => (loose ? z.kind === 'swing' : (z.kind === 'swing' || z.kind === 'approach' || z.kind === 'passage')) && rectOverlap(R, z.core ? { ...z, hl: z.core } : z))) continue;
+      if (ctx.occ.some(q => (q.h == null || q.h > (loose ? 1.1 : 0.95) || /kitchen|fridge|wardrobe|pantry|shel|cabinet|island|desk|table/i.test(q.tag || '')) && !(loose && /lamp/i.test(q.tag || '')) && rectOverlap(R, q))) continue;
+      let sc = Math.min(across, 4.5) - Math.abs(s - seg.len / 2) * 0.12;
+      if (sofa) { const to = sub2(sofa.c, wp), l = Math.hypot(to[0], to[1]) || 1; sc += 2.2 * dot2(seg.nin, [to[0] / l, to[1] / l]); }
+      if (!best || sc > best.sc) best = { sc, seg, s, wp, hl };
+    }
+  }
+  }
+  if (!best) { ctx.notes.push('tv: no free wall in ' + S.id); return; }
+  const w = best.hl < 0.5 ? 0.9 : best.hl < 0.6 ? 1.0 : best.seg.len >= 2.2 ? 1.45 : 1.2;
+  rpTry(ctx, S, F.tv(m, { w, live: true, glowZ: -0.02 }), add2(best.wp, best.seg.nin, 0.035), angOf(best.seg.nin), 1.05, { free: true, quiet: true });
+  ctx.tvRooms.push(S.kind === 'living' ? 'living' : 'bedroom'); (ctx.extras ||= []).push({ kind: 'tv-added', room: S.id });
+}
+const SPK_ROOMS = { bedroom: 2, kitchen: 1, hall: 1, bath: 1, wc: 1, dining: 1, study: 1, cabinet: 1 };
+function rpSpeakers(ctx) {
+  const { P, m, sg, cut } = ctx;
+  if (cut || ctx.noSpeakers) return;
+  const M = spkMats(), out = (ctx.speakers = []), downs = ctx.downs || [];
+  const H = FX.HALF;
+  const ceilOK = (S, p, clr = 0.32) => pointInPoly(p, S.poly) && polyDist(p, S.poly) >= clr && !downs.some(d => Math.hypot(d[0] - p[0], d[1] - p[1]) < 0.36);
+  // nudge a ceiling point until it is clear of the walls and the downlights (small spiral search)
+  const ceilSpot = (S, p) => { if (ceilOK(S, p)) return p; for (let r = 0.15; r <= 0.9; r += 0.15) for (let a = 0; a < 12; a++) { const q = [p[0] + Math.cos(a * Math.PI / 6) * r, p[1] + Math.sin(a * Math.PI / 6) * r]; if (ceilOK(S, q)) return q; } return null; };
+  const ceil = (S, p, role) => {
+    const q = ceilSpot(S, p) || (S.area < 4 ? (ceilOK(S, p, 0.2) ? p : null) : null); if (!q || out.some(o => o.y > 2 && Math.hypot(o.u - q[0], o.v - q[1]) < 0.5)) return null;
+    FX.cyl(sg, 0.118, 0.118, 0.007, M.white, q[0], CH - 0.007, q[1], 28);               // bezel, flush with the ceiling
+    FX.disc(sg, 0.104, M.white, q[0], CH - 0.0075, q[1], [H, 0, 0], 28);               // micro-perforated grille
+    const s = { role, room: S.id, kind: S.kind, u: +q[0].toFixed(3), v: +q[1].toFixed(3), y: +(CH - 0.01).toFixed(3), mount: 'ceiling' };
+    out.push(s); return s;
+  };
+  // ---- living rooms: 5.1 around the TV
+  sg.updateMatrixWorld(true);
+  const tvs = []; sg.traverse(o => { if (o.userData && o.userData.tvScreen) tvs.push(o); });
+  const wp = new THREE.Vector3(), wn = new THREE.Vector3(), q4 = new THREE.Quaternion();
+  const living = new Set();
+  for (const scr of tvs) {
+    scr.getWorldPosition(wp); scr.getWorldQuaternion(q4); wn.set(0, 0, 1).applyQuaternion(q4);
+    const n = [wn.x, wn.z], nl = Math.hypot(n[0], n[1]) || 1; n[0] /= nl; n[1] /= nl;
+    const c0 = [wp.x, wp.z], probe = [c0[0] + n[0] * 0.4, c0[1] + n[1] * 0.4];
+    const S = P.rooms.find(r => pointInPoly(probe, r.poly));
+    if (!S || living.has(S.id) || (S.kind !== 'living' && !(ctx.extras || []).some(x => x.kind === 'tv-added' && x.room === S.id))) continue;
+    // the wall behind the set (the screen hangs 4–11 cm in front of it)
+    const dw = rayPoly([c0[0] + n[0] * 0.02, c0[1] + n[1] * 0.02], [-n[0], -n[1]], S.poly), c = Number.isFinite(dw) && dw < 0.4 ? [c0[0] + n[0] * (0.02 - dw), c0[1] + n[1] * (0.02 - dw)] : c0;
+    living.add(S.id);
+    const tw = scr.userData.tvScreen.w, th = scr.userData.tvScreen.h, yc = wp.y, d = [-n[1], n[0]];        // d: along the wall
+    // soundbar (centre channel) under the set, on the wall
+    const sbW = Math.min(1.2, tw * 0.78), yb = yc - th / 2 - 0.16;
+    const sb = new THREE.Group(); sb.position.set(c[0] + n[0] * 0.045, 0, c[1] + n[1] * 0.045); sb.rotation.y = Math.atan2(n[0], n[1]);   // on the wall, under the set
+    FX.rbox(sb, sbW, 0.072, 0.085, 0.02, m.darkPlastic, 0, yb, 0);
+    FX.box(sb, sbW - 0.03, 0.05, 0.004, M.dark, 0, yb + 0.011, 0.043);
+    FX.box(sb, 0.05, 0.004, 0.002, m.lightEmit || m.darkPlastic, sbW / 2 - 0.06, yb + 0.006, 0.0455);    // status light
+    sg.add(sb);
+    out.push({ role: 'C', room: S.id, kind: S.kind, u: +c[0].toFixed(3), v: +c[1].toFixed(3), y: +(yb + 0.036).toFixed(3), mount: 'soundbar', n });
+    // in-wall front left / right (and the subwoofer) on the TV wall: clear of windows, doors and tall furniture
+    const wallFree = (along, w, y0, y1) => {
+      const q = [c[0] + d[0] * along, c[1] + d[1] * along];
+      const inner = [q[0] + n[0] * 0.2, q[1] + n[1] * 0.2];
+      if (!pointInPoly(inner, S.poly) || polyDist(inner, S.poly) < 0.12) return null;
+      if (rayPoly(inner, [-n[0], -n[1]], S.poly) > 0.3) return null;                      // the wall is not there (an alcove / opening)
+      for (const W of ctx.wins) { const rel = [q[0] - W.mid[0], q[1] - W.mid[1]]; if (Math.abs(rel[0] * W.e.d[0] + rel[1] * W.e.d[1]) < W.len / 2 + w / 2 + 0.12 && Math.abs(rel[0] * W.e.n[0] + rel[1] * W.e.n[1]) < 0.45) return null; }
+      const R = { c: [q[0] + n[0] * 0.15, q[1] + n[1] * 0.15], d, hl: w / 2 + 0.03, hw: 0.15 };
+      // a flush grille only meets a door leaf (swing) or furniture standing in front of it (floor clearances do not matter)
+      if (ctx.zones.some(z => (z.kind === 'swing' || (y0 < 0.5 && z.kind === 'passage')) && rectOverlap(R, z.core ? { ...z, hl: z.core } : z))) return null;
+      if (ctx.occ.some(o => (o.h == null || o.h > y0) && rectOverlap(R, o))) return null;
+      return q;
+    };
+    const fw = 0.2, fh = 0.36, y0 = Math.max(0.55, yc - fh / 2);
+    for (const [role, sgn] of [['FL', -1], ['FR', 1]]) {
+      let q = null;
+      for (const extra of [0.32, 0.45, 0.6, 0.22]) { q = wallFree(sgn * (tw / 2 + extra), fw, y0, y0 + fh); if (q) break; }
+      if (!q) { const alt = ceil(S, [c[0] + d[0] * sgn * (tw / 2 + 0.3) + n[0] * 0.6, c[1] + d[1] * sgn * (tw / 2 + 0.3) + n[1] * 0.6], role); if (alt) alt.fallback = 'ceiling'; continue; }
+      const g = new THREE.Group(); g.position.set(q[0] + n[0] * 0.004, 0, q[1] + n[1] * 0.004); g.rotation.y = Math.atan2(n[0], n[1]);
+      FX.rbox(g, fw + 0.024, fh + 0.024, 0.008, 0.004, M.white, 0, y0 - 0.012, 0);          // flush frame (paint-matched)
+      FX.box(g, fw, fh, 0.004, M.dark, 0, y0, 0.0035);                                         // grille
+      sg.add(g);
+      out.push({ role, room: S.id, kind: S.kind, u: +q[0].toFixed(3), v: +q[1].toFixed(3), y: +(y0 + fh / 2).toFixed(3), mount: 'wall', n });
+    }
+    // subwoofer: square in-wall grille low on the TV wall, on the side with room
+    for (const along of [-(tw / 2 + 0.3), tw / 2 + 0.3, -(tw / 2 + 0.75), tw / 2 + 0.75]) {
+      const q = wallFree(along, 0.3, 0.12, 0.42); if (!q) continue;
+      const g = new THREE.Group(); g.position.set(q[0] + n[0] * 0.004, 0, q[1] + n[1] * 0.004); g.rotation.y = Math.atan2(n[0], n[1]);
+      FX.rbox(g, 0.324, 0.324, 0.008, 0.004, M.white, 0, 0.12 - 0.012, 0); FX.box(g, 0.3, 0.3, 0.004, M.dark, 0, 0.12, 0.0035);
+      sg.add(g); out.push({ role: 'LFE', room: S.id, kind: S.kind, u: +q[0].toFixed(3), v: +q[1].toFixed(3), y: 0.27, mount: 'wall', n }); break;
+    }
+    // (no room beside the set: the slim in-wall subwoofer goes low on another plain wall of the room)
+    if (!out.some(o => o.role === 'LFE' && o.room === S.id)) {
+      lfe: for (const seg of S.segs || []) {
+        if (seg.len < 0.6) continue;
+        for (let t = 0.3; t <= seg.len - 0.3 + 1e-6; t += 0.15) {
+          if (seg.wins.some(w => w.s1 > t - 0.3 && w.s0 < t + 0.3 && w.sill < 0.5)) continue;
+          const q = add2(seg.a, seg.d, t), sn = seg.nin, R = { c: add2(q, sn, 0.15), d: seg.d, hl: 0.18, hw: 0.15 };
+          if (!pointInPoly(R.c, S.poly)) continue;
+          if (ctx.zones.some(z => (z.kind === 'swing' || z.kind === 'approach' || z.kind === 'passage') && rectOverlap(R, z.core ? { ...z, hl: z.core } : z))) continue;
+          if (ctx.occ.some(o => rectOverlap(R, o))) continue;
+          const g = new THREE.Group(); g.position.set(q[0] + sn[0] * 0.004, 0, q[1] + sn[1] * 0.004); g.rotation.y = Math.atan2(sn[0], sn[1]);
+          FX.rbox(g, 0.324, 0.324, 0.008, 0.004, M.white, 0, 0.12 - 0.012, 0); FX.box(g, 0.3, 0.3, 0.004, M.dark, 0, 0.12, 0.0035);
+          sg.add(g); out.push({ role: 'LFE', room: S.id, kind: S.kind, u: +q[0].toFixed(3), v: +q[1].toFixed(3), y: 0.27, mount: 'wall', n: sn.slice() }); break lfe;
+        }
+      }
+    }
+    // surrounds: in the ceiling behind the seating (≈ 85 % of the room depth in front of the TV, ≤ 3.6 m), ±1.1 m aside
+    const depth = Math.min(rayPoly([c[0] + n[0] * 0.05, c[1] + n[1] * 0.05], n, S.poly), 6);
+    const back = Math.max(1.6, Math.min(3.6, (Number.isFinite(depth) ? depth : 3) * 0.85 - 0.25));
+    for (const [role, sgn] of [['SL', -1], ['SR', 1]]) {
+      let s = null;
+      for (const lat of [1.1, 0.85, 1.35, 0.6]) { s = ceil(S, [c[0] + n[0] * back + d[0] * sgn * lat, c[1] + n[1] * back + d[1] * sgn * lat], role); if (s) break; }
+    }
+  }
+  // living rooms without a TV (a kitchen-living whose set went elsewhere): two ceiling speakers
+  for (const S of P.rooms) {
+    if (S.out) continue;
+    const k = S.kind === 'living' ? (living.has(S.id) ? 0 : 2) : (SPK_ROOMS[S.kind] || 0);
+    if (!k || S.area < 1.4) continue;
+    const [u0, v0, u1, v1] = S.box, lu = u1 - u0, lv = v1 - v0;
+    const two = k >= 2 || (S.area > 14 && lu * lv > 0), ax = lu >= lv ? [1, 0] : [0, 1], half = Math.min(1.0, Math.max(lu, lv) * 0.25);
+    if (two && Math.max(lu, lv) > 2.4) { ceil(S, [S.c[0] - ax[0] * half, S.c[1] - ax[1] * half], 'L'); ceil(S, [S.c[0] + ax[0] * half, S.c[1] + ax[1] * half], 'R'); }
+    else ceil(S, S.c, 'M');
+  }
+}
+
 // A standing point in every space: on the floor, clear of walls and furniture, as central as that allows.
 function rpStand(ctx, S, o = {}) {
   const G = 0.1, [u0, v0, u1, v1] = S.box, MIN = o.min ?? 0.3;
@@ -5137,6 +5307,8 @@ function buildReal(unit, styleId, opts, I) {
     { const tR = performance.now(); rpRules(ctx); ctx.msRules = performance.now() - tR; }
     rpCurtains(ctx);
     rpLights(ctx);
+    try { rpEnsureTv(ctx); } catch (e) { ctx.notes.push('tv: ' + (e && e.message)); }          // V18: a TV in every flat (Kvartal 95 channel)
+    try { rpSpeakers(ctx); } catch (e) { ctx.notes.push('speakers: ' + (e && e.message)); }   // V18: surround sound (never breaks a flat)
   } finally { CUR_M = null; }
   const baked = new THREE.Group(); baked.name = 'baked';
   root.add(baked);
@@ -5304,6 +5476,7 @@ function buildReal(unit, styleId, opts, I) {
     openDoors: (o = {}) => Promise.all(idoors.map(d => d.toggle(true, o))), closeDoors: (o = {}) => Promise.all(idoors.map(d => d.toggle(false, o))),
     curtains, openCurtains, closeCurtains,
     get curtainsOpen() { return curtains.some(c => c.open); },
+    speakers: ctx.speakers || [],
     tvs, setTvs: (on) => Promise.all(tvs.map(t => t.toggle(on))),
     laundry: ctx.laundry, island: ctx.island || null, snooker: null, game: null, fixtures,
     closeBalconyDoors: () => Promise.all(bdoors.filter(d => d.open).map(d => d.toggle(false))),

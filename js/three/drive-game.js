@@ -1,6 +1,7 @@
 // ЖК VILNYI (Ужгород) — the driving GAME layer of the walkthrough (V9 integration; mixed into Walkthrough like drive.js).
 // The drive mode is a separate experience from the buyer's path: it starts only when the visitor chooses to get into a car,
-// the first time with a short notice (game mode with traffic, pedestrians and police · «Без крові» switch · «Вийти»).
+// the first time with a short notice (game mode with traffic, pedestrians and police · «Вийти»). V18 (v0.6, owner): no
+// «with / without blood» caption or switch anywhere in the UI; the game keeps its default (blood marks ON, fading).
 // Then, once the city data (city-data.js) is loaded: people.js (fictional pedestrians, drivers, hits, decals) and police.js
 // (wanted level, patrols, arrest) run around the driven car. Nothing of it exists in the hero, finder, unit sheet or the
 // plain walkthrough. Content rules of people.js stay as they are: children and people with a pram can never be run over.
@@ -13,14 +14,10 @@ function lsSet(k, v) { try { localStorage.setItem(k, v); } catch { /* private mo
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const frame = () => new Promise(r => requestAnimationFrame(r));
 const NOTICE_KEY = 'vrc.drive.notice', BLOOD_KEY = 'vrc.drive.blood';
-const ICON_BLOOD = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5c-3 4.2-5.5 7.3-5.5 10.3a5.5 5.5 0 0 0 11 0C17.5 10.8 15 7.7 12 3.5z"/><path class="x" d="M4 4l16 16"/></svg>';
 
 const CSS = `
 .vw-gnote .card p{margin:0 0 14px;font-size:14px;line-height:1.45;color:#e9e3d6}
-.vw-gnote label{display:flex;align-items:center;gap:10px;margin:0 0 16px;font-size:14px;cursor:pointer}
-.vw-gnote input{width:20px;height:20px;accent-color:#c9a45c}
 .vw-gnote .row{display:flex;gap:10px}.vw-gnote .row .vw-btn{flex:1}
-.vw-dtop [data-kd=blood] .x{display:none}.vw-dtop [data-kd=blood].on .x{display:inline}
 .vw-dosm{position:absolute;left:calc(8px + var(--sl));top:calc(10px + var(--st));font-size:10px;line-height:1.2;color:rgba(255,255,255,.78);text-shadow:0 1px 2px rgba(0,0,0,.8);text-decoration:none;direction:ltr;pointer-events:auto}
 .vw.phone .vw-dosm{top:auto;bottom:calc(4px + var(--sb));left:50%;transform:translateX(-50%);font-size:9px;white-space:nowrap}
 .vw .vrc-police-hud{position:absolute;z-index:3}
@@ -33,7 +30,7 @@ const CSS = `
 
 export const gameMixin = {
   _gameEnabled() { const f = PROJECT && PROJECT.features; return !(f && f.driveGame === false) && !(this.opts && this.opts.game === false) && lsGet('vrc.drive.game') !== 'off'; },   // the last one: a switch for the car-only tests
-  _gameSettings() { return this._gset || (this._gset = { blood: lsGet(BLOOD_KEY) !== 'off' }); },   // blood ON by default (owner's wish)
+  _gameSettings() { return this._gset || (this._gset = { blood: lsGet(BLOOD_KEY) !== 'off' }); },   // blood ON by default (owner's wish); V18: no switch in the UI any more (an older saved 'off' is still respected)
   _gameSetBlood(on) {
     const S = this._gameSettings(); S.blood = !!on; lsSet(BLOOD_KEY, on ? 'on' : 'off');
     const G = this._game; if (G && G.people) try { G.people.setBlood(!!on); } catch { /* */ }
@@ -52,15 +49,12 @@ export const gameMixin = {
     this._gameCss();
     const t = k => this.t(k), d = document.createElement('div');
     d.className = 'vw-help vw-gnote show'; d.setAttribute('role', 'dialog'); d.setAttribute('aria-modal', 'true');
-    d.innerHTML = `<div class="card"><h3></h3><p></p><label><input type="checkbox"><span></span></label><div class="row"><button class="vw-btn vw-ghost" data-g="exit"></button><button class="vw-btn vw-gold" data-g="go"></button></div></div>`;
+    d.innerHTML = `<div class="card"><h3></h3><p></p><div class="row"><button class="vw-btn vw-ghost" data-g="exit"></button><button class="vw-btn vw-gold" data-g="go"></button></div></div>`;
     d.querySelector('h3').textContent = t('walk.game.title'); d.querySelector('p').textContent = t('walk.game.text');
-    d.querySelector('label span').textContent = t('walk.game.noBlood');
-    const cb = d.querySelector('input'); cb.checked = !this._gameSettings().blood;
     d.querySelector('[data-g=exit]').textContent = t('walk.game.exit'); d.querySelector('[data-g=go]').textContent = t('walk.game.go');
     for (const n of ['pointerdown', 'keydown', 'wheel']) d.addEventListener(n, ev => ev.stopPropagation());
     d.addEventListener('click', ev => {
       ev.stopPropagation();
-      if (ev.target === cb) { this._gameSetBlood(!cb.checked); return; }
       const b = ev.target.closest('[data-g]'); if (!b) return;
       d.remove(); this._gNote = null;
       if (b.dataset.g === 'go') { this._gNoticeSeen = true; lsSet(NOTICE_KEY, '1'); cont(); }   // still inside this tap: radio + audio start in cont
@@ -118,20 +112,10 @@ export const gameMixin = {
   },
   _gameDispose() { this._gameStop(); try { if (this._gAudio) this._gAudio.dispose(); } catch { /* */ } this._gAudio = null; },
 
-  // ---- the drive HUD additions: «Без крові» toggle and the OSM attribution (added once to the drive panel)
-  _gameHudInit() {
-    const e = this.el; if (!e || !e.drive || e.dblood || !this._gameEnabled()) return;
-    this._gameCss();
-    const top = e.drive.querySelector('.vw-dtop');
-    if (top) { const b = document.createElement('button'); b.className = 'vw-btn vw-ghost vw-ico'; b.dataset.kd = 'blood'; b.innerHTML = ICON_BLOOD; top.insertBefore(b, top.firstChild); e.dblood = b;
-      b.addEventListener('click', ev => { ev.stopPropagation(); this._gameSetBlood(!this._gameSettings().blood); this._toast(this.t(this._gameSettings().blood ? 'walk.game.bloodOn' : 'walk.game.noBlood'), 1600); }); }
-    // the city's «© OpenStreetMap contributors» link is shown by environment.js (bottom right of the 3D view) once the city is on
-    this._gameHud();
-  },
-  _gameHud() {
-    const e = this.el; if (!e) return;
-    if (e.dblood) { const nb = !this._gameSettings().blood; e.dblood.classList.toggle('on', nb); e.dblood.setAttribute('aria-pressed', String(nb)); e.dblood.title = this.t('walk.game.noBlood'); e.dblood.setAttribute('aria-label', this.t('walk.game.noBlood')); }
-  },
+  // ---- the drive HUD additions (V18: the blood on / off button is gone; the city's «© OpenStreetMap contributors» link is shown
+  // by environment.js, bottom right of the 3D view, once the city is on)
+  _gameHudInit() { if (!this.el || !this.el.drive || !this._gameEnabled()) return; this._gameCss(); this._gameHud(); },
+  _gameHud() { /* nothing of its own in the drive bar any more */ },
 
   // ---- every frame, after the cars moved (walk.js _loop, after env.update)
   _gameTick(dt) {

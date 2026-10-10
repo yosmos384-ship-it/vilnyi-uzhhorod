@@ -22,6 +22,10 @@ export const STATIONS = [
   { id: 'bayraktar', name: 'Радіо Байрактар', freq: 'FM', url: 'https://online.radiobayraktar.ua/RadioBayraktar', codec: 'mp3', home: 'https://www.radiobayraktar.ua/' },
 ];
 
+// V18: an <audio> element unlocked inside the visitor's tap that opened the walkthrough (app.js fills window.__vrcAudioPool):
+// a player created later, outside any gesture (the apartment radio after the flat has loaded, GT VILNYI's car radio after the
+// city has loaded), takes one so that iOS / Safari let it play.
+function takePooled() { try { const P = typeof window !== 'undefined' && window.__vrcAudioPool; const el = P && P.length ? P.shift() : null; if (el) { el.muted = false; el.removeAttribute('src'); } return el || null; } catch { return null; } }
 const LS_STATION = 'vrc.radio.station', LS_VOLUME = 'vrc.radio.volume', LS_OFF = 'vrc.radio.off';
 const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } };
@@ -47,7 +51,7 @@ export function createRadio({ stations = STATIONS, volume = null, connectMs = 90
   function ensure() {
     if (el || disposed) return el;
     try {
-      el = audio ? audio() : (typeof Audio !== 'undefined' ? new Audio() : null);
+      el = audio ? audio() : (takePooled() || (typeof Audio !== 'undefined' ? new Audio() : null));
       if (!el) return null;
       el.preload = 'none'; el.volume = state.volume; el.muted = state.muted;
       try { el.setAttribute('playsinline', ''); el.setAttribute('aria-hidden', 'true'); } catch { /* a mock */ }

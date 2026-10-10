@@ -10,12 +10,12 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import {
   UNITS, TYPES, BUILDINGS, B_IDS, GEOM, LEVELS, PROJECT, DEFAULT_SEL, SITE_CENTER, PARKING, RAMPS, coresOf, corridorsOf, footprintOf, hallEdgesOf,
   floorY, floorH, floorsOf, liftFloors, topFloor, floorFromY, floorLabel, isGround, unitById, unitsOn, blocksOn, unitLabel, unitToLocal, unitToWorld, unitYaw, money,
-  worldToLocal, buildingCenter, interiorOf, plateOf,
+  worldToLocal, buildingCenter, interiorOf, plateOf, llToWorld,
 } from '../data.js';
 import { I18N } from '../i18n.js';
 import { driveMixin } from './drive.js';
 import { createDynRes, ratioCap } from './dynres.js';   // V11: adaptive resolution
-import { gameMixin } from './drive-game.js';   // V9: people + police + notice + «Без крові» around the drive (the game layer)   // V6: entering cars, vehicle physics, driving HUD (mixed into Walkthrough at the end of this file)
+import { gameMixin } from './drive-game.js';   // V9: people + police + notice around the drive (the game layer)   // V6: entering cars, vehicle physics, driving HUD (mixed into Walkthrough at the end of this file)
 
 // RADIUS 0.24 (was 0.28): apartment.js keeps 0.27 m free around every piece it places and proves its flats walkable
 // with a 0.22 m body; 0.24 leaves a margin on both sides. tools/test-site.py (walk part) walks every room of every
@@ -592,10 +592,11 @@ const CSS = `
 .vw.incar .vw-floorsbtn,.vw.riding .vw-floorsbtn{display:inline-flex}
 .vw-floorsbtn.on{background:rgba(201,164,92,.22);border-color:var(--g)}
 .vw-liftmusic{display:none;position:absolute;inset-inline-end:calc(92px + var(--sr));bottom:calc(88px + var(--sb));width:34px;height:34px;padding:0;border-radius:50%;align-items:center;justify-content:center;color:var(--g2);touch-action:manipulation}
-.vw.incar .vw-liftmusic,.vw.riding .vw-liftmusic{display:inline-flex}
+.vw.incar .vw-liftmusic,.vw.riding .vw-liftmusic,.vw.lmusic .vw-liftmusic{display:inline-flex}
 .vw-liftmusic .x{display:none}.vw-liftmusic.off{opacity:.7}.vw-liftmusic.off .x{display:inline}
 .vw.phone .vw-liftmusic{inset-inline-end:auto;inset-inline-start:calc(116px + var(--sl));bottom:calc(46px + var(--sb));width:36px;height:36px}
 .vw.driving .vw-liftmusic,.vw.m360 .vw-liftmusic{display:none!important}
+.vw.phone.lmusic:not(.incar):not(.riding) .vw-liftmusic{inset-inline-start:calc(14px + var(--sl));bottom:calc(168px + var(--sb));width:40px;height:40px;opacity:1!important}
 .vw-tandem{display:none;position:absolute;inset-inline-start:calc(10px + var(--sl));bottom:calc(214px + var(--sb));align-items:center;gap:7px;padding:6px 10px;border-radius:16px;font:600 11.5px/1.2 Manrope,Heebo,sans-serif;max-width:min(260px,60vw);text-align:start;touch-action:manipulation}
 .vw-tandem i{flex:none;width:12px;height:12px;border-radius:3px;background:#d9902b;box-shadow:0 0 0 1px rgba(255,255,255,.35)}
 .vw-tandem b{flex:none;font-weight:700;color:#f0b25a}
@@ -974,6 +975,7 @@ export class Walkthrough {
     if (this.disposed || token !== this._enterToken) return;
     const unit = unitById(unitId) || this.unit || UNITS.find(u => u.walk && u.building === DEFAULT_SEL.b && u.floor === DEFAULT_SEL.f) || UNITS.find(u => u.walk) || UNITS[0];
     if (!unit) throw new Error('[walk] no units in data.js');
+    const gt = start === 'gt'; if (gt) start = 'outside';             // V18: GT VILNYI — the game starts in a car in the city (see _gtStart)
     if (!['apartment', 'balcony', 'corridor', 'lobby', 'parking', 'entrance', 'outside'].includes(start)) start = 'apartment';
     if (unit !== this.unit || !this.apt) {
       this.unit = unit; this.bId = unit.building;
@@ -1012,6 +1014,7 @@ export class Walkthrough {
     this._showLoading(false);
     this._streamWorld();
     this.canvas.focus({ preventScroll: true });
+    if (gt) { let ok = false; try { ok = await this._gtStart(); } catch (e) { console.warn('[walk] GT VILNYI start', e); } if (!ok) console.warn('[walk] GT VILNYI: no car could be placed'); return; }
     if (!lsGet('vrc.walk.help')) this._showHelp(true);
     setTimeout(() => { if (!this.disposed) this._tourLoad(); }, 500);       // 360° manifest → the "3D live / 360° real" pill
   }
@@ -1144,6 +1147,7 @@ export class Walkthrough {
     if (this.disposed) return;
     this.disposed = true;
     if (this._lm) { try { this._lm.dispose(); } catch { /* */ } this._lm = null; }   // V10-lift music
+    if (this._home) { try { this._home.dispose(); } catch { /* */ } this._home = null; }   // V18: the flat's radio / TV
     try { if (this._cgSpoke && typeof speechSynthesis !== 'undefined') speechSynthesis.cancel(); } catch { /* optional */ }
     cancelAnimationFrame(this._raf);
     if (this._pano) {
@@ -2272,6 +2276,7 @@ export class Walkthrough {
   async _doAction(a) {
     const act = a.action;
     if (act.type === 'aptDoor' && act.part === 'balconyDoor') return this._tapBalconyDoor(a);
+    if (act.type === 'aptDoor' && act.part === 'tv') { this._click?.(0.3); const H = await this._homeMedia(); if (H && H.inside) return H.tapTv(a.obj); return this._toggleDoor(a.obj); }   // V18: the TV takes / gives back the sound
     if (act.type === 'aptDoor') return act.part ? (this._click?.(0.35), this._toggleDoor(a.obj)) : this._onAptDoor(act.unitId, a.obj);
     if (act.type === 'sofaBed') return this._sofaToggle(act.unitId);
     if (act.type === 'doorbell') return this._ringBell(a);
@@ -2937,7 +2942,9 @@ export class Walkthrough {
     const Q = this._lq; this._lq = null;
     if (Q) Q.calls.clear();
     this._liftSync();
-    this._liftMusicOff();
+    // V18: the music started in the lift goes on along the corridors, lobbies, stair wells (and the car park on foot);
+    // _audioZoneTick() stops it in a flat (the flat's radio takes over), outside the building and in a car
+    this._liftMusicHud();
   }
   // ---- music (lift-audio.js, loaded at the top of this module)
   _liftMusic() {
@@ -2957,6 +2964,85 @@ export class Walkthrough {
     b.classList.toggle('off', muted); b.setAttribute('aria-pressed', String(!muted));
     const st = m && m.station; b.title = this.t('walk.liftMusic') + (st && !muted ? ' · ' + st.name : '');
     b.setAttribute('aria-label', this.t('walk.liftMusic'));
+    if (this.root) this.root.classList.toggle('lmusic', !!(m && m.inside));
+  }
+  // ======================= V18: GT VILNYI =======================
+  // The game starts with the visitor at the wheel of a car parked at the kerb of вул. Собранецька in front of the apart-hotel
+  // «Apartel Uzhhorod» (вул. Собранецька, 150; OpenStreetMap node 11148721480, 48.6380419 N 22.2738690 E — the city data
+  // gained a northern strip for it, tools/build-city.mjs). The rest is the existing drive mode: city, traffic, people, police,
+  // the car radio. The tap on «GT VILNYI» was the choice of the game, so the one-time game notice is not shown.
+  async _gtStart() {
+    const GT = { lat: 48.6380419, lon: 22.2738690, street: /Собранецьк/ };
+    await this._streamWorld();
+    if (this.disposed || !this.fleet || !this.mods.cars) return false;
+    this._cityStart(); await this._cityP;
+    const CD = this._city(); if (!CD || this.disposed) return false;
+    const [hx, hz] = llToWorld(GT.lat, GT.lon);
+    let best = null;
+    const consider = r => { const p = r.pts; for (let i = 0; i < p.length - 1; i++) { const a = p[i], b = p[i + 1], dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz || 1;
+      let t = ((hx - a[0]) * dx + (hz - a[1]) * dz) / l2; t = Math.max(0.15, Math.min(0.85, t)); const px = a[0] + dx * t, pz = a[1] + dz * t, d = Math.hypot(hx - px, hz - pz);
+      if (!best || d < best.d) best = { r, d, p: [px, pz], f: [dx / Math.sqrt(l2), dz / Math.sqrt(l2)] }; } };
+    for (const r of CD.roadsNear(hx, hz, 160)) if (r.car && r.name && GT.street.test(r.name.uk || '')) consider(r);
+    if (!best) { const q = CD.roadAt(hx, hz, 250, { car: true }); if (q) consider(q.road); }
+    if (!best) return false;
+    const { r, p, f } = best;
+    let nx = hx - p[0], nz = hz - p[1]; const al = nx * f[0] + nz * f[1]; nx -= f[0] * al; nz -= f[1] * al; const nl = Math.hypot(nx, nz) || 1; nx /= nl; nz /= nl;   // towards the hotel
+    const off = Math.max(1.2, (r.w || 7) / 2 - 1.15), x = p[0] + nx * off, z = p[1] + nz * off;
+    let yaw = Math.atan2(f[0], f[1]); if (nx * -f[1] + nz * f[0] < 0) yaw += Math.PI;      // kerb on the car's right (right-hand traffic)
+    const rec = this.fleet.addOne({ id: 'gt-vilnyi', kind: 'gt', colour: 'black', x, y: 0, z, yaw, src: 'gt' });
+    this._registerCars();
+    // the visitor first stands at the driver's door (road side), then gets in
+    const lx = -Math.cos(yaw), lz = Math.sin(yaw);                                              // the car's left
+    this._place(new THREE.Vector3(x + lx * 1.6, 0, z + lz * 1.6), yaw + Math.PI);
+    this._syncCamera(); this.fleet.update(this.camera, true);
+    this._gtInfo = { hotel: [+hx.toFixed(1), +hz.toFixed(1)], car: [+x.toFixed(1), +z.toFixed(1)], yaw: +yaw.toFixed(3), street: r.name ? r.name.uk : '', dist: +Math.hypot(hx - x, hz - z).toFixed(1) };
+    this._gNoticeSeen = true;
+    this._radioStart(); this._carAudio(); if (this._gameAudioResume) this._gameAudioResume();   // the page unlocked an <audio> in the GT tap (radio.js pool)
+    for (let i = 0; i < 40 && this.busy; i++) await this._sleep(50);
+    await this._enterCar(rec, { gesture: false });
+    if (!this.drive) return false;
+    this._toast(this.t('walk.gt.start'), 6000);
+    return true;
+  }
+  // ======================= V18: who plays (lift music · the flat's radio / TV · the car radio) =======================
+  // zone: 'car' | 'lift' | 'apt' | 'outside' | 'commons' (corridors, lobbies, stair wells, the car park on foot)
+  _audioZone() {
+    if (this.drive) return 'car';
+    if (this._inCarInf || this.riding) return 'lift';
+    const P = this.player.pos;
+    if (this.loaded.size && this._aptAt(P)) return 'apt';
+    if (this.mode === '360' && this.apt && !this.commons) return 'apt';
+    if (this._isOutside && this._isOutside(P) && P.y > -0.75) return 'outside';
+    return 'commons';
+  }
+  _audioZoneTick() {
+    if (this.disposed || this.busy && this._zone) return;
+    const now = performance.now(); if (now - (this._zoneT || 0) < 180) return; this._zoneT = now;
+    const z = this._audioZone(), prev = this._zone;
+    const e = z === 'apt' ? (this._aptAt(this.player.pos) || (this.unit && this.loaded.get(this.unit.id)) || null) : null, aid = e ? e.unit.id : null;
+    if (z === prev && aid === this._zoneApt) return;
+    this._zone = z; this._zoneApt = aid;
+    // lift music: plays in the lift and on along the common areas; a flat, the street or a car end it
+    if (z !== 'lift' && z !== 'commons') this._liftMusicOff();
+    if (z === 'apt') {
+      this._homeMedia().then(H => { if (H && this._zone === 'apt' && e && this._zoneApt === e.unit.id) H.enter({ unitId: e.unit.id, tvs: (e.apt && e.apt.tvs) || [] }); });
+    } else if (this._home) this._home.leave();
+    this._emitAudio && this._emitAudio(z, prev);
+  }
+  _homeMedia() {
+    if (this._homeP) return this._homeP;
+    this._homeP = import('./home-media.js').then(M => {
+      if (this.disposed || !this.el) return null;
+      const self = this, from = new THREE.Vector3(), dir = new THREE.Vector3();
+      this._home = M.createHomeMedia({
+        THREE, root: this.root, hud: this.el.hud, camera: this.camera, canvas: this.canvas, t: (k, f) => this.t(k, f), toast: (m, ms) => this._toast(m, ms),
+        // something solid between the eye and a point of the TV screen (the walkthrough's colliders: walls, furniture)
+        blocked(a, b) { from.copy(a); dir.copy(b).sub(a); const L = dir.length(); if (L < 0.05) return false; dir.divideScalar(L); const mid = a.clone().addScaledVector(dir, L / 2);
+          return self._cast(self._near(self.solids, mid, L / 2 + 0.3), from, dir, L - 0.06).length > 0; },
+      });
+      return this._home;
+    }).catch(e => { console.warn('[walk] home-media.js unavailable', e); this._home = null; return null; });
+    return this._homeP;
   }
   async _liftDoorKey(act) {
     const inf = (this.riding && this._inCarInf) || this._carOf(this.player.pos) || this._infOfAction(act);
@@ -3310,7 +3396,7 @@ export class Walkthrough {
     const P = this.player;
     if (this.drive) {
       if (!this.busy) this._driveUpdate(dt);
-      this._autoDoors(dt); this._outdoorWatch(); this._cullWorld();
+      this._autoDoors(dt); this._outdoorWatch(); this._cullWorld(); this._audioZoneTick();
       if (this._expT) { const r = this.renderer; r.toneMappingExposure += (this._expT - r.toneMappingExposure) * damp(2.5, dt); }
       const now = performance.now();
       if (now - this._lastHud > 200) { this._lastHud = now; this._updateHud(); }
@@ -3372,6 +3458,8 @@ export class Walkthrough {
     this._roomsTick();
     this._intercomTick();
     this._aptEnterWatch();
+    this._audioZoneTick();                                         // V18: lift music → flat radio / TV hand-over
+    if (this._home && this._home.inside) this._home.frame();       // V18: the Kvartal 95 picture laid over the TV in view
     this._cullWorld();
     if (this.fleet) { this.fleet.update(this.camera); this._carsTick(dt); }   // V6-cars: shoved cars, alarms, smoke (drive.js)
     if (this._expT) { const r = this.renderer; r.toneMappingExposure += (this._expT - r.toneMappingExposure) * damp(2.5, dt); }
@@ -3925,6 +4013,11 @@ export class Walkthrough {
     return best;
   }
   _placeTitle(room, inf, outside, fl) {
+    // V18: GT VILNYI out in the city → the game's name and the street (Ukrainian street names of OpenStreetMap)
+    if (this.drive && this._gtInfo && Math.hypot(this.drive.ctl.x - SITE_CENTER[0], this.drive.ctl.z - SITE_CENTER[1]) > 300) {
+      const M = this._city && this._city(), q = M && M.roadAt(this.drive.ctl.x, this.drive.ctl.z, 25, { car: true }), st = q && q.road && q.road.name ? q.road.name.uk : '';
+      return 'GT VILNYI' + (st ? ' · ' + st : '');
+    }
     if (room || this.drive || outside || this.floor == null) return null;   // in the apartment / outdoors → the unit title
     const bId = (inf && inf.bId) || this.bId || (this.unit && this.unit.building);
     const f = this.riding ? (this._liftFloorNow ?? this.floor) : this.floor;
@@ -4075,7 +4168,7 @@ export class Walkthrough {
   }
   _applyModeSafe() { if (this.el) this.el.modeSeg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.m === this.mode)); }
   /** Call after the site language changes. */
-  refreshTexts() { this._applyTexts(); this._updateHud(true); }
+  refreshTexts() { this._applyTexts(); this._updateHud(true); if (this._home) this._home.refreshTexts(); }
 
   // Title line: the apartment while you are in it (or before the commons exist); otherwise where you are now —
   // "Будинок 4 · Паркінг −1", "Будинок 4 · Поверх 1 · Лобі", "Будинок 4 · Поверх 7 · Коридор", "Будинок 4 · Поверх 7 · Ліфт".

@@ -825,6 +825,7 @@ function prewarmWalkFor(u, delay = 600) {
 // wanted room (same design, and the same layout when the manifest names one), else an exterior render, else none.
 function stillFor(u, start, room) {
   if (!G.items.length) return null;
+  if (start === 'gt' || start === 'outside') { const ext = G.items.filter(it => it.type === 'exterior'); return (ext.find(it => (it.src || '').includes('aerial')) || ext[0])?.url ?? null; }
   const kind = ['lobby', 'corridor', 'parking'].includes(start) ? start : start === 'balcony' ? 'balcony' : (room && room.kind) || 'living';
   const want = { living: 'living', kitchen: 'kitchen', bedroom: 'bedroom', bath: 'bath', hall: 'living', dressing: 'bedroom', storage: 'living', balcony: 'balcony', loggia: 'balcony', terrace: 'balcony' }[kind] || kind;
   const name = it => (it.src || '').split('/').pop().replace(/\.\w+$/, '');
@@ -886,8 +887,19 @@ function hideVeil() {
 
 // ---------------------------------------------------------------- walkthrough overlay
 let walk = null; let walkArgs = null; let walkFromUnit = false; let walkReturn = null;
+// V18: sound inside the walkthrough starts later than the tap that opens it (the flat's radio once the flat has loaded,
+// GT VILNYI's car radio once the city has loaded). iOS / Safari only let an <audio> element play if a tap started it, so
+// the tap that opens the walkthrough plays a few silent elements and leaves them for radio.js (window.__vrcAudioPool).
+const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+function unlockAudio(n = 3) {
+  try {
+    const P = (window.__vrcAudioPool ||= []);
+    while (P.length < n) { const a = new Audio(); a.setAttribute('playsinline', ''); a.preload = 'auto'; a.src = SILENT_WAV; a.volume = 0; const pr = a.play(); if (pr && pr.catch) pr.catch(() => {}); a.volume = 1; P.push(a); }
+  } catch (e) { /* no audio here */ }
+}
 async function openWalk(unitId, start, mode, room, from) {
   if (!F.walk) return;                                   // PROJECT.features.walk = false: no walkthrough at all
+  unlockAudio();                                          // (still inside the visitor's tap)
   closePhoto(true);
   walkArgs = { unitId, start, mode };
   const W = $('#walk'); W.hidden = false; W.classList.remove('is-ready'); document.documentElement.classList.add('walk-open');
@@ -895,7 +907,7 @@ async function openWalk(unitId, start, mode, room, from) {
   if (dlgU().open) { walkFromUnit = true; dlgU().close(); }
   $('#walkVeil').hidden = false; $('#walkVeil').classList.remove('failed');
   showStill(unitId, start, room);
-  $('#walkT').textContent = t('walk.loading'); $('#walkS').textContent = t('walk.loadingSub'); $('#walkRetry').hidden = true;
+  $('#walkT').textContent = start === 'gt' ? 'GT VILNYI' : t('walk.loading'); $('#walkS').textContent = start === 'gt' ? t('walk.gt.loading') : t('walk.loadingSub'); $('#walkRetry').hidden = true;
   $('#walkX').focus();
   hero?.pause();
   clearTimeout(warmT);
@@ -957,9 +969,45 @@ function bindWalk() {
   $('#walkX').addEventListener('click', closeWalk);
   $('#walkRetry').addEventListener('click', () => walkArgs && openWalk(walkArgs.unitId, walkArgs.start, walkArgs.mode));
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#walk').hidden && !$('#walkVeil').hidden) closeWalk(); });
+  // V18 (owner): «GT VILNYI» — the driving game, starting in a car in front of the apart-hotel Apartel Uzhhorod
+  const gtb = $('#heroGt');
+  if (gtb) { gtb.hidden = !tourUnit() || !GL_OK || (PROJECT.features && PROJECT.features.drive === false);
+    gtb.addEventListener('click', () => { const u = tourUnit(); if (u) { walkReturn = gtb; openWalk(u.id, 'gt', 'walk'); } }); }
   const tour = $('#heroTour'); if (!tour) return;
   tour.hidden = !tourUnit();
-  tour.addEventListener('click', () => { const u = tourUnit(); if (u) openWalk(u.id, 'lobby', 'walk'); });
+  // V18 (owner): the 3D tour first asks which building to enter (B1–B4, floors and flats), then starts in its lobby
+  tour.addEventListener('click', () => { if (tourUnit()) openBuildingPick(tour); });
+  const dlg = $('#bPick');
+  if (dlg) {
+    $('#bpX').addEventListener('click', () => dlg.close());
+    dlg.addEventListener('click', e => { if (e.target === dlg) { dlg.close(); return; } const b = e.target.closest('[data-b]'); if (!b) return;
+      const u = tourUnitIn(b.dataset.b); if (!u) return; dlg.close(); walkReturn = tour; openWalk(u.id, 'lobby', 'walk'); });
+  }
+}
+// the walkable flat a building's tour leads to: an available one on the default floor (or the nearest floor that has one)
+function tourUnitIn(bId) {
+  if (!F.walk) return null;
+  const pool = UNITS.filter(u => u.walk && u.building === bId); if (!pool.length) return null;
+  const f0 = bId === DEFAULT_SEL.b ? DEFAULT_SEL.f : Math.round((Math.min(...pool.map(u => u.floor)) + Math.max(...pool.map(u => u.floor))) / 2);
+  const byD = pool.slice().sort((a, b) => Math.abs(a.floor - f0) - Math.abs(b.floor - f0) || (statusOf(a) === 'available' ? 0 : 1) - (statusOf(b) === 'available' ? 0 : 1));
+  return byD.find(u => statusOf(u) === 'available' && u.floor === byD[0].floor) || byD[0];
+}
+function openBuildingPick(opener) {
+  const dlg = $('#bPick'); if (!dlg) { const u = tourUnit(); if (u) openWalk(u.id, 'lobby', 'walk'); return; }
+  const grid = $('#bpGrid'); grid.innerHTML = '';
+  for (const id of B_IDS) {
+    const b = BUILDINGS[id]; if (!b) continue;
+    const n = UNITS.filter(u => u.building === id).length || b.apartments;
+    const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'bp-b'; btn.dataset.b = id;
+    const bars = document.createElement('span'); bars.className = 'bt'; bars.setAttribute('aria-hidden', 'true');
+    for (const k of B_IDS) { const i = document.createElement('i'); i.style.height = Math.round(10 + 28 * (BUILDINGS[k].floors / 17)) + 'px'; if (k !== id) i.style.opacity = '.22'; bars.appendChild(i); }
+    const nm = document.createElement('span'); nm.className = 'bn'; nm.textContent = `${t('ul.building')} ${b.no}`;
+    const sub = document.createElement('span'); sub.className = 'bs'; sub.textContent = `${t('tour.floorsN', { n: b.floors })} · ${t('tour.flatsN', { n })}`;
+    btn.append(bars, nm, sub); btn.disabled = !tourUnitIn(id);
+    grid.appendChild(btn);
+  }
+  try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); }
+  grid.querySelector('.bp-b:not([disabled])')?.focus?.();
 }
 
 // ---------------------------------------------------------------- 360° tour of pre-rendered panoramas (js/pano-tour.js, lazy)
