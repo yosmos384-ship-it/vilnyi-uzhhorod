@@ -176,3 +176,6 @@
 .unitplan .up-nn { fill: #2a2620; stroke: none; }
 .unitplan .up-scale { fill: none; stroke: #2a2620; vector-effect: none; }
 .unitplan .up-scale-t { font: 600 10px/1 var(--f-body, system-ui, sans-serif); fill: #2a2620; }
+
+/* V22 (v0.7.3): 40 px touch targets on touch screens */
+@media (pointer: coarse) { .plan .plan-tools .icon-btn, .plan-tools .icon-btn { width: 40px; height: 40px; } }

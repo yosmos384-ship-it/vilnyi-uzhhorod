@@ -901,27 +901,58 @@ function unlockAudio(n = 3) {
 // automatic zoom on a small form field) and its toolbars cover the bottom of the layout viewport: #walk (position:fixed;
 // inset:0) then reached past the right edge and under the toolbar, and the drive HUD was cut (owner's picture 2026-10-10).
 // While it is open: the page zoom is reset / locked (viewport meta maximum-scale=1) and #walk follows window.visualViewport.
+// V21 / V22: while a full-screen layer is open (the walkthrough, a dialog — unit sheet, booking, lightboxes, building
+// chooser —, the 360° panorama in full screen) the page zoom is reset / locked (viewport meta maximum-scale=1: iOS Safari
+// zooms in on focus of a small field and keeps it) and, if the visitor still pinches (Safari may allow it), the layer
+// follows window.visualViewport: #walk directly, the others through --vv-* variables on <html> (class vv-zoom, site.css).
+const zoomKeys = new Set();
+function zoomLock(key, on) {
+  const meta = document.querySelector('meta[name=viewport]'); if (!meta) return;
+  if (on) zoomKeys.add(key); else zoomKeys.delete(key);
+  if (zoomKeys.size && meta.dataset.base == null) { meta.dataset.base = meta.content; meta.content = meta.dataset.base.replace(/,\s*maximum-scale=[^,]*/g, '') + ', maximum-scale=1'; }
+  else if (!zoomKeys.size && meta.dataset.base != null) { meta.content = meta.dataset.base; delete meta.dataset.base; }
+}
+const vvFull = vv => vv.scale <= 1.001 && Math.abs(vv.width - innerWidth) < 1 && Math.abs(vv.height - innerHeight) < 1 && !vv.offsetLeft && !vv.offsetTop;
 let vvOn = null;
 function walkViewport(on) {
-  const W = $('#walk'), meta = document.querySelector('meta[name=viewport]'), vv = window.visualViewport;
+  const W = $('#walk'), vv = window.visualViewport;
+  zoomLock('walk', on);
   if (on) {
-    if (meta && meta.dataset.base == null) { meta.dataset.base = meta.content; meta.content = meta.dataset.base.replace(/,\s*maximum-scale=[^,]*/g, '') + ', maximum-scale=1'; }
     if (!vvOn && vv) {
       vvOn = () => {
         if (W.hidden) return;
-        const s = W.style, full = vv.scale <= 1.001 && Math.abs(vv.width - innerWidth) < 1 && Math.abs(vv.height - innerHeight) < 1 && !vv.offsetLeft && !vv.offsetTop;
-        if (full) { s.left = s.top = s.width = s.height = s.right = s.bottom = ''; return; }
+        const s = W.style;
+        if (vvFull(vv)) { s.left = s.top = s.width = s.height = s.right = s.bottom = ''; return; }
         s.right = s.bottom = 'auto'; s.left = vv.offsetLeft + 'px'; s.top = vv.offsetTop + 'px'; s.width = vv.width + 'px'; s.height = vv.height + 'px';
       };
       vv.addEventListener('resize', vvOn); vv.addEventListener('scroll', vvOn); window.addEventListener('resize', vvOn);
     }
     if (vvOn) { vvOn(); requestAnimationFrame(vvOn); setTimeout(vvOn, 350); }   // after the zoom reset has settled
   } else {
-    if (meta && meta.dataset.base != null) { meta.content = meta.dataset.base; delete meta.dataset.base; }
     if (vvOn && vv) { vv.removeEventListener('resize', vvOn); vv.removeEventListener('scroll', vvOn); window.removeEventListener('resize', vvOn); }
     vvOn = null; const s = W.style; s.left = s.top = s.width = s.height = s.right = s.bottom = '';
   }
 }
+// the page's own full-screen layers (watched generically: dialogs open in several modules)
+(function overlayViewport() {
+  const R = document.documentElement, vv = window.visualViewport, SEL = 'dialog[open], .pano-app.is-full, #nav.open';
+  let on = false;
+  const place = () => {
+    if (!vv || !on || vvFull(vv)) { R.classList.remove('vv-zoom'); return; }
+    const st = R.style, l = vv.offsetLeft, t = vv.offsetTop;
+    st.setProperty('--vv-l', l + 'px'); st.setProperty('--vv-t', t + 'px'); st.setProperty('--vv-w', vv.width + 'px'); st.setProperty('--vv-h', vv.height + 'px');
+    st.setProperty('--vv-r', Math.max(0, innerWidth - l - vv.width) + 'px'); st.setProperty('--vv-b', Math.max(0, innerHeight - t - vv.height) + 'px');
+    R.classList.add('vv-zoom');
+  };
+  const check = () => {
+    const now = !!document.querySelector(SEL);
+    if (now === on) { if (on) place(); return; }
+    on = now; zoomLock('overlay', on);
+    if (vv) { const f = on ? 'addEventListener' : 'removeEventListener'; vv[f]('resize', place); vv[f]('scroll', place); }
+    place(); if (on) { requestAnimationFrame(place); setTimeout(place, 350); }
+  };
+  new MutationObserver(check).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open', 'class'], childList: true });
+})();
 async function openWalk(unitId, start, mode, room, from) {
   if (!F.walk) return;                                   // PROJECT.features.walk = false: no walkthrough at all
   unlockAudio();                                          // (still inside the visitor's tap)

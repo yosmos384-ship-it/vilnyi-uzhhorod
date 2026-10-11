@@ -80,6 +80,16 @@ const CSS = `
 .vw-rc [data-r=power]{background:#b8322a;color:#fff}.vw-rc [data-r=close]{background:#2a2a2f;color:#c9a45c}
 .vw-rc [data-r=mute].on{background:#c9a45c;color:#141210}
 .vw-rc .rck button{border-radius:10px;font-size:12px}
+/* V22 (v0.7.3): 40 px keys on touch screens; the TV bar sits below the centre row whatever the title height; the remote's
+   display wraps a long programme name instead of cutting it */
+.vw.phone .vw-hm{top:calc(var(--st) + var(--vw-toph,40px) + 64px)}
+.vw.phone .vw-hm button{width:40px;height:40px}
+.vw.phone .vw-rc button{height:40px}
+.vw-hm .st b,.vw-hm .st i{white-space:normal;overflow:visible;text-overflow:clip;text-align:center;line-height:1.2}
+.vw-hm{width:max-content;max-width:calc(100% - 16px - var(--sl) - var(--sr))}
+.vw-hm .st{flex:1 1 150px;min-width:64px;max-width:150px}
+.vw-rc .lcd span{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+.vw.phone .vw-rc{max-height:calc(100% - 24px - var(--st) - var(--sb));overflow-y:auto}
 `;
 const IC = {
   mute: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path class="w" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/><path class="x" d="M16 9.5l5 5M21 9.5l-5 5"/></svg>',

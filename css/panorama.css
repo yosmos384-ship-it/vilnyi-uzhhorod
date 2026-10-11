@@ -153,6 +153,13 @@ html:not(.has-pano) .nav-360 { display: none; }
 .pano-stage.has-card .pano-radar { opacity: 1; }
 @media (max-width: 760px) { .pano-stage.has-card .pano-radar { opacity: 0; pointer-events: none; } }
 .pano-radar { transition: opacity .3s; }
+/* V22: on a low screen (landscape phone) the radar would lie over the tool column (gyro / zoom / full screen) on the same
+   side — it gets smaller and moves to the other bottom corner */
+@media (max-height: 520px) {
+  .pano-radar { width: 132px; height: 132px; bottom: calc(10px + env(safe-area-inset-bottom)); right: auto; left: calc(10px + env(safe-area-inset-left)); }
+  .pano-app[dir="rtl"] .pano-radar { left: auto; right: calc(10px + env(safe-area-inset-right)); }
+  .pr-rl { display: none; }
+}
 
 /* ---------- hint / veil ---------- */
 .pano-hint { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 4; display: flex; align-items: center; gap: 10px; pointer-events: none;
@@ -230,8 +237,8 @@ html:not(.has-pano) .nav-360 { display: none; }
 .pl-ic { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--clo); color: var(--c); font-style: normal; }
 .pl-ic svg { width: 17px; height: 17px; }
 .pl-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
-.pl-tx b { font-weight: 500; font-size: 13.5px; color: var(--ivory); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pl-tx small { font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-tx b { font-weight: 500; font-size: 13.5px; color: var(--ivory); overflow-wrap: anywhere; }   /* V22: long names wrap, never "…" */
+.pl-tx small { font-size: 11.5px; color: var(--dim); overflow-wrap: anywhere; }
 .pl-tx small span { display: inline; }
 .pl-d { flex: none; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; font-variant-numeric: tabular-nums; }
 .pl-d b { font: 400 17px/1.2 var(--f-display); color: var(--c); white-space: nowrap; }
@@ -246,8 +253,8 @@ html:not(.has-pano) .nav-360 { display: none; }
 .pano-app:fullscreen .pano-foot { display: none; }
 .pano-app:fullscreen .pano-compass, .pano-app.is-full .pano-compass { top: 58px; }
 .pano-app:fullscreen .pano-tools, .pano-app.is-full .pano-tools { top: 110px; }
-.pano-app.is-full { position: fixed; inset: 0; z-index: 400; background: #0b0a08; padding: env(safe-area-inset-top) 0 0; }
-.pano-app.is-full .pano-bar { position: absolute; z-index: 7; top: calc(10px + env(safe-area-inset-top)); inset-inline: 10px; margin: 0; }
+.pano-app.is-full { position: fixed; inset: 0; z-index: 400; background: #0b0a08; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }   /* V22: all four safe areas (landscape notch) */
+.pano-app.is-full .pano-bar { position: absolute; z-index: 7; top: calc(10px + env(safe-area-inset-top)); inset-inline: calc(10px + max(env(safe-area-inset-left), env(safe-area-inset-right))); margin: 0; }
 .pano-app.is-full .pano-legend { display: none; }
 .pano-app.is-full .pano-stage { height: 100%; min-height: 0; border: 0; }
 .pano-app.is-full .pano-foot { display: none; }
@@ -283,3 +290,10 @@ html.pano-open { overflow: hidden; }
 /* T32: without WebGL there is no picture to light or zoom — hide the day/dusk switch (it sat under the notice on phones) */
 .pano-stage.no-gl .pano-mode { display: none; }
 .pano-stage.no-gl .pano-veil.fail { padding-inline: 64px; }
+
+/* V22 (v0.7.3): 40 px touch targets on touch screens */
+@media (pointer: coarse) {
+  .pchip { height: 40px; }
+  .pt-btn { height: 40px; } .pano-mode .pt-btn { min-width: 40px; }
+  .pt-ic { width: 40px; height: 40px; }
+}

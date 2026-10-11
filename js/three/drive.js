@@ -206,6 +206,14 @@ const CSS = `
 .vw.drive-deck .vw-dxr{right:auto;left:calc(10px + var(--sl));bottom:calc(100px + var(--sb))!important}
 .vw.drive-deck .vw-dname{bottom:calc(166px + var(--sb))!important;animation:none;opacity:.75;background:none;font-size:10px;letter-spacing:.2em}
 .vw.drive-deck .vw-dhint{display:none}
+/* V22 (v0.7.3): the top row of the drive sits under the place title whatever its height; 40 px keys on touch screens; a long station name wraps (two lines) instead of "…" */
+.vw.phone .vw-dtop{top:calc(var(--st) + var(--vw-toph,40px) + 10px)}
+.vw.phone .vw-dradio button{width:40px;height:40px}
+.vw.phone .vw-dtop .vw-btn,.vw.phone .vw-dmenu .vw-btn{height:40px}
+.vw-dradio .st b{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;text-align:center;line-height:1.15}
+.vw.phone .vrc-osm-attribution::after{content:"";position:absolute;inset:-9px -2px}
+@media (orientation:portrait){.vw.phone.driving:not(.drive-deck) .vrc-osm-attribution{bottom:auto!important;top:calc(196px + var(--st))!important}}
+@media (orientation:landscape){.vw.phone.drive-fp .vw-dtop .vw-btn{height:40px}.vw.phone.drive-fp .vw-dtop .vw-ico,.vw.phone.drive-fp .vw-dtop [data-k=carview]{width:40px}}
 `;
 const ICON = {
   more: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',

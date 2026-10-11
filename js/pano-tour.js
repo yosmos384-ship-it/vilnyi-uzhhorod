@@ -169,6 +169,20 @@ const CSS = `
 .pt.phone.embedded .pt-map{top:calc(110px + var(--st))}
 .pt.embedded .pt-mode{display:none}
 .pt-exit[hidden]{display:none}
+/* V22 (v0.7.3): side safe areas (landscape notch), titles wrap instead of "…", 40 px controls on touch screens */
+.pt{--sx:max(env(safe-area-inset-left,0px),env(safe-area-inset-right,0px))}
+.pt-title{inset-inline-start:calc(10px + var(--sx))}
+.pt-exit,.pt-side,.pt-legal{inset-inline-end:calc(10px + var(--sx))}
+.pt-map,.pt.phone .pt-legal{inset-inline-start:calc(10px + var(--sx))}
+.pt-bottom{padding:0 calc(10px + var(--sx))}
+.pt-title .t1,.pt-title .t2{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+.pt.phone .pt-title .t1{font-size:16px}
+.pt.phone .pt-chip,.pt.phone .pt-styles button,.pt.phone .pt-time button,.pt.phone .pt-mode button,.pt.phone .pt-res,.pt.phone .pt-exit{height:40px}
+.pt.phone .pt-time button{min-width:40px;justify-content:center}
+.pt.phone .pt-side button{width:40px;height:40px}
+.pt.phone .pt-side{bottom:calc(168px + var(--sb))}
+.pt.phone .pt-mode{top:calc(18px + var(--st) + var(--pt-toph,46px))}
+.pt.phone .pt-map,.pt.phone.embedded .pt-map{top:calc(68px + var(--st) + var(--pt-toph,46px))}
 `;
 
 const ICON = {
@@ -814,6 +828,10 @@ export async function openPanoTour(container, opts = {}) {
     renderer.setSize(w, h, false); camera.aspect = w / h; root.classList.toggle('phone', isPhone()); S.dirty = true;
   }
   const ro = new ResizeObserver(resize); ro.observe(root); resize();
+  // V22: the title may wrap on a phone → the light / 3D switch and the plan below it follow its real height (--pt-toph)
+  const titleEl = root.querySelector('.pt-title');
+  const fitTop = () => { const h = titleEl ? Math.round(titleEl.getBoundingClientRect().height) : 0; if (h > 0) root.style.setProperty('--pt-toph', h + 'px'); };
+  const roT = titleEl ? new ResizeObserver(fitTop) : null; if (roT) roT.observe(titleEl); fitTop();
   function frame(now) {
     if (S.disposed) return;
     const dt = Math.min(0.05, (now - S.lastT) / 1000); S.lastT = now;
@@ -850,7 +868,7 @@ export async function openPanoTour(container, opts = {}) {
   }
   function dispose() {
     if (S.disposed) return; S.disposed = true;
-    renderer.setAnimationLoop(null); ro.disconnect(); window.removeEventListener('deviceorientation', onOrient);
+    renderer.setAnimationLoop(null); ro.disconnect(); if (roT) roT.disconnect(); window.removeEventListener('deviceorientation', onOrient);
     for (const e of cache.values()) if (e.t) e.t.dispose();
     cache.clear(); sky.geometry.dispose(); sky.material.dispose(); ringGeo.dispose(); discGeo.dispose(); hitGeo.dispose();
     hotGroup.traverse(o => o.material && o.material.dispose());

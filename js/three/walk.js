@@ -748,6 +748,60 @@ const CSS = `
 .vw-ic .pad button:active{background:rgba(201,164,92,.25)}
 .vw-ic .pad button.call{background:linear-gradient(180deg,#e6c987,#b88a3c);color:#16110a;border-color:transparent}
 .vw-ic .pad button.del{color:var(--g2)}
+/* V22 (v0.7.3) — every control ≥ 40 px on touch screens, nothing cut: the phone HUD's buttons, chips, pad and light
+   switch grow to 40 px; the place title wraps instead of "…" (the rows below follow its real height, --vw-toph, set by
+   _fitTop); toasts wrap inside the screen; the settings popover lies above the centre row and the TV bar */
+.vw.phone .vw-btn{height:40px}
+.vw.phone .vw-chip{height:40px}
+.vw.phone .vw-light button{height:40px;width:40px}
+.vw.phone .vw-modes button{height:40px}
+.vw.phone .vw-seg button{min-height:40px}
+.vw.phone .vw-styles button{min-height:40px}
+.vw.phone .vw-tlabel,.vw.phone .vw-prow{min-height:40px}
+.vw.phone .vw-top{align-items:flex-start}
+.vw.phone .vw-title .t1,.vw.phone .vw-title .t2{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+.vw.phone .vw-title .t1{font-size:12.5px;line-height:1.15}
+.vw.phone .vw-title .t2{font-size:10.5px;line-height:1.2}
+.vw.phone .vw-center{top:calc(var(--st) + var(--vw-toph,40px) + 12px)}
+.vw.phone.pano .vw-center{top:calc(var(--st) + var(--vw-toph,40px) + 16px)}
+.vw.phone .vw-ucard{top:calc(var(--st) + var(--vw-toph,40px) + 64px)}
+.vw.phone .vw-toast{top:calc(var(--st) + var(--vw-toph,40px) + 66px)}
+.vw-toast{white-space:normal;text-align:center;width:max-content;max-width:calc(100% - 24px - var(--sl) - var(--sr));line-height:1.35;border-radius:16px;box-sizing:border-box}
+.vw.phone .vw-tools{z-index:9}
+.vw.phone .vw-pad{bottom:calc(56px + var(--sb));width:128px;height:88px}
+.vw.phone .vw-map{bottom:calc(56px + var(--sb))}
+.vw.phone.mapoff .vw-mapbtn{bottom:calc(56px + var(--sb));width:40px;height:40px}
+.vw.phone .vw-floorsbtn{bottom:calc(56px + var(--sb));height:40px}
+.vw.phone .vw-liftmusic{bottom:calc(56px + var(--sb));width:40px;height:40px}
+.vw.phone .vw-tandem{bottom:calc(150px + var(--sb));min-height:40px}
+.vw.phone.mapoff .vw-tandem{bottom:calc(104px + var(--sb))}
+.vw.phone .vw-ic .lst button{height:40px}
+.vw.phone .vw-ucard .vw-btn{height:40px}
+.vw.phone .vw-icon,.vw.phone .vw-exit,.vw.phone .vw-photo{width:40px}
+.vw.phone .vw-toast{top:calc(var(--st) + var(--vw-toph,40px) + 116px)}
+.vw.phone .vw-lift{z-index:6}
+.vw.phone .vw-lift .grid button{width:40px;height:40px}
+@media (min-width:600px){.vw.phone .vw-lift .grid{grid-template-columns:repeat(12,40px)}}
+.vw.phone .vw-help .card{max-height:calc(100% - 16px - var(--st) - var(--sb));overflow-y:auto;overscroll-behavior:contain}
+.vw.phone .vw-tools.open{max-height:calc(100% - 60px - var(--st) - var(--sb));overflow-y:auto;overscroll-behavior:contain}
+.vw.phone .vrc-osm-attribution{z-index:2!important;padding:5px 8px!important}
+.vw-hud>.vw-pad{pointer-events:none}.vw-pad button{pointer-events:auto}
+.vw.phone .vw-tools>*{flex-shrink:0}
+@media (max-width:359.98px){.vw.phone .vw-lift .grid{grid-template-columns:repeat(5,40px)}.vw.phone .vw-modes button{padding:0 8px;font-size:11px}.vw.phone .vw-center{gap:4px}}
+.vw:not(.phone) .vw-lift{bottom:calc(132px + var(--sb))}
+.vw.phone .vw-carchip,.vw.phone .vw-sofachip{bottom:calc(152px + var(--sb));max-width:calc(100% - 16px - var(--sl) - var(--sr))}
+.vw.phone .vw-carops{bottom:calc(200px + var(--sb))}
+.vw.phone.lmusic:not(.incar):not(.riding) .vw-liftmusic{bottom:calc(200px + var(--sb))}
+.vw:not(.osm) .vrc-osm-attribution{display:none!important}
+.vw-cg.show{z-index:8}
+@media (max-height:560px){.vw-cg.show{max-height:calc(100% - 20px - var(--st) - var(--sb));overflow-y:auto;overscroll-behavior:contain}}
+.vw.phone .vw-cg .ib{flex:0 0 40px;width:40px;height:40px}
+.vw.phone .vw-cg button.wide{min-height:40px}
+.vw:not(.driving) .vrc-osm-attribution{left:auto!important;right:calc(12px + var(--sr))!important;bottom:calc(206px + var(--sb))!important}
+.vw.phone:not(.driving) .vrc-osm-attribution{right:calc(8px + var(--sr))!important;bottom:calc(250px + var(--sb))!important}
+.vw[dir=rtl]:not(.driving) .vrc-osm-attribution{right:auto!important;left:calc(12px + var(--sl))!important}
+.vw[dir=rtl].phone:not(.driving) .vrc-osm-attribution{left:calc(8px + var(--sl))!important}
+.vw:not(.phone).driving .vrc-osm-attribution{bottom:calc(4px + var(--sb))!important;right:calc(6px + var(--sr))!important}
 `;
 
 export class Walkthrough {
@@ -4317,6 +4371,7 @@ export class Walkthrough {
     else if (isGround(this.floor)) place = this.t('walk.lobby');
     else place = this.t('walk.corridor');
     this._placeKind = kind;
+    { const osm = kind === 'outdoor' || !!this.drive; if (osm !== this._osmVis) { this._osmVis = osm; this.root.classList.toggle('osm', osm); } }   // V22: © OSM only where the city is around
     { const pk = fl === -1 && !outside && !this.riding;   // V12: «Tandem — sold separately» chip + minimap filter, car park only
       const chg = pk !== this._inPark; if (chg) { this._inPark = pk; this.root.classList.toggle('inpark', pk); }
       { if (pk && this.el.tandem && (chg || force)) { this.el.tandem.querySelector('.lbl').textContent = this.t('walk.tandem'); this.el.tandem.querySelector('b').textContent = String((PARKING.bays || []).filter(b => b.tandem).length); } } }
@@ -4518,6 +4573,14 @@ export class Walkthrough {
     }
     this._ro = new ResizeObserver(() => this._resize());
     this._ro.observe(this.container);
+    // V22: the real height of the top bar (the place title may wrap on a phone) → --vw-toph for the rows below it
+    const top = this.el && this.el.hud.querySelector('.vw-top');
+    if (top) { this._roTop = new ResizeObserver(() => this._fitTop()); this._roTop.observe(top); this._fitTop(); }
+  }
+  _fitTop() {
+    const top = this.el && this.el.hud.querySelector('.vw-top'); if (!top || !this.root) return;
+    const h = Math.round(top.getBoundingClientRect().height);
+    if (h > 0 && h !== this._topH) { this._topH = h; this.root.style.setProperty('--vw-toph', h + 'px'); }
   }
   _unbind() {
     const c = this.canvas, h = this._h; if (!h) return;
@@ -4531,7 +4594,7 @@ export class Walkthrough {
     window.removeEventListener('keydown', h.key); window.removeEventListener('keyup', h.keyup); window.removeEventListener('blur', h.blur);
     document.removeEventListener('visibilitychange', h.vis);
     this.el.hud.removeEventListener('click', h.hud);
-    this._ro && this._ro.disconnect();
+    this._ro && this._ro.disconnect(); this._roTop && this._roTop.disconnect();
     clearTimeout(this._toastT); clearTimeout(this._cardT);
   }
 

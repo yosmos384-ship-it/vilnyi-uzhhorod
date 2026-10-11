@@ -27,7 +27,12 @@
   --res: #6d6558;
   --f-display: "Cormorant Garamond", "Frank Ruhl Libre", "Times New Roman", serif;
   --f-body: "Manrope", "Heebo", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --gutter: 16px;
+  --gutter-b: 16px;
+  /* V22: the side gutter never lets text or a control sit under the notch / rounded corner of a landscape phone
+     (viewport-fit=cover); --gutter-b is the plain design gutter (for boxes that are centred away from the edges) */
+  --gutter: max(var(--gutter-b), env(safe-area-inset-left), env(safe-area-inset-right));
+  --sx: max(env(safe-area-inset-left), env(safe-area-inset-right));   /* side safe area (same on both sides, rtl-proof) */
+  --st: env(safe-area-inset-top); --sb: env(safe-area-inset-bottom);
   --maxw: 1320px;
   --head-h: 64px;
   --radius: 2px;
@@ -38,8 +43,8 @@
   --f-display: "Frank Ruhl Libre", "Cormorant Garamond", serif;
   --f-body: "Heebo", "Manrope", system-ui, sans-serif;
 }
-@media (min-width: 768px) { :root { --gutter: 32px; --head-h: 76px; } }
-@media (min-width: 1200px) { :root { --gutter: 48px; } }
+@media (min-width: 768px) { :root { --gutter-b: 32px; --head-h: 76px; } }
+@media (min-width: 1200px) { :root { --gutter-b: 48px; } }
 
 *, *::before, *::after { box-sizing: border-box; }
 html { background: var(--bg); color: var(--text); -webkit-text-size-adjust: 100%; scroll-behavior: smooth; scroll-padding-top: calc(var(--head-h) + 8px); }
@@ -222,6 +227,7 @@ select:focus, input:focus { outline: none; border-color: var(--gold); background
 .lang-menu {
   position: absolute; top: calc(100% + 10px); inset-inline-end: 0; z-index: 60; min-width: 212px; margin: 0; padding: 8px; list-style: none;
   background: #14110d; border: 1px solid var(--line-2); border-radius: 3px; box-shadow: var(--shadow); animation: fadeDown .25s var(--ease);
+  max-height: calc(100dvh - var(--head-h) - 16px - env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain;   /* V22: landscape phones */
 }
 .lang-menu li { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 2px; cursor: pointer; font-size: 15px; color: var(--text); outline: none; }
 .lang-menu li:hover, .lang-menu li:focus { background: rgba(201, 169, 106, .1); color: var(--ivory); }
@@ -275,7 +281,7 @@ select:focus, input:focus { outline: none; border-color: var(--gold); background
 .hero-tag { margin: 0; font-size: 10.5px; letter-spacing: .24em; text-transform: uppercase; color: rgba(243, 237, 225, .5); }
 :lang(he) .hero-tag { letter-spacing: .05em; font-size: 12px; }
 .has-3d .hero-tag { display: none; }
-.hero-stats { display: grid; grid-template-columns: repeat(2, 1fr); margin-top: 44px; border-top: 1px solid rgba(243, 237, 225, .14); position: relative; }
+.hero-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 44px; border-top: 1px solid rgba(243, 237, 225, .14); position: relative; }
 .stat { padding: 18px 0 22px; display: flex; flex-direction: column; gap: 6px; }
 .stat:nth-child(odd) { padding-inline-end: 12px; }
 .stat:nth-child(even) { padding-inline-start: 16px; border-inline-start: 1px solid rgba(243, 237, 225, .1); }
@@ -284,7 +290,7 @@ select:focus, input:focus { outline: none; border-color: var(--gold); background
 .stat span { font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 :lang(he) .stat span { letter-spacing: .02em; font-size: 13px; }
 @media (min-width: 900px) {
-  .hero-stats { grid-template-columns: repeat(4, 1fr); margin-top: 64px; }
+  .hero-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 64px; }
   .stat, .stat:nth-child(odd), .stat:nth-child(even) { padding: 26px 28px 34px; border-top: 0; border-inline-start: 1px solid rgba(243, 237, 225, .1); }
   .stat:first-child { border-inline-start: 0; padding-inline-start: 0; }
   .stat b { font-size: 46px; }
@@ -338,6 +344,8 @@ select:focus, input:focus { outline: none; border-color: var(--gold); background
   .gal-t { display: block; }
   .gal-cap { inset-inline: 20px; bottom: 18px; }
 }
+/* V22: the small tiles of the 4-column grid are too low for kicker + title below 1100 px — the title stays on the large tile */
+@media (min-width: 800px) and (max-width: 1099.98px) { .gal-item:not(.feat) .gal-t { display: none; } }
 .gal-note { margin-top: 20px; }
 
 /* ---------- finder ---------- */
@@ -719,7 +727,18 @@ dialog.is-closing { animation: sheetOut .2s ease-in forwards; }
 .cr b { font: 500 21px/1 "Cormorant Garamond", serif; color: var(--ivory); white-space: nowrap; }
 .cr.soft b { color: var(--muted); }
 .sh-foot { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px var(--gutter) calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: rgba(13, 12, 9, .97); }
-@media (min-width: 900px) { .sh-foot { padding: 16px 36px; } }
+@media (min-width: 900px) { .sh-foot { padding: 16px 36px calc(16px + env(safe-area-inset-bottom)); } }
+/* V22: a landscape phone (≈ 375–430 px high) — header and price bar get compact so the scrolling part keeps room for the
+   biggest block of the sheet (a finish card, the plan) */
+@media (max-height: 520px) and (orientation: landscape) {
+  .sh-head { padding-block: 8px 8px; align-items: center; }
+  .sh-head .eyebrow { margin-bottom: 2px; }
+  .sh-head .h3 { font-size: 24px; }
+  .sh-type { margin-top: 2px; }
+  .sh-foot { padding-block: 6px calc(6px + env(safe-area-inset-bottom)); }
+  .sh-foot-p b { font-size: 21px; }
+  .sh-body { padding-top: 14px; }
+}
 .sh-foot-p { display: flex; flex-direction: column; gap: 2px; }
 .sh-foot-p b { font: 500 25px/1 "Cormorant Garamond", serif; color: var(--gold-hi); }
 .sh-foot-p span { font-size: 12px; color: var(--muted); }
@@ -744,7 +763,7 @@ dialog.is-closing { animation: sheetOut .2s ease-in forwards; }
 .steps .n { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line-2); font-size: 11px; font-weight: 600; }
 .steps li.cur { color: var(--ivory); } .steps li.cur .n { background: var(--gold); border-color: var(--gold); color: #17130c; }
 .steps li.done .n { border-color: var(--gold); color: var(--gold); }
-.steps .l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.steps .l { min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }   /* V22: wraps instead of "…" */
 @media (max-width: 480px) { .steps li:not(.cur) .l { display: none; } .steps li.cur { flex: 2.2; } .steps li { flex: 1 1 0; } }
 .bk-unit { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 16px var(--gutter) 0; padding: 14px 16px; border: 1px solid var(--line); background: var(--bg-2); }
 @media (min-width: 760px) { .bk-unit { margin-inline: 34px; } }
@@ -814,15 +833,15 @@ dialog.is-closing { animation: sheetOut .2s ease-in forwards; }
 .lightbox { position: fixed; inset: 0; width: 100%; height: 100dvh; margin: 0; background: #050403; }
 .lightbox::backdrop { background: #050403; }
 .lb-fig { margin: 0; height: 100%; display: flex; flex-direction: column; }
-.lb-stage { flex: 1; min-height: 0; display: grid; place-items: center; padding: 64px 0 0; touch-action: pan-y pinch-zoom; }
+.lb-stage { flex: 1; min-height: 0; display: grid; place-items: center; padding: calc(64px + var(--st)) var(--sx) 0; touch-action: pan-y pinch-zoom; }
 @media (min-width: 900px) { .lb-stage { padding: 56px 96px 0; } }
 #lbImg { max-width: 100%; max-height: 100%; object-fit: contain; opacity: 0; transform: scale(.985); transition: opacity .5s var(--ease), transform .6s var(--ease); user-select: none; -webkit-user-drag: none; }
 #lbImg.in { opacity: 1; transform: none; }
 .lb-cap { display: flex; justify-content: space-between; gap: 16px; padding: 16px var(--gutter) calc(18px + env(safe-area-inset-bottom)); font-size: 13.5px; color: var(--muted); }
 .lb-n { color: var(--gold); letter-spacing: .1em; flex: none; }
-.lb-x { position: absolute; top: 12px; inset-inline-end: 12px; }
+.lb-x { position: absolute; top: calc(12px + var(--st)); inset-inline-end: calc(12px + var(--sx)); z-index: 2; }
 .lb-prev, .lb-next { position: absolute; top: 50%; transform: translateY(-50%); display: none; }
-.lb-prev { inset-inline-start: 20px; } .lb-next { inset-inline-end: 20px; }
+.lb-prev { inset-inline-start: calc(20px + var(--sx)); } .lb-next { inset-inline-end: calc(20px + var(--sx)); }
 [dir="rtl"] .lb-prev svg, [dir="rtl"] .lb-next svg { transform: scaleX(-1); }
 @media (min-width: 900px) { .lb-prev, .lb-next { display: inline-grid; } .lb-prev[hidden], .lb-next[hidden] { display: none; } }
 
@@ -840,7 +859,7 @@ dialog.is-closing { animation: sheetOut .2s ease-in forwards; }
 @keyframes bar { from { transform: translateX(-110%); } to { transform: translateX(260%); } }
 .walk-veil.failed .walk-bar { display: none; }
 .walk-veil.failed .walk-bird { animation: none; opacity: .6; }
-.walk-x { position: absolute; top: calc(12px + env(safe-area-inset-top)); inset-inline-end: 12px; z-index: 6; }
+.walk-x { position: absolute; top: calc(12px + env(safe-area-inset-top)); inset-inline-end: calc(12px + var(--sx)); z-index: 6; }
 .walk-veil[hidden] + .walk-x { display: none; }
 
 /* ---------- motion ---------- */
@@ -1026,8 +1045,8 @@ dialog.is-closing { animation: sheetOut .2s ease-in forwards; }
 :lang(he) .btn.act-walk { font-size: 15px; }
 /* List: each walkable flat has its own button beside (phones: under) the row. */
 .ls-li { display: grid; grid-template-columns: minmax(0, 1fr); border-bottom: 1px solid var(--line); }
-.ls-li .ls-row { border-bottom: 0; }
-.ls-walk { justify-self: start; display: inline-flex; align-items: center; gap: 8px; min-height: 36px; margin: -6px 4px 12px; padding: 0 14px 0 10px; border: 1px solid var(--line-2); border-radius: 40px; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); white-space: nowrap; transition: border-color .2s, color .2s, background .2s; }
+.ls-li .ls-row { border-bottom: 0; padding-bottom: 10px; }   /* V22: the walk button below no longer reaches up into the row (two tap targets on one spot) */
+.ls-walk { justify-self: start; display: inline-flex; align-items: center; gap: 8px; min-height: 36px; margin: 0 4px 12px; padding: 0 14px 0 10px; border: 1px solid var(--line-2); border-radius: 40px; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); white-space: nowrap; transition: border-color .2s, color .2s, background .2s; }
 .ls-walk svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linejoin: round; }
 .ls-walk:hover, .ls-walk:focus-visible { border-color: var(--gold); color: var(--gold-hi); background: rgba(201, 169, 106, .08); }
 :lang(he) .ls-walk { letter-spacing: .02em; font-size: 13px; }
@@ -1090,3 +1109,43 @@ html.modal-open .fab, html.walk-open .fab, html.pano-open .fab, html:has(dialog[
 /* V21 (v0.7.2): iPhone Safari zooms the page in when a form field under 16 px gets the focus, and the zoom stayed on into the
    walkthrough (drive HUD cut on the right / bottom). Touch screens get 16 px fields. */
 @media (pointer: coarse) { .sel2 select, .ls-head select { font-size: 16px; } }
+
+/* V22 (v0.7.3): every control a finger can hit — at least 40 × 40 px on touch screens. Buttons grow by 2–6 px; text links
+   keep their look and get a transparent tap area of 40 px around them (::after, the link itself stays the size of its text). */
+@media (pointer: coarse) {
+  .seg button, .chip span { min-height: 40px; }
+  .chip span { min-width: 40px; justify-content: center; }
+  .ls-head select, .sel2 select { min-height: 40px; }
+  .hs-dot { height: 40px; min-width: 40px; }
+  .hs-pp, .hs-caprow .hs-pp { width: 40px; height: 40px; }
+  .copy { min-height: 40px; }
+  .fab-ig { width: 40px !important; height: 40px !important; }
+  .btn.link, .pc-link, .ct-v, .foot-nav a, .pg-b-view, .pg-foot a, .pg-lb-credit a { position: relative; }
+  .btn.link::after, .pc-link::after, .ct-v::after, .foot-nav a::after, .pg-b-view::after, .pg-foot a::after, .pg-lb-credit a::after {
+    content: ""; position: absolute; top: min(0px, calc(50% - 20px)); bottom: min(0px, calc(50% - 20px)); left: min(0px, calc(50% - 20px)); right: min(0px, calc(50% - 20px)); }
+  .foot-nav { gap: 20px; }
+  .ls-walk { min-height: 40px; }
+  .calc-tabs .chip span { min-height: 40px; }
+  .mode button, .hs-home { height: 40px; }
+  .hs-bar { flex-wrap: wrap; row-gap: 6px; }
+  .check { min-height: 40px; align-items: center; }
+}
+
+/* V22 (v0.7.3): a pinch-zoomed page (the visible viewport smaller than the layout one): the open dialog / full-screen
+   panorama is laid onto the visible part (app.js overlayViewport sets --vv-* and html.vv-zoom) */
+html.vv-zoom dialog[open], html.vv-zoom .pano-app.is-full { inset: var(--vv-t) var(--vv-r) var(--vv-b) var(--vv-l) !important; max-width: var(--vv-w); max-height: var(--vv-h); }
+html.vv-zoom dialog[open].sheet, html.vv-zoom dialog[open].lightbox, html.vv-zoom dialog[open].pg-lb, html.vv-zoom .pano-app.is-full { width: var(--vv-w) !important; height: var(--vv-h) !important; }
+@media (max-width: 759.98px) { html.vv-zoom dialog[open].modal { width: var(--vv-w) !important; height: var(--vv-h) !important; } }
+@media (max-width: 899.98px) { html.vv-zoom dialog[open].sheet { width: var(--vv-w) !important; } }
+@media (min-width: 900px) { html.vv-zoom dialog[open].sheet { width: min(620px, 94vw, var(--vv-w)) !important; left: auto !important; } html.vv-zoom[dir="rtl"] dialog[open].sheet { left: var(--vv-l) !important; right: auto !important; } }
+/* V22: on narrow phones a long button label (de / fr / ro) may take two lines instead of running out of its box */
+@media (max-width: 419.98px) {
+  .btn { white-space: normal; text-align: center; line-height: 1.25; padding-inline: 16px; letter-spacing: .14em; max-width: 100%; }
+  .btn.link { padding-inline: 0; }
+  .sh-foot .btn { min-width: 0; }
+}
+/* V22: the floating WhatsApp / Instagram buttons never lie over the last links of the footer (bottom of the page) */
+.site-foot { padding-bottom: calc(128px + env(safe-area-inset-bottom)); }
+/* V22: the four key figures under the hero never push the page sideways on a 320 px phone (fr / de labels) */
+.stat b { font-size: clamp(24px, 8.4vw, 34px); overflow-wrap: anywhere; }
+.stat span { overflow-wrap: anywhere; }
