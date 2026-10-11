@@ -3704,10 +3704,11 @@ function rpNav(P, I, G = 0.1, NAV_R = 0.27) {
   const start = ent ? add2(ent.p, ent.n || [0, 1], (+ent.t || 0) / 2 + 0.3) : P.rooms[0].c;
   return (P[key] = { G, u0, v0, nx, nz, base, targets, start, cells });
 }
-function rpReach0(ctx, noGhost = false, fine = false) {
-  fine = ctx.navFine === 'tight' ? 'tight' : fine || !!ctx.navFine;   // (a flat whose sofa-bed needed the 5 cm grid keeps it for every later piece)
+function rpReach0(ctx, noGhost = false, fine = false, navR = 0) {
+  fine = navR ? false : ctx.navFine === 'tight' ? 'tight' : fine || !!ctx.navFine;   // (a flat whose sofa-bed needed the 5 cm grid keeps it for every later piece)
   // 'tight': the 5 cm grid with a 0.25 m body (the walkthrough's is 0.24 m) — the last resort of the sofa-bed search
-  const NAV_R = fine === 'tight' ? NAV_TIGHT : 0.27;
+  // navR (V23): a wider body on the 10 cm grid — 0.4 m = the 80 cm walkway kept free around the sofa / TV group
+  const NAV_R = navR || (fine === 'tight' ? NAV_TIGHT : 0.27);
   const N = rpNav(ctx.P, ctx.I, fine ? 0.05 : 0.1, NAV_R), { G, u0, v0, nx, nz } = N, blk = N.base.slice(), W = fine ? 8 : 4;
   for (const q of ctx.occ) {
     if (q.wallOnly || (noGhost && q.ghost)) continue;
@@ -3987,7 +3988,10 @@ function rpSofaBed0(ctx) {
       sc += (foot >= 0.6 ? 0.6 : 0) + (foot >= 1.0 ? 0.3 : 0) + (Math.max(sideA, sideB) >= 0.55 ? 0.5 : 0) + (Math.min(sideA, sideB) >= 0.55 ? 0.2 : 0);
       for (const t of tables) { const B = boxOf(t); if (rectOverlap(Ro, B, -0.05) || rectOverlap(Rc, B, -0.05)) sc -= 0.8; }
       if (aisles.some(a => rectOverlap(Ro, a, -0.02))) sc -= 0.8;
-      cands.push({ p, f, xv, Rc, Ro, sc, KD, flips });
+      // V23: a wall for the TV straight in front of the sofa (nothing tall between) counts most
+      let tvOk = false;
+      { const tv = rpTvSpot(ctx, S, Rc.c, f, { widths: [1.2, 1.0, 0.9], dmin: 1.9, dmax: 3.6 }); if (tv && rpTvClear(ctx, { c: Rc.c, f, hw: D / 2, len: L }, tv)) { sc += 3.5; tvOk = true; } }
+      cands.push({ p, f, xv, Rc, Ro, sc, KD, flips, tvOk });
     };
     const offs = [0]; for (let o = 0.1; o <= 1.21; o += 0.1) offs.push(o, -o);
     for (KD of SB_KINDS) {
@@ -3997,6 +4001,22 @@ function rpSofaBed0(ctx) {
     for (const f of sofas) drawn(rpBack(S, f, 'long'), 3);
     for (const f of groups) { const B = rpBack(S, f, 'any'); if (B.atWall) drawn(B, 2.5); }
     if (!keepBeds) for (const f of beds) { const B = rpBack(S, f, Math.min(+f.s[0], +f.s[1]) >= 1.45 ? 'long' : 'short'); if (B.atWall) drawn(B, 2); }
+    // V23: standing free in the room, straight in front of a wall that takes the TV (a way of 0.85 m behind it)
+    for (const seg of S.segs) {
+      if (seg.len < 1.0) continue;
+      for (let s = 0.5; s <= seg.len - 0.5 + 1e-6; s += 0.15) {
+        if (seg.wins.some(q => q.s1 > s - 0.52 && q.s0 < s + 0.52)) continue;
+        const wp = add2(seg.a, seg.d, s), f = [-seg.nin[0], -seg.nin[1]];
+        for (const dist of [2.5, 2.9, 3.3]) {
+          const c = add2(wp, seg.nin, 0.1 + dist), p = add2(c, f, -(D / 2 + 0.012));
+          if (!pointInPoly(c, S.poly)) continue;
+          const gB = rayPoly(add2(p, f, 0.02), seg.nin, S.poly);
+          if (!(gB > 0.87)) continue;
+          if (!rpFree(ctx, S, { c: add2(p, seg.nin, 0.42), d: seg.d, hl: L / 2 - 0.1, hw: 0.4 }, { zones: false, tol: 0.02 })) continue;
+          add(p, f, 0.6 - Math.abs(dist - 2.9) * 0.3, null);
+        }
+      }
+    }
     for (const seg of S.segs) {
       if (seg.len < L + 0.02) continue;
       const xs = []; for (let s = L / 2 + 0.01; s <= seg.len - L / 2 - 0.01 + 1e-6; s += 0.1) xs.push(s);
@@ -4025,7 +4045,7 @@ function rpSofaBed0(ctx) {
       best = c; break;
     }
     }
-    st.ok = cands.length;
+    st.ok = cands.length; st.tv = cands.filter(c => c.tvOk).length; st.best = best ? { tv: !!best.tvOk, sc: +best.sc.toFixed(2), k: best.KD.kind + best.KD.wb } : null;
     (sb.stats ||= []).push(st);
     ctx.occ.length = n0;
     return best;
@@ -4051,13 +4071,16 @@ function rpSofaBed0(ctx) {
   };
   let done = false;
   for (const keep of beds.length ? [true, false] : [false]) {
-    const best = search(keep); if (!best) continue;
+    let best = search(keep); if (!best) continue;
+    // V23: the sofa must face a TV wall — where that works only without the drawn bed, the sofa-bed is the room's bed
+    if (keep && !best.tvOk) { const alt = search(false); if (alt && alt.tvOk) { ctx.notes.push('sofa-bed in ' + S.id + ': the drawn bed gives way (the sofa faces the TV)'); continue; } }
     // (with the drawn bed kept: undone if the bed, as it really stands, shuts a way)
     if (best.fine) ctx.navFine = best.fine;
     if (best.fine === 'tight') ctx.notes.push('sofa-bed in ' + S.id + ': a tight way past the opened bed (0.5 m)');
     const snap = { occ: ctx.occ.length, kids: ctx.g.children.length, notes: ctx.notes.length, busy: ctx.busy.length, has: S.has ? { ...S.has } : null }, before = rpReach0(ctx);
     place(best, keep);
-    if (keep && (rpWorse(before, rpReach0(ctx, true)) || rpReach0(ctx).n < before.n)) {
+    const tvGone = keep && best.tvOk && (() => { const tv = rpTvSpot(ctx, S, best.Rc.c, best.f, { widths: [1.2, 1.0, 0.9], dmin: 1.9, dmax: 3.6 }); return !tv || !rpTvClear(ctx, { c: best.Rc.c, f: best.f, hw: best.Rc.hw, len: best.Rc.hl * 2 }, tv, [ctx.sofaBed && ctx.sofaBed.obj.userData.rpRect].filter(Boolean)); })();
+    if (keep && (tvGone || rpWorse(before, rpReach0(ctx, true)) || rpReach0(ctx).n < before.n)) {
       ctx.occ.length = snap.occ; ctx.notes.length = snap.notes; ctx.busy.length = snap.busy; S.has = snap.has; ctx.sofaBed = null; sb.flip = null;
       for (const o of ctx.g.children.slice(snap.kids)) ctx.g.remove(o);
       continue;
@@ -4161,8 +4184,8 @@ function rpSofa(ctx, S, B) {
   for (const l2 of [len, Math.max(1.5, len - 0.5), 1.5]) for (const off of l2 < a1 - a0 - 0.1 ? [0, (a1 - a0 - l2) / 2, -(a1 - a0 - l2) / 2] : [0]) {
     const p = add2(add2(B.wall, xv, (a0 + a1) / 2 + off), B.front, dp / 2 + 0.01), R = { c: p, d: xv, hl: l2 / 2, hw: dp / 2 };
     if (rpDoorHit(ctx, R) || rpBlocks(ctx, R)) continue;
-    rpPut(ctx, S, F.sofa(m, { len: l2, depth: dp }), p, B.ang);
-    (S.has ||= {}).sofa = { p, f: B.front, ang: B.ang, len: l2, xv, wall: B.atWall };
+    const obj = rpPut(ctx, S, F.sofa(m, { len: l2, depth: dp }), p, B.ang);
+    (S.has ||= {}).sofa = { p, f: B.front, ang: B.ang, len: l2, xv, wall: B.atWall, obj, drawn: true };
     return;
   }
   ctx.notes.push('sofa in ' + S.id + ' left out (it would block the way)');
@@ -4675,7 +4698,7 @@ function rpTable(ctx, S, f) {
         if (!rpFree(ctx, S, R, { zones: false, tol: 0, anyRoom: true })) continue;
         if (ctx.occ.some(q => rectOverlap({ ...R, hw: R.hw + 0.55 }, q, -0.02) && Math.abs(dot2(q.d, xv)) > 0.9 && q.tag === 'kitchen')) continue;   // a working aisle behind it
         if (rpDoorHit(ctx, R) || rpBlocks(ctx, R)) continue;
-        rpPut(ctx, S, isl, p, B.ang); ctx.island = { u: +p[0].toFixed(2), v: +p[1].toFixed(2), len, depth: 0.7, level: 0 };
+        rpPut(ctx, S, isl, p, B.ang); ctx.island = { u: +p[0].toFixed(2), v: +p[1].toFixed(2), len, depth: 0.7, level: 0 }; ctx.islandObj = { obj: isl, S, bar: true };
         return;
       }
     }
@@ -4693,7 +4716,7 @@ function rpTable(ctx, S, f) {
       const rest = B.dp - 0.95, tc = add2(B.wall, B.front, 0.95 + rest / 2);
       if (so && rest >= 0.8) {
         const R = { c: tc, d: xOf(B.ang), hl: 0.38, hw: 0.38 };
-        if (rpFree(ctx, S, R, { passages: false, tol: 0 }) && !rpBlocks(ctx, R)) { rpPut(ctx, S, rpDiningSet(ctx, 0.7, 0.7, 2), tc, B.ang + HALF, 0, { tag: 'table' }); S.has.table = true; ctx.diningAt = { u: tc[0], v: tc[1] }; }
+        if (rpFree(ctx, S, R, { passages: false, tol: 0 }) && !rpBlocks(ctx, R)) { const ds = rpPut(ctx, S, rpDiningSet(ctx, 0.7, 0.7, 2), tc, B.ang + HALF, 0, { tag: 'table' }); (ctx.tables ||= []).push({ obj: ds, S }); S.has.table = true; ctx.diningAt = { u: tc[0], v: tc[1] }; }
       }
       if (so) return;
     }
@@ -4714,7 +4737,8 @@ function rpTable(ctx, S, f) {
       if ((ox && sx < 0.1) || (oz && sz < 0.1)) continue;
       const p = add2(add2(c, xv, ox), zv, oz), R = { c: p, d: xv, hl: l2 / 2 + 0.03, hw: w2 / 2 + 0.03 };
       if (!rpFree(ctx, S, R, { passages: false, tol: 0.0, pad: -0.05 }) || rpBlocks(ctx, R)) continue;
-      rpPut(ctx, S, rpDiningSet(ctx, l2, w2, sides), p, a, 0, { tag: 'table' });
+      const ds = rpPut(ctx, S, rpDiningSet(ctx, l2, w2, sides), p, a, 0, { tag: 'table' });
+      (ctx.tables ||= []).push({ obj: ds, S });
       (S.has ||= {}).table = true; ctx.diningAt = { u: p[0], v: p[1] };
       return;
     }
@@ -4733,7 +4757,7 @@ function rpKitchen(ctx, k) {
       for (const [ox, oz] of [[0, 0], [0.4, 0], [-0.4, 0], [0.8, 0], [-0.8, 0], [0, -0.3], [0.4, -0.3], [-0.4, -0.3], [0, 0.3]]) {
         const p = add2(add2(B.c, k.xv, ox), B.front, oz), R = { c: add2(p, B.front, sb.z || 0), d: k.xv, hl: sb.w / 2, hw: sb.d / 2 };
         if (!rpFree(ctx, S, R, { zones: false, anyRoom: true }) || rpDoorHit(ctx, R) || rpBlocks(ctx, R)) continue;
-        rpPut(ctx, S, isl, p, B.ang); ctx.island = { u: +p[0].toFixed(2), v: +p[1].toFixed(2), len, depth: 0.86, level: 0 };
+        rpPut(ctx, S, isl, p, B.ang); ctx.island = { u: +p[0].toFixed(2), v: +p[1].toFixed(2), len, depth: 0.86, level: 0 }; ctx.islandObj = { obj: isl, S };
         return;
       }
     }
@@ -4747,7 +4771,8 @@ function rpKitchen(ctx, k) {
   const [rn, rp] = rpReach(S, wall, B.front, xv, 0.6);
   x0 = Math.max(x0, -rn); x1 = Math.min(x1, rp);
   while (!okAt(x0, x1) && x1 - x0 > 0.7) { if (dot2(sub2(S.c, wall), xv) > (x0 + x1) / 2) x0 += 0.05; else x1 -= 0.05; }
-  const want = S.kind === 'kitchen' ? 2.4 : 2.1;
+  // (V23: long enough for sink + hob + a 60 cm prep worktop, + the tall column where there is one)
+  const want = Math.max(S.kind === 'kitchen' ? 2.4 : 2.1, k.tall && !cut ? 2.4 : 1.8);
   for (let it = 0; it < 80 && x1 - x0 < want; it++) {
     let grown = false;
     if (x1 + 0.05 <= rp && okAt(x0, x1 + 0.05)) { x1 += 0.05; grown = true; }
@@ -4775,12 +4800,13 @@ function rpKitchen(ctx, k) {
   // (the regular plan has the sink towards −x and the hob towards +x; the compact one starts with what it carries at −x)
   const compactPath = noHob || noSink || len - (tall === 'none' ? 0 : 0.6) < 1.65;
   const flip = !ref ? false : compactPath ? rx > 0 : k.hob ? rx < 0 : rx > 0;
-  const kr = F.kitchenRun(m, len, { tall, ovenColumn: false, ceiling: CH, washer: (k.washer || (!ctx.laundry && !ctx.drawn.has('washing-machine'))) && len >= 2.7 && lone, uppers: !cut && !win && B.atWall, hood: !cut && !win && B.atWall && !noHob, cut, flip,
-    compact: true, plain: noHob && noSink, noHob, noSink });
+  const kopt = { tall, ovenColumn: false, ceiling: CH, washer: (k.washer || (!ctx.laundry && !ctx.drawn.has('washing-machine'))) && len >= 2.7 && lone, uppers: !cut && !win && B.atWall, hood: !cut && !win && B.atWall && !noHob, cut, flip,
+    compact: true, plain: noHob && noSink, noHob, noSink };
+  const kr = F.kitchenRun(m, len, kopt);
   rpPut(ctx, S, kr, p, B.ang, 0, { tag: 'kitchen' });
   if (kr.userData.hasWasher || k.washer) ctx.laundry = 'kitchen';
   if (k.tall && !cut) ctx.fridge = true;
-  ctx.kitchens.push({ S, p, ang: B.ang, len, front: B.front });
+  ctx.kitchens.push({ S, p, ang: B.ang, len, front: B.front, prep: kr.userData.prep || 0, obj: kr, at: p, kopt, xv });
 }
 
 // ---- rule-based furnishing of what the plan does not draw (by room kind, along free wall stretches)
@@ -4801,11 +4827,12 @@ function rpRules(ctx) {
         if (!sp) continue;
         const endL = sp.s - len / 2, endR = sp.seg.len - sp.s - len / 2;
         const tall = cut || ctx.fridge || len < 2.4 ? 'none' : endL <= endR ? 'left' : 'right';
-        const kr = F.kitchenRun(m, len, { tall, ovenColumn: false, ceiling: CH, washer: !ctx.laundry && len >= 2.7, uppers: !cut, hood: !cut, cut, compact: true });
-        if (!rpTry(ctx, S, kr, add2(sp.p, sp.nin, 0.31 + 0.012), sp.ang, 0, { tag: 'kitchen' })) continue;
+        const kopt = { tall, ovenColumn: false, ceiling: CH, washer: !ctx.laundry && len >= 2.7, uppers: !cut, hood: !cut, cut, compact: true };
+        const kr = F.kitchenRun(m, len, kopt), at = add2(sp.p, sp.nin, 0.31 + 0.012);
+        if (!rpTry(ctx, S, kr, at, sp.ang, 0, { tag: 'kitchen' })) continue;
         if (kr.userData.hasWasher) ctx.laundry = 'kitchen';
         if (tall !== 'none') ctx.fridge = true;
-        ctx.kitchens.push({ S, p: sp.c, ang: sp.ang, len, front: sp.nin });
+        ctx.kitchens.push({ S, p: sp.c, ang: sp.ang, len, front: sp.nin, prep: kr.userData.prep || 0, obj: kr, at, kopt, xv: xOf(sp.ang) });
         break;
       }
       if (!ctx.fridge && ctx.kitchens.length) {
@@ -4943,15 +4970,397 @@ function rpRules(ctx) {
     } catch (err) { ctx.notes.push('furnish ' + S.id + ': ' + (err && err.message)); }
   }
 }
-// Living room: sofa (as drawn or along a free wall), coffee table, rug, TV opposite, floor lamp, dining set, plant.
+// ---- V23 (owner, 11 Oct): in every flat the sofa faces the TV — the TV on the wall straight in front of the sofa,
+// centred on it, 1.9 – 3.6 m from the seat (best 2 – 3.5 m, aimed at 2.6 m), the screen's centre at eye height (1.15 m),
+// the coffee table between them and nothing taller than it in the way; walkways of 80 cm around the group. The sofa's
+// wall and the TV's wall are chosen together from the room's walls (a drawn sofa keeps its place when that works); a
+// sofa-bed (studios) stays where its own search put it (that search already prefers walls with a TV wall opposite).
+// Where nothing fits: the kitchen island goes (the kitchen line keeps its worktop), then the dining table (put back by
+// the dining rule if it still fits), then the limits are relaxed.
+const TV_Y = 1.15, TV_D0 = 2.0, TV_D1 = 3.5, TV_BEST = 2.6, TV_LAT = Math.tan(11 * PI / 180);
+// the wall in front of a seat (centre c, looking along f): where a TV of width tw (or the widest of the list) hangs
+function rpTvSpot(ctx, S, c, f, o = {}) {
+  const why = o.why || null, no = k => { if (why) why[k] = (why[k] || 0) + 1; return null; };
+  const D = rayPoly(c, f, S.poly);
+  if (!Number.isFinite(D)) return no('tv.ray');
+  const W = add2(c, f, D);
+  const seg = S.segs.find(q => Math.abs(dot2(sub2(W, q.a), q.nin)) < 0.06 && dot2(q.nin, f) < -0.97 && dot2(sub2(W, q.a), q.d) > -0.02 && dot2(sub2(W, q.a), q.d) < q.len + 0.02);
+  if (!seg) return no('tv.seg');
+  const s0 = dot2(sub2(W, seg.a), seg.d), d0 = o.dmin ?? TV_D0, d1 = o.dmax ?? TV_D1;
+  let last = 'tv.len';
+  for (const tw of o.widths || [1.45, 1.2, 1.0]) {
+    if (seg.len < tw + 0.06) continue;
+    // (centred on the sofa's line; else slid along the wall within the angle allowed — past a window, a door, a sink)
+    const seen = new Set();
+    for (const kk of [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6]) {
+    const s = clamp(s0 + kk * 0.1, tw / 2 + 0.03, seg.len - tw / 2 - 0.03);
+    if (seen.has(s.toFixed(3))) continue; seen.add(s.toFixed(3));
+    const wp = add2(seg.a, seg.d, s), scr = add2(wp, seg.nin, 0.1);   // (0.1: the set over a media unit)
+    const dist = Math.hypot(scr[0] - c[0], scr[1] - c[1]);
+    if (dist < d0 || dist > d1) { last = dist < d0 ? 'tv.near' : 'tv.far'; continue; }
+    if (Math.abs(s - s0) > dist * (o.lat ?? TV_LAT)) { last = 'tv.lat'; continue; }
+    if (seg.wins.some(q => q.s1 > s - tw / 2 - 0.05 && q.s0 < s + tw / 2 + 0.05)) { last = 'tv.win'; continue; }
+    const R = { c: add2(wp, seg.nin, 0.16), d: seg.d, hl: tw / 2 + 0.03, hw: 0.16 };
+    if (!pointInPoly(R.c, S.poly)) { last = 'tv.out'; continue; }
+    if (ctx.zones.some(z => z.kind === 'swing' && rectOverlap(R, z.core ? { ...z, hl: z.core } : z))) { last = 'tv.swing'; continue; }
+    let counter = null;
+    { const hits = ctx.occ.filter(q => q !== o.skip && !q.ghost && !q.wallOnly && ((q.h ?? 1) > 0.6 || /kitchen|fridge|wardrobe|pantry|shel|cabinet|island|desk|bed/i.test(q.tag || '')) && rectOverlap(R, q));
+      if (hits.length) {
+        // (last resort, o.counter: the set hangs over the plain worktop of a kitchen line — never over its sink, hob
+        // or tall column — with the wall cabinets there left out)
+        const run = o.counter && hits.length === 1 && hits[0].tag === 'kitchen' ? ctx.kitchens.find(k => k.obj && k.obj.userData.rpRect === hits[0] && k.kopt && !k.kopt.cut) : null;
+        let ok = false, end = null;
+        if (run && dot2(run.front, seg.nin) > 0.97 && run.obj.userData.base) {
+          // (the line is rebuilt with its plain worktop at the end under the set: sink + hob at the other end)
+          const ud = run.obj.userData, lx = dot2(sub2(wp, run.at), run.xv), a = lx - tw / 2 - 0.05, b = lx + tw / 2 + 0.05, [x0, x1] = ud.base, pl = x1 - x0 - (run.kopt.noHob || run.kopt.noSink ? 0.6 : 1.2);
+          if (pl >= 0.6) { if (a >= x1 - pl - 1e-3 && b <= x1 + 0.01) { ok = true; end = 'right'; } else if (a >= x0 - 0.01 && b <= x0 + pl + 1e-3) { ok = true; end = 'left'; } }
+        }
+        if (!ok) { last = 'tv.occ:' + (hits[0].tag || '?') + (o.counter ? (!run ? '/norun' + hits.length + (hits.map(h => h.tag).join('+')) : dot2(run.front, seg.nin) <= 0.97 ? '/front' : '/span ' + dot2(sub2(wp, run.at), run.xv).toFixed(2) + ' ' + (run.obj.userData.base || []).join('..')) : ''); continue; }
+        counter = run; counter.end = end;
+      } }
+    return { seg, s, wp, tw, dist, D, counter };
+    }
+  }
+  return no(last);
+}
+// a footprint against the door zones, a door's swing as the leaf really sweeps (its quarter circle, not its box)
+function rpZoneHit(ctx, R) {
+  for (const z of ctx.zones) {
+    if (z.kind === 'media' || z.kind === 'bedside' || !rectOverlap(R, z, -0.01)) continue;
+    if (z.kind !== 'swing' || !z.hinge) return z;
+    const n = [-z.d[1], z.d[0]], r = z.r + 0.03;
+    for (let a = -r; a <= r; a += 0.05) for (let b = -r; b <= r; b += 0.05) {
+      if (a * a + b * b > r * r) continue;
+      const x = z.hinge[0] + z.d[0] * a + n[0] * b, y = z.hinge[1] + z.d[1] * a + n[1] * b, q = [x - z.c[0], y - z.c[1]], w = [x - R.c[0], y - R.c[1]];
+      if (Math.abs(dot2(q, z.d)) < z.hl + 0.02 && Math.abs(cross2(z.d, q)) < z.hw + 0.02 && Math.abs(dot2(w, R.d)) < R.hl && Math.abs(cross2(R.d, w)) < R.hw) return z;
+    }
+  }
+  return null;
+}
+// nothing taller than a coffee table on the floor between the seat's front edge and the screen (a strip along the line
+// of sight, as wide as the narrower of the two + 5 cm each side)
+function rpTvClear(ctx, so, tv, skip) {
+  const fr = add2(so.c, so.f, so.hw), scr = add2(tv.wp, tv.seg.nin, 0.1), v = sub2(scr, fr), L = Math.hypot(v[0], v[1]);
+  if (L < 0.4) return false;
+  const d = [v[0] / L, v[1] / L], R = { c: add2(fr, d, L / 2), d, hl: L / 2 - 0.02, hw: Math.max(0.2, Math.min(so.len, tv.tw) / 2) };
+  return !ctx.occ.some(q => !q.ghost && !q.wallOnly && !(skip && skip.includes(q)) && (q.h ?? 1) > 0.45 && !/coffeeTable|tvUnit/.test(q.tag || '') && rectOverlap(R, q));
+}
+// take a placed piece out (and back): its object and its footprint
+function rpLift(ctx, rec) { const o = rec.obj, R = o.userData.rpRect; rec.parent = o.parent; if (o.parent) o.parent.remove(o); if (R) ctx.occ = ctx.occ.filter(q => q !== R); return rec; }
+function rpUnlift(ctx, rec) { const o = rec.obj, R = o.userData.rpRect; if (rec.parent) rec.parent.add(o); if (R) ctx.occ.push(R); }
+// the sofa ↔ TV pair of a living room → { so: {p, c, f, ang, len, xv, hw, wall, floating, keep}, tv, ct } or null
+function rpMediaFind(ctx, S, fd, o = {}) {
+  // (the sofa that stands there now — and the opened sofa-bed's floor — are left out of the search: it may move)
+  const cur = S.has && S.has.sofa, sbq = cur && cur.bed ? ctx.sofaBed : null;
+  const own = [cur && cur.obj ? cur.obj.userData.rpRect : sbq ? sbq.obj.userData.rpRect : null, sbq ? ctx.occ.find(q => q.tag === 'sofaBed-open') : null].filter(Boolean);
+  ctx.occ = ctx.occ.filter(q => !own.includes(q));
+  try { return rpMediaFind0(ctx, S, fd, o, cur, sbq); } finally { ctx.occ.push(...own); }
+}
+function rpMediaFind0(ctx, S, fd, o, cur, sbq) {
+  const { m } = ctx, curR = null, K = sbq ? sbq.K : null;
+  const ct0 = F.coffeeTable(m), csb = ct0.userData.solidBox || { w: 1.1, d: 0.7 };
+  const cands = [], why = (ctx.mediaWhy ||= {}), PR = ctx.opts.mediaProbe || null;
+  let cc = null;
+  const no = k => { why[k] = (why[k] || 0) + 1; if (PR && cc && Math.hypot(cc[0] - PR.c[0], cc[1] - PR.c[1]) < (PR.r || 0.3)) (ctx.mediaProbeLog ||= []).push(k + ' @' + cc.map(x => x.toFixed(2)) + ' f' + (PR.f || '')); };
+  const okAt = (R) => rpFree(ctx, S, R, { skip: curR, tol: 0.02, zones: false }) && !rpZoneHit(ctx, R);
+  const consider = (p, f, len, dep, base, extra = {}) => {
+    let xv = xOf(angOf(f)), c = add2(p, f, dep / 2 + 0.012), R = { c, d: xv, hl: len / 2, hw: dep / 2 };
+    // (where it meets a door's swing or a way by a few cm: slid along its own axis, up to 0.2 m)
+    if (!extra.keep && !extra.shifted && !okAt(R)) for (const dx of [0.03, -0.03, 0.06, -0.06, 0.1, -0.1, 0.15, -0.15, 0.2, -0.2]) {
+      const R2 = { ...R, c: add2(c, xv, dx) };
+      if (okAt(R2)) { p = add2(p, xv, dx); c = R2.c; R = R2; break; }
+    }
+    cc = c;
+    const tvWhy = {}; 
+    const so = { p: c, c, f, ang: angOf(f), len, xv, hw: dep / 2, wall: !extra.floating, floating: !!extra.floating, keep: !!extra.keep, R, wallP: p }, so0 = () => so;
+    // (the widest set that hangs there with nothing in the line of sight)
+    let tv = null, tv0 = null;
+    for (const tw of o.widths || [1.45, 1.2, 1.0]) {
+      const t1 = rpTvSpot(ctx, S, c, f, { ...o, widths: [tw], skip: curR, why: tvWhy });
+      if (!t1) continue; tv0 = tv0 || t1;
+      if (rpTvClear(ctx, so0(), t1, t1.counter ? [t1.counter.obj.userData.rpRect] : null)) { tv = t1; break; }
+    }
+    if (!tv) tv = tv0;
+    for (const k in tvWhy) why[k] = (why[k] || 0) + tvWhy[k];
+    if (!tv) return no((extra.keep ? 'keepNoTv:' : 'noTv:') + Object.keys(tvWhy).join(','));
+    if (!extra.keep) {
+      if (!rpFree(ctx, S, R, { skip: curR, tol: 0.02, zones: false }) || rpZoneHit(ctx, R)) {
+        if (!PR) return no('notFree');
+        const oc = ctx.occ.find(q => rectOverlap(R, q, -0.012)), zn = rpZoneHit(ctx, R);
+        return no('notFree:' + (!rectInPoly(R, S.poly, 0.02) ? 'poly' : oc ? 'occ ' + oc.tag : zn ? 'zone ' + zn.kind + ' ' + zn.id : 'door'));
+      }
+      if (extra.floating && !rpFree(ctx, S, { c: add2(p, f, -0.42), d: xv, hl: len / 2 - 0.1, hw: 0.4 }, { skip: curR, zones: false, tol: 0.02 })) return no('behind');      // (an 80 cm way behind it)
+    }
+    if (!rpTvClear(ctx, so, tv, tv.counter ? [tv.counter.obj.userData.rpRect] : null)) {
+      if (!PR) return no(extra.keep ? 'keepBetween' : 'between');
+      const fr = add2(so.c, so.f, so.hw), scr = add2(tv.wp, tv.seg.nin, 0.1), v = sub2(scr, fr), L = Math.hypot(v[0], v[1]), d = [v[0] / L, v[1] / L];
+      const Rb = { c: add2(fr, d, L / 2), d, hl: L / 2 - 0.02, hw: Math.max(0.2, Math.min(so.len, tv.tw) / 2) };
+      const q = ctx.occ.find(q => !q.ghost && !q.wallOnly && (q.h ?? 1) > 0.45 && !/coffeeTable|tvUnit/.test(q.tag || '') && rectOverlap(Rb, q));
+      return no('between:' + (q ? q.tag + ' ' + q.c.map(x => x.toFixed(2)) : '?') + ' tw' + tv.tw);
+    }
+    if (K) {
+      // a sofa-bed: the floor its bed takes when opened — inside the room, clear of every piece and door (where it
+      // stands now its own search has checked that)
+      const Ro = extra.keep && sbq.Ro ? { ...sbq.Ro } : { c: add2(c, f, dep / 2 + K.ext / 2), d: xv, hl: K.extW / 2, hw: K.ext / 2, h: 0.55, tag: 'sofaBed-open', room: S.id, y: 0, ghost: true };
+      if (!extra.keep && (!rectInPoly(Ro, S.poly, 0.02) || !rpFree(ctx, S, Ro, { zones: false, tol: 0.02 }) || rpDoorHit(ctx, Ro))) return no('bedOpen');
+      so.Ro = Ro;
+      cands.push({ so, tv, ct: null, cts: [], sc: base - Math.abs(tv.dist - TV_BEST) * 0.8 + Math.min(2, fd(c)) * 0.25 - (extra.floating ? 0.9 : 0) - Math.abs(tv.s - dot2(sub2(add2(c, f, tv.D), tv.seg.a), tv.seg.d)) * 1.5, ctBox: { w: 1, d: 1 } });
+      return;
+    }
+    // coffee table: 0.35 – 0.45 m in front of the seat, ≥ 0.45 m clear before the TV wall (0.42 m media unit + way)
+    const room = tv.D - so.hw * 2 - 0.02;
+    // (the style's table, else the same table made smaller — 80 / 65 % — where the floor in front of the TV is short)
+    const cts = [];
+    for (const k of [1, 0.8, 0.65]) for (const gap of [0.4, 0.33]) {
+      const cw = csb.w * k, cd = csb.d * k, tc = add2(c, f, so.hw + gap + cd / 2), back = tv.D - so.hw - gap - cd;
+      if (back < 0.5 || cw < 0.55) continue;
+      const Rc = { c: tc, d: xv, hl: cw / 2, hw: cd / 2, h: 0.45, tag: 'coffeeTable' };
+      if (rpFree(ctx, S, Rc, { skip: curR, passages: false, tol: 0.02 })) { cts.push({ c: tc, R: Rc, k }); break; }
+    }
+    const ct = cts[0] || null;
+    let sc = base - Math.abs(tv.dist - TV_BEST) * 0.8 - (tv.dist < 2 || tv.dist > 3.5 ? 1 : 0) + len * 0.4 + (ct ? 1 : -1.6) + (tv.tw >= 1.2 ? 0.3 : 0)
+      - Math.abs(tv.s - dot2(sub2(add2(c, f, tv.D), tv.seg.a), tv.seg.d)) * 1.5 + Math.min(2, fd(c)) * 0.25 - (extra.floating ? 0.9 : 0) - (room < 1.2 ? 0.5 : 0);
+    cands.push({ so, tv, ct, cts, sc: sc - (ct ? (1 - ct.k) * 1.5 : 0), ctBox: csb });
+  };
+  if (cur) {
+    // the sofa where it stands (drawn, or the sofa-bed of a studio)
+    const len = cur.len, dep = K ? K.D : cur.obj ? cur.obj.userData.rpRect.hw * 2 : 0.95, p = add2(cur.p, cur.f, -(dep / 2 + 0.012));
+    consider(p, cur.f, len, dep, K ? 6 : 2.2, { keep: true });
+    // … or brought forward off its wall by up to 30 cm (a room a little deeper than the viewing distance)
+    for (const dx of [0.1, 0.2, 0.3]) consider(add2(p, cur.f, dx), cur.f, len, dep, (K ? 5.6 : 1.9) - dx, { shifted: true });
+  }
+  const SD = K ? K.D : 0.95;
+  {
+    const lens = K ? [K.L] : [...new Set([cur ? Math.min(2.6, Math.max(1.7, cur.len)) : 2.3, 2.2, 2.0, 1.8, 1.6, 1.5, ...(o.relaxed ? [1.4] : [])].map(x => +x.toFixed(2)))];
+    for (const seg of S.segs) for (const len of lens) {
+      if (seg.len < len - 1e-3) continue;
+      const xs = []; for (let s = len / 2; s <= seg.len - len / 2 + 1e-6; s += 0.1) xs.push(s); xs.push(seg.len / 2);
+      for (const s of xs) {
+        if (s < len / 2 - 1e-6 || s > seg.len - len / 2 + 1e-6) continue;
+        const win = seg.wins.filter(q => q.s1 > s - len / 2 + 0.02 && q.s0 < s + len / 2 - 0.02);
+        if (win.some(q => q.sill < 0.82)) continue;                                // (no sofa against glass down to the floor)
+        const p = add2(seg.a, seg.d, s), near = cur ? Math.hypot(add2(p, seg.nin, 0.49)[0] - cur.p[0], add2(p, seg.nin, 0.49)[1] - cur.p[1]) : 9;
+        const base = (cur && near < 0.35 && dot2(seg.nin, cur.f) > 0.95 ? 1.6 : 0) - (win.length ? 0.6 : 0) - Math.abs(s - seg.len / 2) * 0.05;
+        consider(p, seg.nin, len, SD, base);
+        // a room deeper than the best viewing distance: the sofa may stand free, 0.9 m in front of its wall (a way behind it)
+        const D = rayPoly(add2(p, seg.nin, 0.5), seg.nin, S.poly);
+        if (o.floating !== false && D > 4.1) consider(add2(p, seg.nin, 0.9), seg.nin, len, SD, base, { floating: 0.9 });
+      }
+    }
+    // … and from the TV's side: a sofa standing free straight in front of a TV wall (a way of ≥ 0.85 m behind its back)
+    if (o.floating !== false) for (const seg of S.segs) {
+      if (seg.len < 1.06) continue;
+      for (let s = 0.48; s <= seg.len - 0.48 + 1e-6; s += 0.1) {
+        if (seg.wins.some(q => q.s1 > s - 0.55 && q.s0 < s + 0.55)) continue;
+        const wp = add2(seg.a, seg.d, s), f = [-seg.nin[0], -seg.nin[1]];
+        for (const dist of (o.dmin ?? TV_D0) < 1.85 ? [1.55, 1.7, 1.85, 2.0, 2.3, 2.7] : [2.0, 2.3, 2.7, 3.1]) {
+          const c = add2(wp, seg.nin, 0.045 + dist);
+          if (!pointInPoly(c, S.poly)) continue;
+          for (const len of K ? [K.L] : o.relaxed ? [2.0, 1.8, 1.6, 1.5, 1.4] : [2.0, 1.8, 1.6, 1.5]) {
+            const p = add2(c, f, -(SD / 2 + 0.012)), gB = rayPoly(add2(p, f, 0.02), seg.nin, S.poly);
+            // (a way of ≥ 0.85 m behind it, or close to a wall — up to 0.35 m off it, nobody walks there)
+            if (!(gB > 0.87 || gB < 0.37)) continue;
+            const near = cur ? Math.hypot(c[0] - cur.p[0], c[1] - cur.p[1]) : 9;
+            consider(p, f, len, SD, (cur && near < 0.5 && dot2(f, cur.f) > 0.95 ? 1.2 : 0) - (gB < 0.37 ? 0.2 : 0), gB < 0.37 ? {} : { floating: Math.min(0.9, gB - 0.02) });
+          }
+        }
+      }
+    }
+  }
+  cands.sort((a, b) => b.sc - a.sc);
+  // the way: everything reachable before stays reachable — on the walkthrough's grid always, with an 80 cm body when
+  // o.wide (the first pass)
+  const lifted = curR ? ctx.occ.indexOf(curR) : -1;
+  if (lifted >= 0) ctx.occ.splice(lifted, 1);
+  const b0 = rpReach0(ctx), w0 = o.wide ? rpReach0(ctx, false, false, 0.4) : null;
+  let pick = null, n = 0;
+  // (first a pair that keeps a coffee table between them, then any)
+  for (const needCt of [true, false]) { n = 0; if (pick) break;
+  for (const k of cands) {
+    if (++n > 80) break;
+    // (with its coffee table; else a smaller one; at worst none)
+    const opts = [...k.cts, ...[0.8, 0.65, 0.5].filter(x => !k.cts.length || x < k.cts[k.cts.length - 1].k).map(x => {
+      const cw = k.ctBox.w * x, cd = k.ctBox.d * x;
+      for (const gap of [0.4, 0.33, 0.28]) { const tc = add2(k.so.c, k.so.f, k.so.hw + gap + cd / 2), Rc = { c: tc, d: k.so.xv, hl: cw / 2, hw: cd / 2, h: 0.45, tag: 'coffeeTable' };
+        if (k.tv.D - k.so.hw - gap - cd >= 0.35 && cw >= 0.45 && rpFree(ctx, S, Rc, { skip: curR, passages: false, tol: 0.02 })) return { c: tc, R: Rc, k: x }; }
+      return null; }).filter(Boolean), null];
+    for (const ct of k.so.Ro ? [null] : opts) {
+      if (needCt && !ct && !k.so.Ro) continue;
+      const add = [k.so.R, ...(ct ? [ct.R] : []), ...(k.so.Ro ? [k.so.Ro] : [])];
+      ctx.occ.push(...add);
+      const ok1 = !rpWorse(b0, rpReach0(ctx)), ok2 = ok1 && (!w0 || !rpWorse(w0, rpReach0(ctx, false, false, 0.4), 60));
+      ctx.occ.length -= add.length;
+      if (ok1 && ok2) { pick = { ...k, ct }; break; }
+      cc = k.so.c; no(ok1 ? 'way80' : 'way');
+    }
+    if (pick) break;
+  }
+  }
+  if (lifted >= 0) ctx.occ.push(curR);
+  return pick;
+}
+function rpMedia(ctx, S, fd) {
+  const media = ctx.media = { room: S.id, changed: false, islandRemoved: false, diningRemoved: false, relaxed: false };
+  const cur = S.has && S.has.sofa;
+  const island = ctx.islandObj || null, tables = (ctx.tables || []).filter(q => q.S === S);
+  // (2 – 3.5 m with 80 cm ways first; then 1.7 – 3.75 m still with 80 cm ways; then the walkthrough's own clearance; last
+  // 1.5 – 3.75 m with a set of ≤ 1.2 m)
+  const SOFT = { dmin: 1.7, dmax: 3.75, lat: Math.tan(13 * PI / 180) };
+  const tries = [{ wide: true }, { wide: true, drop: ['island'] }, { wide: true, drop: ['island', 'dining'] }, { wide: true, soft: true, drop: ['island', 'dining'], ...SOFT },
+    { wide: false, drop: ['island', 'dining'], ...SOFT },
+    { wide: false, relaxed: true, drop: ['island', 'dining'], dmin: 1.5, dmax: 3.75, lat: Math.tan(13 * PI / 180), widths: [1.2, 1.0, 0.9] }];
+  const T_NARROW = tries[4], T_RELAX = tries[5];
+  const lifted = [];
+  let pick = null, used = null;
+  for (const t of tries) {
+    let fresh = false;
+    const prepOk = Math.max(0, ...ctx.kitchens.map(k => k.prep || 0)) >= 0.6;
+    if ((t.drop || []).includes('island') && island && !island.lifted && prepOk) { lifted.push(rpLift(ctx, island)); island.lifted = fresh = true; }
+    if ((t.drop || []).includes('dining')) for (const tb of tables) if (!tb.lifted) { lifted.push(rpLift(ctx, tb)); tb.lifted = fresh = true; }
+    if (t.drop && !fresh && t.wide && t.drop.length < 2) continue;
+    if (t.drop && !fresh && t.wide && t.drop.length === 2 && tries.indexOf(t) === 2) continue;
+    pick = rpMediaFind(ctx, S, fd, t);
+    if (pick) { used = t; break; }
+  }
+  // still nothing: a kitchen line of this room is made shorter (it keeps its sink, hob, tall column and a 60 cm prep
+  // worktop) — the freed wall takes the TV or the sofa; the shortest change that works is kept
+  if (!pick) {
+    const { m } = ctx;
+    const runs = ctx.kitchens.filter(k => k.S === S && k.obj && k.kopt && !k.kopt.cut);
+    const vars = [];
+    for (const k of runs) {
+      const o = k.kopt, minLen = o.plain ? 0.6 : (o.noHob || o.noSink ? 1.2 : 1.8) + (o.tall && o.tall !== 'none' ? 0.6 : 0);
+      for (const L2 of [...new Set([k.len - 0.6, k.len - 0.9, minLen].map(x => +x.toFixed(2)))].filter(x => x >= minLen - 1e-6 && x <= k.len - 0.3).sort((a, b) => b - a))
+        for (const e of [1, -1]) vars.push({ k, L2, e });
+    }
+    for (const t of [tries[3], T_NARROW, T_RELAX, { ...T_RELAX, counter: true }]) {
+      if (t.counter) { pick = rpMediaFind(ctx, S, fd, t); if (pick) { used = t; break; } continue; }
+      for (const v of vars) {
+        const k = v.k, R0 = k.obj.userData.rpRect; if (!R0) continue;
+        const dx = v.e * (k.len - v.L2) / 2, tmp = { ...R0, c: add2(R0.c, k.xv, dx), hl: v.L2 / 2 };
+        const rec = rpLift(ctx, { obj: k.obj }); ctx.occ.push(tmp);
+        const pk = rpMediaFind(ctx, S, fd, t);
+        ctx.occ = ctx.occ.filter(q => q !== tmp);
+        if (pk) {
+          const o2 = { ...k.kopt, washer: k.kopt.washer && v.L2 >= 2.7 }, kr = F.kitchenRun(m, v.L2, o2);
+          if ((kr.userData.prep || 0) < 0.6 && !k.kopt.plain) { rpUnlift(ctx, rec); continue; }
+          const at = add2(k.at, k.xv, dx);
+          rpPut(ctx, S, kr, at, k.ang, 0, { tag: 'kitchen' });
+          if (k.kopt.washer && !o2.washer && ctx.laundry === 'kitchen') ctx.laundry = null;
+          ctx.notes.push('kitchen line in ' + S.id + ' shortened ' + k.len.toFixed(2) + ' → ' + v.L2.toFixed(2) + ' m (the sofa faces the TV)');
+          media.kitchenShort = { from: +k.len.toFixed(2), to: v.L2, prep: kr.userData.prep || 0 };
+          Object.assign(k, { obj: kr, at, len: v.L2, p: add2(k.p, k.xv, dx), prep: kr.userData.prep || 0, kopt: o2 });
+          pick = pk; used = t; break;
+        }
+        rpUnlift(ctx, rec);
+      }
+      if (pick) break;
+    }
+  }
+  // a flat that has a bedroom does not need its living room's sofa to be a bed: where the sofa-bed finds no place facing
+  // a TV, a sofa takes its place (studios keep the sofa-bed)
+  if (!pick && cur && cur.bed && ctx.sofaBed && hasBedroomK(ctx.P)) {
+    const q = ctx.sofaBed, G = ctx.occ.find(x => x.tag === 'sofaBed-open');
+    const rec = rpLift(ctx, { obj: q.obj }); if (G) ctx.occ = ctx.occ.filter(x => x !== G);
+    const hasSave = S.has.sofa; S.has.sofa = null; ctx.sofaBed = null;
+    for (const t of [tries[3], T_NARROW, T_RELAX, { ...T_RELAX, counter: true }]) { pick = rpMediaFind(ctx, S, fd, t); if (pick) { used = t; break; } }
+    if (pick) { media.sofaBedReplaced = true; ctx.notes.push('sofa-bed in ' + S.id + ' replaced by a sofa facing the TV (the flat has a bedroom)'); }
+    else { rpUnlift(ctx, rec); if (G) ctx.occ.push(G); S.has.sofa = hasSave; ctx.sofaBed = q; }
+  }
+  if (!pick) {
+    // nothing works even without them: put them back, the TV follows the old rule (rpEnsureTv)
+    for (const r of lifted) { rpUnlift(ctx, r); r.lifted = false; }
+    ctx.notes.push('media: no sofa ↔ TV arrangement in ' + S.id);
+    media.fail = true; media.why = ctx.mediaWhy; media.probe = (ctx.mediaProbeLog || []).slice(-60);
+    return null;
+  }
+  media.relaxed = !!used.relaxed; media.soft = !!used.soft; media.wide = !!used.wide;
+  // pieces taken out go back where they leave the pair, its strip and the ways as found (dining table first)
+  const pairR = [pick.so.R, ...(pick.ct ? [pick.ct.R] : []), { c: add2(pick.tv.wp, pick.tv.seg.nin, 0.3), d: pick.tv.seg.d, hl: pick.tv.tw / 2 + 0.1, hw: 0.3 }];
+  const nOcc = ctx.occ.length;
+  ctx.occ.push(...pairR.slice(0, -1));
+  for (const r of lifted.slice().sort((x, y) => (x === island ? 1 : 0) - (y === island ? 1 : 0))) {
+    const R = r.obj.userData.rpRect;
+    if (!R || pairR.some(Q => rectOverlap(R, Q, 0.05))) continue;
+    const b0 = rpReach0(ctx), w0 = used.wide ? rpReach0(ctx, false, false, 0.4) : null;
+    rpUnlift(ctx, r);
+    const ok = rpTvClear(ctx, pick.so, pick.tv, [pick.so.R]) && !rpWorse(b0, rpReach0(ctx)) && (!w0 || !rpWorse(w0, rpReach0(ctx, false, false, 0.4), 60));
+    if (ok) { r.lifted = false; continue; }
+    rpLift(ctx, r);
+  }
+  ctx.occ.splice(nOcc, pairR.length - 1);
+  if (island && island.lifted) { ctx.island = null; media.islandRemoved = true; ctx.notes.push('kitchen island in ' + island.S.id + ' removed (the sofa faces the TV)'); }
+  if (tables.some(q => q.lifted)) { ctx.diningAt = null; if (S.has) S.has.table = false; media.diningRemoved = true; ctx.notes.push('dining table in ' + S.id + ' left out / moved (the sofa faces the TV)'); }
+  // the sofa
+  const { m, cut } = ctx;
+  let so = cur;
+  if (!pick.so.keep && cur && cur.bed && ctx.sofaBed) {
+    // the sofa-bed moves (its object, footprint, opened-bed floor and record)
+    const q = ctx.sofaBed, k = pick.so, R = q.obj.userData.rpRect, G = ctx.occ.find(x => x.tag === 'sofaBed-open');
+    q.obj.position.set(k.c[0], 0, k.c[1]); q.obj.rotation.y = k.ang;
+    if (R) { R.c = add2(k.c, k.f, (R.c && q.pc ? dot2(sub2(R.c, q.pc), q.f) : 0)); R.d = k.xv.slice(); }
+    if (G) { G.c = k.Ro.c; G.d = k.Ro.d; }
+    Object.assign(q, { p: k.wallP, f: k.f, xv: k.xv, ang: k.ang, pc: k.c, Ro: G || k.Ro, moved: true });
+    so = S.has.sofa = { ...cur, p: k.c, f: k.f, ang: k.ang, xv: k.xv, wall: !k.floating, floating: k.floating };
+    media.changed = true; ctx.notes.push('sofa-bed in ' + S.id + ' moved to face the TV');
+  } else if (!pick.so.keep) {
+    if (cur && cur.obj) rpLift(ctx, { obj: cur.obj });
+    const k = pick.so, obj = rpPut(ctx, S, F.sofa(m, { len: k.len }), k.c, k.ang);
+    so = (S.has ||= {}).sofa = { p: k.c, f: k.f, ang: k.ang, len: k.len, xv: k.xv, wall: !k.floating, obj, floating: k.floating };
+    media.changed = true;
+    if (cur) ctx.notes.push('sofa in ' + S.id + ' moved to face the TV');
+  }
+  media.sofa = { c: [+so.p[0].toFixed(3), +so.p[1].toFixed(3)], f: so.f.slice(), len: so.len };
+  // the coffee table
+  if (pick.ct && !(so.bed)) { const ct = F.coffeeTable(m); if (pick.ct.k < 1) ct.scale.set(pick.ct.k, 1, pick.ct.k); rpPut(ctx, S, ct, pick.ct.c, so.ang, 0, { box: { w: pick.ct.R.hl * 2, d: pick.ct.R.hw * 2, h: (ct.userData.solidBox || {}).h || 0.42 }, tag: 'coffeeTable' }); media.coffee = +pick.ct.k.toFixed(2); }
+  else if (pick.ct && so.bed) media.coffee = false;           // (a sofa-bed keeps the floor in front free: a side table)
+  // the TV wall: media unit under the set where the floor takes it, else the set alone on the wall
+  const tv = pick.tv, seg = tv.seg, a = angOf(seg.nin), H = tv.tw * 0.565, yB = tv.counter ? Math.max(TV_Y - H / 2, 1.02) : TV_Y - H / 2;
+  let unit = false;
+  if (tv.counter) {
+    // the kitchen line under the set loses its wall cabinets (the hood stays over the hob)
+    const k = tv.counter, o2 = { ...k.kopt, uppers: false, prepEnd: k.end, washer: false };
+    if (k.kopt.washer && ctx.laundry === 'kitchen') ctx.laundry = null;
+    rpLift(ctx, { obj: k.obj }); const kr = F.kitchenRun(m, k.len, o2); rpPut(ctx, k.S, kr, k.at, k.ang, 0, { tag: 'kitchen' });
+    Object.assign(k, { obj: kr, kopt: o2, prep: kr.userData.prep || 0 }); media.overCounter = true;
+    ctx.notes.push('TV in ' + S.id + ' over the kitchen worktop (no wall cabinets there)');
+  }
+  if (!so.bed && !tv.counter) for (const tl of [Math.min(2.0, tv.tw + 0.55), tv.tw + 0.2]) {
+    const s = clamp(tv.s, tl / 2 + 0.02, seg.len - tl / 2 - 0.02);
+    if (seg.len < tl + 0.04 || Math.abs(s - tv.s) > 0.25 || seg.wins.some(q => q.s1 > s - tl / 2 && q.s0 < s + tl / 2)) continue;
+    const wp = add2(seg.a, seg.d, s), R = { c: add2(wp, seg.nin, 0.222), d: seg.d, hl: tl / 2, hw: 0.21 };
+    if (!rpFree(ctx, S, R, { tol: 0.02 }) || rpBlocks(ctx, R)) continue;
+    rpPut(ctx, S, F.tvUnit(m, { len: tl }), add2(wp, seg.nin, 0.222), a); unit = tl;
+    // a slim lit shelf tower at an end of the media unit (rooms from 14 m²; plain wall behind, clear of every way)
+    if (S.area >= 14) for (const e of [1, -1]) {
+      const sx = s + e * (tl / 2 + 0.06 + 0.25);
+      if (sx < 0.27 || sx > seg.len - 0.27 || seg.wins.some(q => q.s1 > sx - 0.3 && q.s0 < sx + 0.3)) continue;
+      const c = add2(add2(seg.a, seg.d, sx), seg.nin, 0.16 + 0.012);
+      if (!rpFree(ctx, S, { c, d: seg.d, hl: 0.25, hw: 0.16 }, { tol: 0.012 }) || rpWinFront(S, { c, d: seg.d, hl: 0.25, hw: 0.16 }, 0.5)) continue;
+      if (rpTry(ctx, S, F.shelfTower(m, { w: 0.5, h: ctx.tallH, ceil: cut ? 0 : CH - ctx.tallH, seed: 3, side: -e }), c, a, 0, { tag: 'shelves', quiet: true })) { (ctx.extras ||= []).push({ kind: 'media-shelves', room: S.id }); break; }
+    }
+    break;
+  }
+  if (!cut) {
+    rpPut(ctx, S, F.tv(m, { w: tv.tw, live: true, glowZ: m.fam === 'riviera' && unit ? -0.012 : -0.043 }), add2(tv.wp, seg.nin, 0.1 - 0.0135), a, yB, { free: true }); ctx.tvRooms.push('living');     // (screen face 0.1 m off the wall: tilt / swivel bracket)
+    const fwl = Math.min(3.2, 2 * Math.min(tv.s, seg.len - tv.s) - 0.04);
+    if (unit && fwl >= unit + 0.3 && !seg.wins.some(q => q.s1 > tv.s - fwl / 2 && q.s0 < tv.s + fwl / 2)) featureWall(ctx, ctx.g, tv.wp[0], tv.wp[1], a, fwl);
+  }
+  // the floor between the seat and the screen stays free of anything placed later (dining set, plant, lamp …)
+  { const fr = add2(so.p, so.f, pick.so.hw), L = Math.max(0.2, tv.D - pick.so.hw - 0.05); ctx.zones.push({ kind: 'media', id: S.id, c: add2(fr, so.f, L / 2), d: so.f.slice(), hl: L / 2, hw: Math.min(so.len, tv.tw) / 2 }); }
+  Object.assign(media, { tv: { c: [+tv.wp[0].toFixed(3), +tv.wp[1].toFixed(3)], n: seg.nin.slice(), w: tv.tw, y: +(yB + H / 2).toFixed(3), dist: +tv.dist.toFixed(2), unit: !!unit }, score: +pick.sc.toFixed(2) });
+  return so;
+}
+// Living room: sofa facing the TV (rpMedia), coffee table, rug, floor lamp, dining set, plant.
 const hasBedroomK = P => P.rooms.some(r => r.kind === 'bedroom');
 function rpLounge(ctx, S, fd, wd, seed) {
   const { P, I, m, cut } = ctx;
-  let so = S.has && S.has.sofa;
   const bed = S.has && S.has.bed;
+  let so = null;
+  try { so = rpMedia(ctx, S, fd); } catch (err) { ctx.notes.push('media: ' + (err && err.message)); }
+  if (!so) so = S.has && S.has.sofa;
   if (!so && !(bed && S.area < 15)) {
     for (const len of [2.3, 2.0, 1.7]) {
-      // against a plain wall, with a wall to take the TV 2.4 – 5.5 m in front of it
       const sp = rpWallSpot(ctx, S, len, 1.0, { h: 0.8, clear: 0.8, centre: 0.15, score: (p, seg, s, c) => {
         const D = rayPoly(c, seg.nin, S.poly);
         return (D > 2.2 && D < 5.6 ? 1.2 : 0) + Math.min(2, fd(p)) * 0.3 + (seg.wins.length ? -0.6 : 0);
@@ -4964,10 +5373,10 @@ function rpLounge(ctx, S, fd, wd, seed) {
     }
   }
   if (so) {
-    // coffee table + rug
-    const tc = add2(so.p, so.f, 0.49 + 0.75);
-    const ct = F.coffeeTable(m), sb = ct.userData.solidBox || { w: 1.1, d: 0.7 };
-    if (!so.bed && !(S.has && S.has.table && I.fixtures.some(f => f.room === S.id && f.kind === 'table' && Math.hypot(f.c[0] - tc[0], f.c[1] - tc[1]) < 1.3)) && rpFree(ctx, S, { c: tc, d: so.xv, hl: sb.w / 2 + 0.05, hw: sb.d / 2 + 0.3 }, { passages: false })) rpTry(ctx, S, ct, tc, so.ang);
+    if (!ctx.media || ctx.media.fail) {
+      const tc = add2(so.p, so.f, 0.49 + 0.75), ct = F.coffeeTable(m), sb = ct.userData.solidBox || { w: 1.1, d: 0.7 };
+      if (!so.bed && rpFree(ctx, S, { c: tc, d: so.xv, hl: sb.w / 2 + 0.05, hw: sb.d / 2 + 0.3 }, { passages: false })) rpTry(ctx, S, ct, tc, so.ang);
+    }
     // a sofa-bed keeps the floor in front of it free: a small table beside an arm instead of the coffee table
     if (so.bed) for (const sd of [-1, 1]) {
       const c = add2(add2(so.p, so.xv, sd * (so.len / 2 + 0.27)), so.f, 0.1);
@@ -4975,40 +5384,6 @@ function rpLounge(ctx, S, fd, wd, seed) {
     }
     const rc = add2(so.p, so.f, 0.95), R = { c: rc, d: so.xv, hl: Math.min(1.5, so.len / 2 + 0.3), hw: 1.0 };
     if (rectInPoly(R, S.poly, 0.02)) rpTry(ctx, S, F.rug(m, { w: R.hl * 2, d: 2.0 }), rc, so.ang, 0, { free: true });
-    // TV wall opposite
-    const D = rayPoly(so.p, so.f, S.poly), W = add2(so.p, so.f, D);
-    const seg = S.segs.find(s => Math.abs(dot2(sub2(W, s.a), s.nin)) < 0.06 && dot2(s.nin, so.f) < -0.9 && dot2(sub2(W, s.a), s.d) > 0 && dot2(sub2(W, s.a), s.d) < s.len);
-    if (seg && D > 2.2 && D < 6.2) {
-      const s0 = dot2(sub2(W, seg.a), seg.d);
-      let tvDone = false;
-      for (const tl of [2.0, 1.6, 1.2]) {
-        const s = clamp(s0, tl / 2 + 0.02, seg.len - tl / 2 - 0.02);
-        if (seg.len < tl + 0.04 || Math.abs(s - s0) > 0.9 || seg.wins.some(q => q.s1 > s - tl / 2 && q.s0 < s + tl / 2)) continue;
-        const wp = add2(seg.a, seg.d, s), a = angOf(seg.nin);
-        if (!rpFree(ctx, S, { c: add2(wp, seg.nin, 0.23), d: seg.d, hl: tl / 2, hw: 0.21 })) continue;
-        rpTry(ctx, S, F.tvUnit(m, { len: tl }), add2(wp, seg.nin, 0.222), a);
-        // V7: a slim lit shelf tower at an end of the media unit (rooms from 14 m²; a plain wall behind, clear of every way)
-        if (S.area >= 14) for (const e of [1, -1]) {
-          const sx = s + e * (tl / 2 + 0.06 + 0.25);
-          if (sx < 0.27 || sx > seg.len - 0.27 || seg.wins.some(q => q.s1 > sx - 0.3 && q.s0 < sx + 0.3)) continue;
-          const c = add2(add2(seg.a, seg.d, sx), seg.nin, 0.16 + 0.012);
-          if (!rpFree(ctx, S, { c, d: seg.d, hl: 0.25, hw: 0.16 }, { tol: 0.012 }) || rpWinFront(S, { c, d: seg.d, hl: 0.25, hw: 0.16 }, 0.5)) continue;
-          if (rpTry(ctx, S, F.shelfTower(m, { w: 0.5, h: ctx.tallH, ceil: cut ? 0 : CH - ctx.tallH, seed, side: -e }), c, a, 0, { tag: 'shelves', quiet: true })) { (ctx.extras ||= []).push({ kind: 'media-shelves', room: S.id }); break; }
-        }
-        if (!cut) {
-          rpTry(ctx, S, F.tv(m, { w: Math.min(1.45, tl - 0.1), live: true, glowZ: m.fam === 'riviera' ? -0.012 : -0.043 }), add2(wp, seg.nin, 0.1), a, 1.0, { free: true }); ctx.tvRooms.push('living');
-          const fwl = Math.min(3.2, 2 * Math.min(s, seg.len - s) - 0.04);
-          if (fwl >= tl + 0.3 && !seg.wins.some(q => q.s1 > s - fwl / 2 && q.s0 < s + fwl / 2)) featureWall(ctx, ctx.g, wp[0], wp[1], a, fwl);
-        }
-        tvDone = true;
-        break;
-      }
-      // (the opened sofa-bed reaches the wall unit's place: the TV alone, on the wall)
-      if (!tvDone && so.bed && !cut && s0 > 0.7 && s0 < seg.len - 0.7 && !seg.wins.some(q => q.s1 > s0 - 0.7 && q.s0 < s0 + 0.7)) {
-        const wp = add2(seg.a, seg.d, s0);
-        if (rpFree(ctx, S, { c: add2(wp, seg.nin, 0.06), d: seg.d, hl: 0.62, hw: 0.05 }, { passages: false })) { rpTry(ctx, S, F.tv(m, { w: 1.2, live: true, glowZ: -0.02 }), add2(wp, seg.nin, 0.035), angOf(seg.nin), 1.05, { free: true }); ctx.tvRooms.push('living'); }
-      }
-    }
     // floor lamp at an end of the sofa
     for (const sd of [1, -1]) {
       if (so.sideAt === sd) continue;
@@ -5263,14 +5638,15 @@ function rpEnsureTv(ctx) {
       if (ctx.zones.some(z => (loose ? z.kind === 'swing' : (z.kind === 'swing' || z.kind === 'approach' || z.kind === 'passage')) && rectOverlap(R, z.core ? { ...z, hl: z.core } : z))) continue;
       if (ctx.occ.some(q => (q.h == null || q.h > (loose ? 1.1 : 0.95) || /kitchen|fridge|wardrobe|pantry|shel|cabinet|island|desk|table/i.test(q.tag || '')) && !(loose && /lamp/i.test(q.tag || '')) && rectOverlap(R, q))) continue;
       let sc = Math.min(across, 4.5) - Math.abs(s - seg.len / 2) * 0.12;
-      if (sofa) { const to = sub2(sofa.c, wp), l = Math.hypot(to[0], to[1]) || 1; sc += 2.2 * dot2(seg.nin, [to[0] / l, to[1] / l]); }
+      // (V23: in front of the sofa — the wall behind the sofa also "faces" it, so the sofa's own front decides)
+      if (sofa) { const to = sub2(wp, sofa.c), l = Math.hypot(to[0], to[1]) || 1; sc += 4 * dot2([-sofa.d[1], sofa.d[0]], [to[0] / l, to[1] / l]); }
       if (!best || sc > best.sc) best = { sc, seg, s, wp, hl };
     }
   }
   }
   if (!best) { ctx.notes.push('tv: no free wall in ' + S.id); return; }
   const w = best.hl < 0.5 ? 0.9 : best.hl < 0.6 ? 1.0 : best.seg.len >= 2.2 ? 1.45 : 1.2;
-  rpTry(ctx, S, F.tv(m, { w, live: true, glowZ: -0.02 }), add2(best.wp, best.seg.nin, 0.035), angOf(best.seg.nin), 1.05, { free: true, quiet: true });
+  rpTry(ctx, S, F.tv(m, { w, live: true, glowZ: -0.02 }), add2(best.wp, best.seg.nin, 0.035), angOf(best.seg.nin), TV_Y - w * 0.565 / 2, { free: true, quiet: true });   // (V23: centre at eye height)
   ctx.tvRooms.push(S.kind === 'living' ? 'living' : 'bedroom'); (ctx.extras ||= []).push({ kind: 'tv-added', room: S.id });
 }
 const SPK_ROOMS = { bedroom: 2, kitchen: 1, hall: 1, bath: 1, wc: 1, dining: 1, study: 1, cabinet: 1 };
@@ -5653,6 +6029,8 @@ function buildReal(unit, styleId, opts, I) {
     speakers: ctx.speakers || [],
     tvs, setTvs: (on) => Promise.all(tvs.map(t => t.toggle(on))),
     laundry: ctx.laundry, island: ctx.island || null, snooker: null, game: null, fixtures,
+    // V23: kitchen lines (room, length, longest plain prep worktop) and the living room's sofa ↔ TV record
+    kitchens: ctx.kitchens.map(k => ({ room: k.S.id, len: +k.len.toFixed(2), prep: k.prep ?? 0 })), media: ctx.media || null,
     circuits, lamps: ctx.lamps || [], remote: ctx.remote || null,
     // V19: every tap target of the flat in one registry ({kind, name, piece, part, proxy, toggle, state}; interact.js)
     interactables: cut ? [] : collectInteractables(root, { extra: sofaBed && !sofaBed.fixed ? [{ kind: 'sofaBed', name: 'sofa-bed', piece: 'sofaBed', part: null, proxy: sofaBed.collider || sofaBed.bedCollider, toggle: (on) => sofaBed.toggle(on), state: () => !!sofaBed.open }] : [] }),

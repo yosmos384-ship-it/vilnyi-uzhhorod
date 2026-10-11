@@ -294,6 +294,7 @@ export default {
   "walk.home.unmute": "Unmute",
   "walk.home.muted": "Sound off",
   "walk.tv.tapHint": "Tap the TV for TV sound",
+  "walk.tv.tapSound": "Tap the screen for TV sound",
   "walk.tv.sound": "Sound: TV",
   "walk.tv.radioBack": "Sound: radio",
   "walk.tv.open": "TV full screen",

@@ -2101,13 +2101,14 @@ function kitchenRun(m, len = 3, o = {}) {
   // o.plain makes a run of drawer units only (the second leg of an L-shaped kitchen: no sink, hob, dishwasher or hood);
   // o.noSink / o.noHob (with o.compact): one leg of an L-shaped kitchen that carries only the hob / only the sink
   const part = o.compact && (o.noSink || o.noHob);
-  let packed = o.plain || part ? null : packBase(x0, x1, o.flip && tallSide === 'none' ? 'right' : tallSide, !!o.washer, hobW);
-  if (!packed && o.compact && !o.plain && bl >= 0.6) {
+  // V23: o.prepEnd ('left' | 'right'): the compact plan with the plain worktop (prep counter) at that end
+  let packed = o.plain || part || o.prepEnd ? null : packBase(x0, x1, o.flip && tallSide === 'none' ? 'right' : tallSide, !!o.washer, hobW);
+  if (!packed && (o.compact || o.prepEnd) && !o.plain && bl >= 0.6) {
     const seq = [];
     if (!o.noSink && (bl >= 1.2 || o.noHob)) seq.push(['sink', 0.6]);
     if (!o.noHob) seq.push(['hob', 0.6]);
     seq.push(['D', bl - 0.6 * seq.length]);
-    if (o.flip ? tallSide !== 'right' : tallSide === 'right') seq.reverse();
+    if (o.prepEnd ? o.prepEnd === 'left' : o.flip ? tallSide !== 'right' : tallSide === 'right') seq.reverse();
     const mods0 = []; let cx = x0, hx = 0, sx = x0 - 9;
     for (const [k, w] of seq) { if (w < 0.02) continue; mods0.push([cx, cx + w, k === 'D' ? (w < 0.25 ? 'filler' : 'drawers') : k]); if (k === 'hob') hx = cx + w / 2; if (k === 'sink') sx = cx + w / 2; cx += w; }
     packed = o.noHob ? { mods: mods0, hobX: x0 - 0.05, hobW: 0, sinkX: sx } : { mods: mods0, hobX: hx, hobW: 0.6, sinkX: sx < x0 ? hx : sx };
@@ -2156,6 +2157,10 @@ function kitchenRun(m, len = 3, o = {}) {
   } else { box(g, bl, 0.018, dI, inM, xc, BH - T - 0.018, zc); box(g, bl + 0.004, T, D + 0.02, m.counter, xc, BH - T, 0.01); }
   g.userData.hasWasher = mods.some(md => md[2] === 'wm');
   g.userData.hasDishwasher = mods.some(md => md[2] === 'dw');
+  // V23: the longest stretch of plain worktop (over drawers / dishwasher / washer — not the sink, hob or a tall column):
+  // the prep counter where vegetables are cut
+  { let run = 0, best = 0, prev = null; for (const [a, b, k] of mods.slice().sort((p, q) => p[0] - q[0])) { if (k === 'sink' || k === 'hob') { run = 0; prev = b; continue; } run = (prev !== null && Math.abs(a - prev) < 0.02 ? run : 0) + (b - a); prev = b; best = Math.max(best, run); }
+    g.userData.prep = +best.toFixed(3); g.userData.mods = mods.map(([a, b, k]) => [+a.toFixed(3), +b.toFixed(3), k]); g.userData.base = [+x0.toFixed(3), +x1.toFixed(3)]; }
   for (const [a] of mods) if (a > x0 + 0.05) box(g, 0.018, BH - plinth - T - 0.036, dI - 0.004, inM, a, plinth + 0.018, zc - 0.002);
   // --- openable fronts
   const drawer = (xm, y, w, hs, fill, seed = 1) => {

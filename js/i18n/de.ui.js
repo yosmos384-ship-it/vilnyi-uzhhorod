@@ -294,6 +294,7 @@ export default {
   "walk.home.unmute": "Ton an",
   "walk.home.muted": "Ton aus",
   "walk.tv.tapHint": "Fernseher antippen für den TV-Ton",
+  "walk.tv.tapSound": "Bildschirm antippen für den TV-Ton",
   "walk.tv.sound": "Ton: Fernseher",
   "walk.tv.radioBack": "Ton: Radio",
   "walk.tv.open": "TV im Vollbild",

@@ -296,6 +296,7 @@ export default {
   "walk.home.unmute": "Увімкнути звук",
   "walk.home.muted": "Звук вимкнено",
   "walk.tv.tapHint": "Торкніться телевізора — звук з ТБ",
+  "walk.tv.tapSound": "Торкніться екрана — увімкнути звук ТВ",
   "walk.tv.sound": "Звук: телевізор",
   "walk.tv.radioBack": "Звук: радіо",
   "walk.tv.open": "ТБ на весь екран",

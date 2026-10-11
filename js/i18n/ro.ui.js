@@ -295,6 +295,7 @@ export default {
   "walk.home.unmute": "Pornește sunetul",
   "walk.home.muted": "Sunet oprit",
   "walk.tv.tapHint": "Atingeți televizorul pentru sunetul TV",
+  "walk.tv.tapSound": "Atingeți ecranul pentru sunetul TV",
   "walk.tv.sound": "Sunet: televizor",
   "walk.tv.radioBack": "Sunet: radio",
   "walk.tv.open": "TV pe tot ecranul",

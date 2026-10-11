@@ -21,6 +21,12 @@
 // number keys, volume ± and mute, with the channel number + name shown on the screen like a TV's on-screen display.
 // Channels = Ukrainian broadcasters' OWN official YouTube channels only (tv-channels.js: live broadcasts, uploads, and on
 // channel 9 a different Kvartal 95 episode in every flat). The state (power, channel, volume, mute) lasts for the session.
+// V23 (v0.7.4, owner 11 Oct): the TV PLAYS AT ONCE when the visitor enters a flat — no thumbnail, no play button. The
+// player is the official YouTube IFrame API (autoplay=1, playsinline=1, controls=0) on the same embed URLs; on entry the
+// sound goes to the TV and the radio stays paused (one sound at a time, as before). The walkthrough was opened by the
+// visitor's tap, so the browser normally allows the sound; where it does not, the video plays muted and a small
+// «tap for sound» hint asks for one more tap anywhere — that tap turns the TV's sound on. The picture is laid over the
+// 3D screen only once YouTube reports it PLAYING (before that the 3D screen shows the channel card, without a play icon).
 import { createRadio, STATIONS } from './radio.js';
 import { CHANNELS, K95_CHANNEL, channelUrl, channelPage } from './tv-channels.js';
 import { UNITS } from '../data.js';
@@ -34,6 +40,22 @@ export function k95EmbedUrl({ mute = true, controls = false } = {}) {
   return `https://www.youtube-nocookie.com/embed/videoseries?list=${K95.uploads}&autoplay=1&mute=${mute ? 1 : 0}&controls=${controls ? 1 : 0}&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&enablejsapi=1${o}`;
 }
 
+// the YouTube IFrame API, loaded once (the walkthrough asks for it with the first flat)
+let YTP = null;
+export function ytApi() {
+  if (YTP) return YTP;
+  YTP = new Promise((res) => {
+    if (typeof window === 'undefined') return res(null);
+    if (window.YT && window.YT.Player) return res(window.YT);
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => { try { if (typeof prev === 'function') prev(); } catch { /* */ } res(window.YT); };
+    const sc = document.createElement('script'); sc.src = 'https://www.youtube.com/iframe_api'; sc.async = true; sc.onerror = () => res(null);
+    document.head.appendChild(sc);
+    // (no time limit: on a slow phone the API may come late — until then the embed's own message protocol is used, and
+    // the player is attached to the playing iframe as soon as the API is there)
+  });
+  return YTP;
+}
 const SS_MUTE = 'vrc.home.muted', SS_STATION = 'vrc.home.station', SS_SOURCE = 'vrc.home.source';
 const ssGet = k => { try { return sessionStorage.getItem(k); } catch { return null; } };
 const ssSet = (k, v) => { try { sessionStorage.setItem(k, v); } catch { /* private mode */ } };
@@ -56,6 +78,9 @@ const CSS = `
 .vw.phone .vw-hm{top:calc(96px + var(--st))}
 .vw-tvx{position:absolute;left:0;top:0;width:640px;height:360px;transform-origin:0 0;pointer-events:none;visibility:hidden;z-index:1;background:#000;overflow:hidden}
 .vw-tvx iframe{width:100%;height:100%;border:0;display:block;pointer-events:none}
+.vw-tvx.parked{visibility:visible;opacity:.001;transform:translate(0,0) scale(.25)!important}
+.vw-snd{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--sb) + 150px);z-index:6;display:none;align-items:center;gap:8px;padding:9px 16px;min-height:40px;box-sizing:border-box;border-radius:999px;background:rgba(14,14,16,.82);border:1px solid rgba(201,164,92,.5);color:#f2ead8;font:600 14px/1.2 system-ui,-apple-system,Segoe UI,Arial,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.4);pointer-events:none;max-width:calc(100% - 32px - var(--sl) - var(--sr));text-align:center}
+.vw-snd.on{display:flex}.vw.driving .vw-snd{display:none!important}
 .vw-tvp{position:absolute;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;background:rgba(5,4,3,.8);padding:calc(12px + var(--st)) calc(12px + var(--sr)) calc(12px + var(--sb)) calc(12px + var(--sl))}
 .vw-tvp .box{width:min(960px,100%);background:#0d0d0e;border:1px solid rgba(201,164,92,.35);border-radius:12px;overflow:hidden}
 .vw-tvp .vid{position:relative;width:100%;aspect-ratio:16/9;background:#000}
@@ -116,12 +141,11 @@ function channelCard(THREE, t, ch) {
   const c = document.createElement('canvas'); c.width = 512; c.height = 288; const x = c.getContext('2d');
   const g = x.createLinearGradient(0, 0, 512, 288); g.addColorStop(0, '#16202c'); g.addColorStop(1, '#07080b'); x.fillStyle = g; x.fillRect(0, 0, 512, 288);
   x.fillStyle = 'rgba(255,255,255,.05)'; for (let i = 0; i < 9; i++) x.fillRect(0, 30 + i * 30, 512, 1);
-  x.fillStyle = '#e8463c'; x.beginPath(); x.roundRect ? x.roundRect(206, 92, 100, 70, 16) : x.rect(206, 92, 100, 70); x.fill();
-  x.fillStyle = '#fff'; x.beginPath(); x.moveTo(244, 110); x.lineTo(244, 144); x.lineTo(274, 127); x.closePath(); x.fill();
+  // (V23: no play icon — the programme starts by itself; three dots while it loads)
+  x.fillStyle = 'rgba(255,255,255,.55)'; for (let i = 0; i < 3; i++) { x.beginPath(); x.arc(232 + i * 24, 132, 7, 0, Math.PI * 2); x.fill(); }
   x.textAlign = 'left'; x.fillStyle = '#7dff8a'; x.font = '800 44px system-ui, Arial, sans-serif'; x.fillText(String(ch.n), 22, 58);
   x.fillStyle = '#fff'; x.font = '700 30px system-ui, Arial, sans-serif'; x.fillText(ch.name, 22 + 30 * String(ch.n).length + 14, 56);
   x.textAlign = 'center'; x.fillStyle = 'rgba(255,255,255,.72)'; x.font = '500 15px system-ui, Arial, sans-serif'; x.fillText((ch.mode === 'live' ? '● LIVE · ' : '') + 'YouTube ' + ch.handle, 256, 204);
-  x.fillStyle = 'rgba(227,196,124,.9)'; x.font = '500 14px system-ui, Arial, sans-serif'; x.fillText(String(t('walk.tv.tapHint')).slice(0, 60), 256, 258);
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
   return new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
 }
@@ -141,6 +165,15 @@ export function createHomeMedia(host) {
   const { THREE } = host;
   let R = null, inside = false, unitId = null, unitIndex = 0, fadeTok = 0, muted = ssGet(SS_MUTE) === '1', source = ssGet(SS_SOURCE) === 'tv' ? 'tv' : 'radio';
   let tvs = [], ov = null, panel = null, visT = 0, vis = null, disposed = false, rc = null, rcProxy = null, digits = '', digT = 0, osdT = 0, volT = 0;
+  let chkT = 0, needTap = false;
+  ytApi();                                                     // (V23: the IFrame API is fetched with the first flat)
+  const hint = document.createElement('div'); hint.className = 'vw-snd'; hint.setAttribute('role', 'status');
+  hint.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg><span></span>';
+  host.hud.appendChild(hint);
+  const setNeedTap = (on) => { needTap = !!on; hint.classList.toggle('on', needTap && inside); hint.querySelector('span').textContent = host.t('walk.tv.tapSound'); };
+  // the next tap anywhere in the walkthrough gives the TV its sound (the browser allows it inside a tap)
+  const onTapAny = () => { if (!needTap || !inside) return; setNeedTap(false); tvSound(tvAudible(), true); };
+  host.root.addEventListener('pointerdown', onTapAny, true); host.root.addEventListener('keydown', onTapAny, true);
   const cards = new Map(); let offMat = null;
   const saved = tvLoad() || {};
   const TV = { power: saved.power !== false, ch: CHANNELS.some(c => c.n === saved.ch) ? saved.ch : K95_CHANNEL, vol: Number.isFinite(saved.vol) ? Math.max(0, Math.min(100, saved.vol)) : 60, mute: !!saved.mute, fallback: false };
@@ -200,9 +233,29 @@ export function createHomeMedia(host) {
 
   // ---- the TV picture
   function cmd(fr, func, args = []) { try { fr && fr.contentWindow && fr.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), '*'); } catch { /* not ready */ } }
-  function tvSound(on) {
+  const player = () => (ov && ov.player && ov.ready ? ov.player : null);
+  function tvSound(on, fromTap = false) {
+    const p = player();
+    if (p) {
+      try { if (on && !TV.mute) { p.unMute(); p.setVolume(TV.vol); } else p.mute(); if (TV.power) p.playVideo(); } catch { /* not ready */ }
+      if (TV.power) checkPlay(fromTap ? 900 : 1600);
+      return;
+    }
     const fr = ov && ov.frame;
     if (fr) { if (on && !TV.mute) { cmd(fr, 'unMute'); cmd(fr, 'setVolume', [TV.vol]); cmd(fr, 'playVideo'); } else cmd(fr, 'mute'); }
+  }
+  // a moment after asking: is it playing — with sound where sound is wanted? If the browser held it back: play muted and
+  // ask for one tap (the hint); a player left waiting (unstarted / cued) is started again
+  function checkPlay(ms) {
+    clearTimeout(chkT);
+    chkT = setTimeout(() => {
+      const p = player(); if (!p || !inside || !TV.power || disposed) return;
+      let st = -1, m = true; try { st = p.getPlayerState(); m = p.isMuted(); } catch { return; }
+      const wantSound = tvAudible() && !TV.mute;
+      if (st !== 1 && st !== 3) { try { if (wantSound) p.mute(); p.playVideo(); } catch { /* */ } if (wantSound) setNeedTap(true); ov.tries = (ov.tries || 0) + 1; if (ov.tries < 6) checkPlay(1500); return; }
+      if (wantSound && m) { setNeedTap(true); return; }
+      if (!wantSound || !m) setNeedTap(false);
+    }, ms);
   }
   const origin = () => (typeof location !== 'undefined' && /^https?:/.test(location.origin) ? location.origin : '');
   const curUrl = (o = {}) => channelUrl(chan(), { unitIndex, mute: true, fallback: TV.fallback, origin: origin(), ...o });
@@ -211,29 +264,50 @@ export function createHomeMedia(host) {
     const wrap = document.createElement('div'); wrap.className = 'vw-tvx'; wrap.setAttribute('aria-hidden', 'true');
     const fr = document.createElement('iframe');
     fr.title = chan().name; fr.allow = 'autoplay; encrypted-media; picture-in-picture'; fr.referrerPolicy = 'strict-origin-when-cross-origin'; fr.loading = 'eager';
+    fr.id = 'vrc-tv-' + Math.random().toString(36).slice(2, 8);
+    // (with sound from the first frame where sound is wanted — the tap that opened the walkthrough allows it)
+    fr.src = curUrl({ mute: !(tvAudible() && !TV.mute) });
+    let viaApi = false;
     fr.addEventListener('load', () => {
+      if (viaApi) return;
+      // (no IFrame API — blocked or not loaded yet: the embed's own message protocol, as in v0.7)
       try { fr.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 'vrc-tv', channel: 'widget' }), '*'); } catch { /* */ }
-      cmd(fr, 'mute'); setTimeout(() => tvSound(tvAudible()), 600);
+      setTimeout(() => { if (!viaApi) tvSound(tvAudible()); }, 600);
     });
-    fr.src = curUrl();
     const osd = document.createElement('div'); osd.className = 'osd';
     const vol = document.createElement('div'); vol.className = 'vol'; vol.innerHTML = '<span></span><div class="bar"><u></u></div>';
     const off = document.createElement('div'); off.className = 'off';
     wrap.append(fr, osd, vol, off);
     host.root.insertBefore(wrap, host.hud);
-    ov = { wrap, frame: fr, osd, vol, shown: false };
+    const me = ov = { wrap, frame: fr, osd, vol, shown: false, player: null, ready: false, state: -1, playing: false, tries: 0 };
+    wrap.classList.add('parked');
+    ytApi().then(YT => {
+      if (!YT || ov !== me || disposed) return;
+      viaApi = true;
+      try {
+        me.player = new YT.Player(fr, { events: {
+          onReady: () => { if (ov !== me) return; me.ready = true; tvSound(tvAudible()); },
+          onStateChange: (e) => { if (ov !== me) return; me.state = e.data; if (e.data === 1) { me.playing = true; checkPlay(400); } else if (e.data === 0 || e.data === -1 || e.data === 5) { me.playing = me.playing && e.data !== 5 && e.data !== -1; if (inside && TV.power) checkPlay(700); } },
+          onError: () => { if (ov !== me) return; if (chan().mode === 'live' && !TV.fallback) { TV.fallback = true; reloadTv(); } },
+        } });
+      } catch { viaApi = false; }
+    });
     showOsd();
     return ov;
   }
-  function dropOverlay() { if (!ov) return; try { ov.frame.src = 'about:blank'; ov.wrap.remove(); } catch { /* */ } ov = null; }
+  // a new programme (channel, fallback): a fresh player
+  function reloadTv() { const was = !!ov; dropOverlay(); if (was || inside) ensureOverlay(); }
+  function dropOverlay() { if (!ov) return; clearTimeout(chkT); try { if (ov.player && ov.player.destroy) ov.player.destroy(); } catch { /* */ } try { ov.frame.src = 'about:blank'; ov.wrap.remove(); } catch { /* */ } ov = null; setNeedTap(false); }
   // YouTube's player answers the 'listening' handshake with events; onError on a live channel (no broadcast right now /
   // not embeddable) → the same channel's own uploads playlist
   const onMsg = (ev) => {
     if (!ov || ev.source !== ov.frame.contentWindow) return;
     let d = ev.data; if (typeof d === 'string') { try { d = JSON.parse(d); } catch { return; } }
     if (!d || typeof d !== 'object') return;
+    if (ov.player) return;                                    // (the IFrame API handles its own messages)
     if (d.event === 'onError' && chan().mode === 'live' && !TV.fallback) { TV.fallback = true; ov.frame.src = curUrl(); }
     if (d.event === 'onReady' || d.event === 'initialDelivery') tvSound(tvAudible());
+    if (d.event === 'onStateChange' && d.info === 1) ov.playing = true;
   };
   window.addEventListener('message', onMsg);
   function showOsd() {
@@ -315,7 +389,7 @@ export function createHomeMedia(host) {
   const takeSound = () => { if (TV.power && source !== 'tv') { source = 'tv'; ssSet(SS_SOURCE, 'tv'); if (muted) { muted = false; ssSet(SS_MUTE, '0'); } sync(); } };
   function applyChannel() {
     TV.fallback = false; persist();
-    if (ov) { ov.frame.title = chan().name; ov.frame.src = curUrl(); }
+    if (ov) reloadTv();
     if (inside) swapScreens(true);
     showOsd(); render();
   }
@@ -323,31 +397,40 @@ export function createHomeMedia(host) {
   const api = {
     get inside() { return inside; }, get muted() { return muted; }, get source() { return source; }, get unitId() { return unitId; },
     get radio() { return R; }, get overlay() { return ov; }, get remoteOpen() { return !!rc; },
-    get tv() { const ch = chan(); return { power: TV.power, ch: ch.n, name: ch.name, mode: ch.mode, vol: TV.vol, mute: TV.mute, fallback: TV.fallback, unitIndex, url: curUrl(), src: ov ? ov.frame.src : '', osd: ov ? ov.osd.textContent : '', osdOn: !!(ov && ov.osd.classList.contains('on')), lcd: rc ? rc.querySelector('.lcd').textContent : '' }; },
+    get tv() { const ch = chan(); let ps = null, pm = null; try { const p = player(); if (p) { ps = p.getPlayerState(); pm = p.isMuted(); } } catch { /* */ } return { playerState: ps, playerMuted: pm, api: !!(ov && ov.player), playing: !!(ov && ov.playing), shown: !!(ov && ov.shown), needTap, power: TV.power, ch: ch.n, name: ch.name, mode: ch.mode, vol: TV.vol, mute: TV.mute, fallback: TV.fallback, unitIndex, url: curUrl(), src: ov ? ov.frame.src : '', osd: ov ? ov.osd.textContent : '', osdOn: !!(ov && ov.osd.classList.contains('on')), lcd: rc ? rc.querySelector('.lcd').textContent : '' }; },
     enter({ unitId: id, tvs: list } = {}) {
       if (disposed) return;
       const same = inside && id === unitId;
       inside = true; unitId = id; host.root.classList.add('inapt');
       unitIndex = Math.max(0, UNITS.findIndex(u => u.id === id));
-      if (!same) { swapScreens(false); tvs = (list || []).filter(T => T && T.mesh); swapScreens(true); if (ov) ov.frame.src = curUrl(); }
+      if (!same) {
+        // V23: entering a flat the TV is on and has the sound (the radio waits); its programme starts at once
+        source = 'tv'; ssSet(SS_SOURCE, 'tv'); if (!TV.power) { TV.power = true; persist(); }
+        swapScreens(false); tvs = (list || []).filter(T => T && T.mesh); swapScreens(true);
+        if (ov) reloadTv(); else if (tvs.length) ensureOverlay();
+      }
       sync();
     },
     leave() {
       if (!inside) return;
       api.closeRemote();
       inside = false; unitId = null; host.root.classList.remove('inapt');
-      radioOff(1100); swapScreens(false); tvs = []; dropOverlay(); api.closePanel(true); vis = null; render();
+      radioOff(1100); swapScreens(false); tvs = []; dropOverlay(); setNeedTap(false); api.closePanel(true); vis = null; render();
     },
     /** per animation frame: lay the embed over the TV in view */
     frame() {
-      if (!inside || !tvs.length || disposed || panel || !TV.power) { if (ov && ov.shown) { ov.wrap.style.visibility = 'hidden'; ov.shown = false; } return; }
+      // (not over a TV: the player keeps playing «parked» — practically invisible, never display:none, so that phones
+      // do not pause it; over the TV only once it really plays: no thumbnail, no play button is ever seen)
+      const park = () => { if (ov && (ov.shown || !ov.wrap.classList.contains('parked'))) { ov.wrap.classList.add('parked'); ov.wrap.style.transform = ''; ov.shown = false; } };
+      if (!inside || !tvs.length || disposed || panel || !TV.power) { park(); return; }
       const now = performance.now();
-      if (now - visT > 220) { visT = now; vis = visibleTv(); if (vis) ensureOverlay(); }
+      if (!ov) ensureOverlay();
+      if (now - visT > 220) { visT = now; vis = visibleTv(); }
       if (!ov) return;
-      const P = vis && projected(vis.T.mesh);
-      if (!P) { if (ov.shown) { ov.wrap.style.visibility = 'hidden'; ov.shown = false; } return; }
+      const P = vis && (ov.playing || !ov.player) && projected(vis.T.mesh);
+      if (!P) { park(); return; }
       ov.wrap.style.transform = quadMatrix3d(640, 360, P);
-      if (!ov.shown) { ov.wrap.style.visibility = 'visible'; ov.shown = true; }
+      if (!ov.shown) { ov.wrap.classList.remove('parked'); ov.wrap.style.visibility = 'visible'; ov.shown = true; }
     },
     setSource(s) { source = s === 'tv' ? 'tv' : 'radio'; ssSet(SS_SOURCE, source); if (source === 'tv' && muted) { muted = false; ssSet(SS_MUTE, '0'); } if (source === 'tv' && !TV.power) { TV.power = true; persist(); swapScreens(inside); } if (source === 'tv') ensureOverlay(); sync(); host.toast && host.toast(host.t(source === 'tv' ? 'walk.tv.sound' : 'walk.tv.radioBack'), 1400); },
     tapTv() { if (!TV.power) { api.power(true); return true; } api.setSource(source === 'tv' ? 'radio' : 'tv'); showOsd(); return true; },
@@ -410,7 +493,8 @@ export function createHomeMedia(host) {
     refreshTexts() { render(); for (const c of cards.values()) { try { c.map.dispose(); c.dispose(); } catch { /* */ } } cards.clear(); if (inside) swapScreens(true); },
     dispose() {
       disposed = true; fadeTok++; api.closeRemote(); swapScreens(false); dropOverlay(); if (panel) { try { panel.remove(); } catch { /* */ } panel = null; }
-      window.removeEventListener('message', onMsg); clearTimeout(osdT); clearTimeout(volT); clearTimeout(digT);
+      window.removeEventListener('message', onMsg); clearTimeout(osdT); clearTimeout(volT); clearTimeout(digT); clearTimeout(chkT);
+      host.root.removeEventListener('pointerdown', onTapAny, true); host.root.removeEventListener('keydown', onTapAny, true); try { hint.remove(); } catch { /* */ }
       if (R) { try { R.dispose(); } catch { /* */ } } R = null; try { pill.remove(); style.remove(); } catch { /* */ }
       for (const c of cards.values()) { try { c.map.dispose(); c.dispose(); } catch { /* */ } } cards.clear(); if (offMat) offMat.dispose();
       host.root.classList.remove('inapt');

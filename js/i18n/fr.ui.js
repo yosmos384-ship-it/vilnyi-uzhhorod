@@ -295,6 +295,7 @@ export default {
   "walk.home.unmute": "Rétablir le son",
   "walk.home.muted": "Son coupé",
   "walk.tv.tapHint": "Touchez la télé pour le son de la télé",
+  "walk.tv.tapSound": "Touchez l’écran pour le son de la télé",
   "walk.tv.sound": "Son : télévision",
   "walk.tv.radioBack": "Son : radio",
   "walk.tv.open": "TV en plein écran",

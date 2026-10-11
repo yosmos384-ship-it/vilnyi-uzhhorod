@@ -295,6 +295,7 @@ export default {
   "walk.home.unmute": "Attiva audio",
   "walk.home.muted": "Audio disattivato",
   "walk.tv.tapHint": "Tocca la TV per l’audio della TV",
+  "walk.tv.tapSound": "Tocca lo schermo per l’audio della TV",
   "walk.tv.sound": "Audio: TV",
   "walk.tv.radioBack": "Audio: radio",
   "walk.tv.open": "TV a schermo intero",

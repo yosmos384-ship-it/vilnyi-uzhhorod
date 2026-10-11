@@ -296,6 +296,7 @@ export default {
   "walk.home.unmute": "ביטול השתקה",
   "walk.home.muted": "הצליל כבוי",
   "walk.tv.tapHint": "הקישו על הטלוויזיה לצליל הטלוויזיה",
+  "walk.tv.tapSound": "הקישו על המסך לצליל הטלוויזיה",
   "walk.tv.sound": "צליל: טלוויזיה",
   "walk.tv.radioBack": "צליל: רדיו",
   "walk.tv.open": "טלוויזיה במסך מלא",
