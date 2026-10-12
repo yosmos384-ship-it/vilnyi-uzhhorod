@@ -18,6 +18,7 @@ Facts on this site come from the project's architectural drawings, the developer
 - [Location and distances](https://vilnyi-gt-city.uz.ua/en/location/)
 - [Underground parking](https://vilnyi-gt-city.uz.ua/en/parking/): 150 + 29 tandem + 4 motorcycle places, 76 EV chargers
 - [Construction progress](https://vilnyi-gt-city.uz.ua/en/construction/): monthly photos
+- [How to buy](https://vilnyi-gt-city.uz.ua/en/guide/): price, instalments, discounts, eOselia, contract and documents, steps
 - [FAQ](https://vilnyi-gt-city.uz.ua/en/faq/)
 - [Contacts](https://vilnyi-gt-city.uz.ua/en/contacts/)
 
@@ -35,6 +36,7 @@ Facts on this site come from the project's architectural drawings, the developer
 - [Розташування](https://vilnyi-gt-city.uz.ua/uk/location/)
 - [Паркінг](https://vilnyi-gt-city.uz.ua/uk/parking/)
 - [Хід будівництва](https://vilnyi-gt-city.uz.ua/uk/construction/)
+- [Як купити квартиру](https://vilnyi-gt-city.uz.ua/uk/guide/): ціна, розтермінування, знижки, єОселя, договір і документи, кроки
 - [Питання та відповіді](https://vilnyi-gt-city.uz.ua/uk/faq/)
 - [Контакти](https://vilnyi-gt-city.uz.ua/uk/contacts/)
 

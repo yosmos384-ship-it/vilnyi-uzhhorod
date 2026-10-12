@@ -6,7 +6,7 @@
 // Reads ONLY the published site: js/data.js (+ generated data modules), js/i18n/<lang>.{site,ui}.js, rate.json,
 // assets/gallery/manifest.json, seo-bot/{i18n.mjs, pois.json, config.json, images.json}. Writes:
 //   <lang>/…/index.html for uk en he ro de fr it (home, apartments, 1-/2-/3-room, 122 layouts, 4 buildings, location,
-//   construction, parking, faq, contacts, facts), facts/index.html (uk + en plain facts), sitemap.xml (index) +
+//   construction, parking, faq, contacts, facts, guide), facts/index.html (uk + en plain facts), sitemap.xml (index) +
 //   sitemap-<lang>.xml + sitemap-root.xml, robots.txt, llms.txt, llms-full.txt, seo-bot/state.json (hash + lastmod per URL).
 // Never writes rate.json, CNAME, index.html or anything under js/, css/, assets/ (images are made by make-og.py).
 // Prices: the site's one rule (data.js): round(1300 $ × NBU rate) ₴ per m² × total area — exactly what the 3D site shows.
@@ -291,7 +291,7 @@ function pageHome(l) {
   b += `<h2>${esc(T(l, 'secRooms'))}</h2><ul class="cards">${[1, 2, 3].map(r => `<li><a class="t" href="${rel(l, `apartments/${r}-room/`)}">${esc(S[l].roomsPl[r])}</a><br>${esc(T(l, 'flatsCount', { n: byRooms(r).length }))} · ${esc(N['a' + r])}<br>${esc(T(l, 'priceFrom', { p: N['p' + r] }))}</li>`).join('')}</ul>`;
   b += `<h2>${esc(T(l, 'secBuildings'))}</h2><ul class="cards">${B_IDS.map(x => `<li><a class="t" href="${rel(l, `building-${BLD[x].no}/`)}">${esc(T(l, 'building', { n: BLD[x].no }))}</a><br>${esc(T(l, 'floors'))}: ${BLD[x].floors} · ${esc(T(l, 'flats'))}: ${BLD[x].apartments}<br>${esc(T(l, 'kDelivery'))}: ${esc(qTxt(l, BLD[x].delivery))}</li>`).join('')}</ul>`;
   b += `<h2>${esc(T(l, 'secLife'))}</h2><p>${esc(st(l, 'life.lead'))}</p><div class="grid2">${['market', 'playland', 'spa', 'parking', 'shelter', 'yard'].map(k => `<div><h3>${esc(st(l, `life.${k}.t`))}</h3><p>${esc(st(l, `life.${k}.d`))}</p></div>`).join('')}</div>`;
-  b += `<h2>${esc(T(l, 'secTerms'))}</h2><p>${esc(st(l, 'terms.lead'))}</p><ul><li>${esc(st(l, 'terms.priceD', { usdM2: D.USD_PER_M2, rateDate: N.date }))}</li><li>${esc(st(l, 'terms.instD'))}</li><li>${esc(st(l, 'terms.discT'))}: ${esc(st(l, 'terms.discD'))}</li><li>${esc(st(l, 'terms.deliveryD'))}</li><li>${esc(st(l, 'terms.programs'))}</li></ul>`;
+  b += `<h2>${esc(T(l, 'secTerms'))}</h2><p>${esc(st(l, 'terms.lead'))}</p><ul><li>${esc(st(l, 'terms.priceD', { usdM2: D.USD_PER_M2, rateDate: N.date }))}</li><li>${esc(st(l, 'terms.instD'))}</li><li>${esc(st(l, 'terms.discT'))}: ${esc(st(l, 'terms.discD'))}</li><li>${esc(st(l, 'terms.deliveryD'))}</li><li>${esc(st(l, 'terms.programs'))}</li></ul>` + guideLink(l);
   b += `<h2>${esc(T(l, 'secLocation'))}</h2><p>${esc(st(l, 'loc.lead'))}</p><ul>${[1, 2, 3, 4].map(i => `<li>${esc(st(l, `loc.pt${i}`))}</li>`).join('')}</ul><p><a href="${rel(l, 'location/')}">${esc(S[l].nav.location)} →</a></p>`;
   b += `<h2>${esc(T(l, 'secFaq'))}</h2><dl class="faq">${S[l].faq.slice(0, 5).map(([q, a]) => `<dt>${esc(fill(q, N))}</dt><dd>${esc(fill(a, N))}</dd>`).join('')}</dl><p><a href="${rel(l, 'faq/')}">${esc(S[l].nav.faq)} →</a> · <a href="${rel(l, 'facts/')}">${esc(S[l].nav.facts)} →</a></p>`;
   addPage(l, '', p, b);
@@ -449,7 +449,7 @@ function pageFaq(l) {
   p.ld = graph(l, p, [], 'FAQPage');
   const wp = p.ld['@graph'].find(n => n['@type'] === 'FAQPage');
   wp.mainEntity = qa.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } }));
-  let b = `<h1>${esc(p.h1)}</h1><dl class="faq">${qa.map(([q, a]) => `<dt>${esc(q)}</dt><dd>${esc(a)}</dd>`).join('')}</dl>` + ctas(l) + priceNote(l);
+  let b = `<h1>${esc(p.h1)}</h1>` + guideLink(l) + `<dl class="faq">${qa.map(([q, a]) => `<dt>${esc(q)}</dt><dd>${esc(a)}</dd>`).join('')}</dl>` + ctas(l) + priceNote(l);
   addPage(l, 'faq/', p, b);
 }
 
@@ -496,9 +496,39 @@ function pageFacts(l) {
   const p = { title: T(l, 'factsTitle'), desc: T(l, 'factsDesc'), h1: T(l, 'factsH1'), og: 'home', section: 'facts', crumbs: crumb(l, [S[l].nav.facts, rel(l, 'facts/')]) };
   p.canonical = url(l, 'facts/'); p.ld = graph(l, p, B_IDS.map(b => buildingLd(l, b)), 'AboutPage', true);
   let b = `<h1>${esc(p.h1)}</h1><p class="muted">${esc(T(l, 'factsLead', { date: '__LASTMOD_FMT__' }))}</p><ul class="facts">${factRows(l).map(([k, vv]) => `<li><strong>${esc(k)}:</strong> ${esc(vv)}</li>`).join('')}</ul>`;
-  b += `<p class="note">${esc(st(l, 'facts.disclaimer'))}</p>`;
+  b += guideLink(l) + `<p class="note">${esc(st(l, 'facts.disclaimer'))}</p>`;
   addPage(l, 'facts/', p, b);
 }
+
+// <lang>/guide/ — how to buy: price, payment, discounts, єОселя, documents, dates, steps (only facts already on the site)
+function pageGuide(l) {
+  const N = nums(l), G = S[l].guide, key = 'guide/';
+  const p = { title: G.title, desc: fill(G.desc, N), h1: G.h1, og: 'home', section: 'guide', crumbs: crumb(l, [G.nav, rel(l, key)]) };
+  p.canonical = url(l, key); p.ld = graph(l, p, []);
+  const more = (k, txt) => `<p><a href="${rel(l, k)}">${esc(txt)} →</a></p>`;
+  const row = (k, vv) => `<div><dt>${esc(k)}</dt><dd>${vv}</dd></div>`;
+  const stepLinks = [`<a href="${rel(l, 'apartments/')}">${esc(S[l].nav.apartments)}</a> · <a href="${appHref(l, '#finder')}">${esc(T(l, 'open3d'))}</a>`, `<a href="${rel(l, 'contacts/')}">${esc(S[l].nav.contacts)}</a>`, '', `<a href="${rel(l, 'facts/')}">${esc(S[l].nav.facts)}</a>`, ''];
+  let b = `<h1>${esc(p.h1)}</h1><p class="lead">${esc(fill(G.lead, N))}</p>`;
+  b += `<h2>${esc(G.hSteps)}</h2><ol>${G.steps.map((s, i) => `<li>${esc(fill(s, N))}${stepLinks[i] ? ` (${stepLinks[i]})` : ''}</li>`).join('')}</ol>`;
+  b += `<h2>${esc(G.hPrice)}</h2><p>${esc(st(l, 'terms.priceD', { usdM2: D.USD_PER_M2, rateDate: N.date }).replace(/\.\.$/, '.'))}</p>`
+    + `<ul><li>${esc(T(l, 'fPrice'))}: ${esc(T(l, 'fPriceV', N))}</li><li>${esc(T(l, 'fFrom'))}: ${esc(`${S[l].roomsShort[1]} ${N.p1}; ${S[l].roomsShort[2]} ${N.p2}; ${S[l].roomsShort[3]} ${N.p3}`)}</li><li>${esc(T(l, 'fFinish'))}: ${esc(T(l, 'fFinishV'))}</li></ul>`
+    + more('apartments/', S[l].nav.apartments);
+  b += `<h2>${esc(G.hPay)}</h2><p>${esc(st(l, 'terms.instD'))}</p><ul>${['full', 'inst50', 'inst30'].map(k => `<li><strong>${esc(st(l, `terms.plan.${k}.label`))}</strong> — ${esc(st(l, `terms.plan.${k}.desc`))}</li>`).join('')}</ul>`;
+  b += `<h2>${esc(G.hDisc)}</h2><p>${esc(st(l, 'terms.discT'))}: ${esc(st(l, 'terms.discD'))} ${esc(ui(l, 'calc.discountNote'))}</p>`;
+  b += `<h2>${esc(G.hProg)}</h2><p>${esc(st(l, 'terms.programs'))}</p>`;
+  b += `<h2>${esc(G.hDocs)}</h2><p>${esc(st(l, 'terms.contract.text'))}</p><ul><li>${esc(st(l, 'facts.permit'))}: ${esc(st(l, 'facts.permitV', { n: P.facts.permit.number, d: N.permitDate }))}</li><li>${esc(st(l, 'facts.cadastral'))}: ${esc(N.cad)}</li><li>${esc(st(l, 'facts.customer'))}: ${esc(N.customer)}; ${esc(st(l, 'facts.contractor'))}: ${esc(N.contractor)} — ${esc(st(l, 'facts.perListing'))}</li></ul>`
+    + more('facts/', S[l].nav.facts);
+  b += `<h2>${esc(G.hDates)}</h2><ul>${[...B_IDS].sort((a, c) => (BLD[a].delivery.year - BLD[c].delivery.year) || (BLD[a].delivery.q - BLD[c].delivery.q) || (BLD[a].no - BLD[c].no)).map(x => `<li><a href="${rel(l, `building-${BLD[x].no}/`)}">${esc(T(l, 'building', { n: BLD[x].no }))}</a> — ${esc(qTxt(l, BLD[x].delivery))} (${esc(statusTxt(l, x))}, ${esc(T(l, 'statusOn', { d: dateTxt(l, BLD[x].statusDate) }))})</li>`).join('')}</ul><p>${esc(G.datesNote)}</p>`
+    + more('construction/', S[l].nav.progress);
+  b += `<h2>${esc(G.hPark)}</h2><p>${esc(st(l, 'facts.parking'))}: ${esc(st(l, 'facts.parkingV', { n: PARK.std, t: PARK.tandem, m: PARK.moto }))}. ${esc(st(l, 'facts.ev'))}: ${esc(st(l, 'facts.evV', { n: PARK.ev }))}. ${esc(T(l, 'parkPrice'))}</p>`
+    + more('parking/', S[l].nav.parking);
+  b += `<h2>${esc(G.hContact)}</h2><p>${esc(st(l, 'foot.contactNote'))}</p><dl class="kv">`
+    + row(T(l, 'kPhone'), `<a href="tel:${C.phone}">${phoneTxt(C.phone)}</a>`) + row('WhatsApp / Viber', `<a href="${waHref(l)}" rel="noopener">${phoneTxt(C.whatsapp)}</a>`)
+    + row(T(l, 'kEmail'), `<a href="mailto:${C.email}">${C.email}</a>`) + row(T(l, 'kOffice'), esc(N.office)) + row(T(l, 'kHours'), esc(N.hours)) + '</dl>' + ctas(l) + priceNote(l);
+  b += `<h2>${esc(T(l, 'seeAlso'))}</h2><ul>${[['apartments/', S[l].nav.apartments], ['faq/', S[l].nav.faq], ['facts/', S[l].nav.facts], ['parking/', S[l].nav.parking], ['construction/', S[l].nav.progress], ['location/', S[l].nav.location], ['contacts/', S[l].nav.contacts]].map(([k, t]) => `<li><a href="${rel(l, k)}">${esc(t)}</a></li>`).join('')}</ul>`;
+  addPage(l, key, p, b);
+}
+const guideLink = l => `<p><a href="${rel(l, 'guide/')}">${esc(S[l].guide.link)} →</a></p>`;
 
 // /facts/ — one plain page, Ukrainian + English, for answer engines to quote
 function rootFacts() {
@@ -521,8 +551,8 @@ function llms() {
   let s = `# ЖК VILNYI (VILNYI residential complex), Uzhhorod, Ukraine\n\n`;
   s += `> ${st('en', 'hero.lead')} Address: ${st('en', 'loc.addressV')} (${st('uk', 'loc.addressV')}). Developer: VILNYI Group. ${E.n} apartments in 4 buildings (16, 6, 17 and 10 floors). Price: ${D.USD_PER_M2} $ per m² of total area, paid in hryvnia at the official NBU rate (${E.uah} per m² at ${E.rate} UAH/$ on ${RATE.date}). Planned completion: building 2 ${E.q2}, buildings 1 and 3 ${E.q1}, building 4 ${E.q4}. Sales: ${E.phone}, WhatsApp/Viber ${E.wa}, Instagram @vilnyi.uzhhorod.\n\n`;
   s += `Facts on this site come from the project's architectural drawings, the developer (vilnyi.group) and the public lun.ua listing; prices follow one rule (1300 $/m² × NBU rate) and are regenerated daily. Apartment numbering is provisional.\n\n`;
-  s += `## Key pages (English)\n${link('en', '', 'Overview')}\n${link('en', 'facts/', 'Key facts', 'one quotable list')}\n${link('en', 'apartments/', 'Apartments and layouts', `${TYPES.length} layouts with plans and prices`)}\n${[1, 2, 3].map(r => link('en', `apartments/${r}-room/`, S.en.roomsPl[r], `from ${E['p' + r]}, ${E['a' + r]}`)).join('\n')}\n${B_IDS.map(b => link('en', `building-${BLD[b].no}/`, `Building ${BLD[b].no}`, `${BLD[b].floors} floors, ${BLD[b].apartments} apartments, completion ${qTxt('en', BLD[b].delivery)}`)).join('\n')}\n${link('en', 'location/', 'Location and distances')}\n${link('en', 'parking/', 'Underground parking', `${PARK.std} + ${PARK.tandem} tandem + ${PARK.moto} motorcycle places, ${PARK.ev} EV chargers`)}\n${link('en', 'construction/', 'Construction progress', 'monthly photos')}\n${link('en', 'faq/', 'FAQ')}\n${link('en', 'contacts/', 'Contacts')}\n\n`;
-  s += `## Основні сторінки (українською)\n${link('uk', '', 'Огляд ЖК VILNYI')}\n${link('uk', 'facts/', 'Ключові факти')}\n${link('uk', 'apartments/', 'Квартири та планування')}\n${[1, 2, 3].map(r => link('uk', `apartments/${r}-room/`, S.uk.roomsPl[r], `від ${U['p' + r]}`)).join('\n')}\n${B_IDS.map(b => link('uk', `building-${BLD[b].no}/`, `Будинок №${BLD[b].no}`)).join('\n')}\n${link('uk', 'location/', 'Розташування')}\n${link('uk', 'parking/', 'Паркінг')}\n${link('uk', 'construction/', 'Хід будівництва')}\n${link('uk', 'faq/', 'Питання та відповіді')}\n${link('uk', 'contacts/', 'Контакти')}\n\n`;
+  s += `## Key pages (English)\n${link('en', '', 'Overview')}\n${link('en', 'facts/', 'Key facts', 'one quotable list')}\n${link('en', 'apartments/', 'Apartments and layouts', `${TYPES.length} layouts with plans and prices`)}\n${[1, 2, 3].map(r => link('en', `apartments/${r}-room/`, S.en.roomsPl[r], `from ${E['p' + r]}, ${E['a' + r]}`)).join('\n')}\n${B_IDS.map(b => link('en', `building-${BLD[b].no}/`, `Building ${BLD[b].no}`, `${BLD[b].floors} floors, ${BLD[b].apartments} apartments, completion ${qTxt('en', BLD[b].delivery)}`)).join('\n')}\n${link('en', 'location/', 'Location and distances')}\n${link('en', 'parking/', 'Underground parking', `${PARK.std} + ${PARK.tandem} tandem + ${PARK.moto} motorcycle places, ${PARK.ev} EV chargers`)}\n${link('en', 'construction/', 'Construction progress', 'monthly photos')}\n${link('en', 'guide/', 'How to buy', 'price, instalments, discounts, eOselia, contract and documents, steps')}\n${link('en', 'faq/', 'FAQ')}\n${link('en', 'contacts/', 'Contacts')}\n\n`;
+  s += `## Основні сторінки (українською)\n${link('uk', '', 'Огляд ЖК VILNYI')}\n${link('uk', 'facts/', 'Ключові факти')}\n${link('uk', 'apartments/', 'Квартири та планування')}\n${[1, 2, 3].map(r => link('uk', `apartments/${r}-room/`, S.uk.roomsPl[r], `від ${U['p' + r]}`)).join('\n')}\n${B_IDS.map(b => link('uk', `building-${BLD[b].no}/`, `Будинок №${BLD[b].no}`)).join('\n')}\n${link('uk', 'location/', 'Розташування')}\n${link('uk', 'parking/', 'Паркінг')}\n${link('uk', 'construction/', 'Хід будівництва')}\n${link('uk', 'guide/', 'Як купити квартиру', 'ціна, розтермінування, знижки, єОселя, договір і документи, кроки')}\n${link('uk', 'faq/', 'Питання та відповіді')}\n${link('uk', 'contacts/', 'Контакти')}\n\n`;
   s += `## Optional\n- [Full facts for language models (uk + en)](${BASE}/llms-full.txt)\n- [Plain facts page](${BASE}/facts/)\n- [Interactive 3D site: finder, 3D walkthrough of every apartment, 360° tour](${BASE}/)\n- Other languages: ${['he', 'ro', 'de', 'fr', 'it'].map(l => `[${S[l].langName}](${url(l)})`).join(', ')}\n`;
   return s;
 }
@@ -555,7 +585,7 @@ function buildAll() {
     pageHome(l); pageApartments(l); for (const r of [1, 2, 3]) pageRooms(l, r);
     for (const t of TYPES) pageLayout(l, t);
     for (const b of B_IDS) pageBuilding(l, b);
-    pageLocation(l); pageProgress(l); pageParking(l); pageFaq(l); pageContacts(l); pageFacts(l);
+    pageLocation(l); pageProgress(l); pageParking(l); pageFaq(l); pageContacts(l); pageFacts(l); pageGuide(l);
   }
   const out = PAGES.map(pg => ({ rel: `${pg.lang}/${pg.key}index.html`, url: url(pg.lang, pg.key), lang: pg.lang, key: pg.key, html: pg.html }));
   const rf = rootFacts(); out.push({ rel: 'facts/index.html', url: `${BASE}/facts/`, lang: 'xx', key: 'facts/', html: rf.html });
