@@ -1149,3 +1149,8 @@ html.vv-zoom dialog[open].sheet, html.vv-zoom dialog[open].lightbox, html.vv-zoo
 /* V22: the four key figures under the hero never push the page sideways on a 320 px phone (fr / de labels) */
 .stat b { font-size: clamp(24px, 8.4vw, 34px); overflow-wrap: anywhere; }
 .stat span { overflow-wrap: anywhere; }
+
+/* v0.8 (V24-seo-geo): crawlable links from the app footer to the static pages */
+.foot-seo{display:flex;flex-wrap:wrap;gap:0 4px;padding-top:8px;padding-bottom:8px;border-top:1px solid var(--hair)}
+.foot-seo a{display:inline-flex;align-items:center;justify-content:center;min-height:40px;min-width:44px;padding:0 8px;color:var(--muted);font-size:13px;text-decoration:none}
+.foot-seo a:hover,.foot-seo a:focus-visible{color:var(--gold-hi)}

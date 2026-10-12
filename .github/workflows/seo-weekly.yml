@@ -1,0 +1,73 @@
+# SEO weekly — technical audit of ЖК VILNYI (seo-bot/audit.py: broken links, meta, hreflang reciprocity, JSON-LD
+# validity, page weight, sitemaps, robots.txt AI crawlers, llms.txt, IndexNow key) + Lighthouse (mobile) of a few
+# pages of the LIVE site → seo-bot/report/seo-report.json (+ history/<date>.json). Then IndexNow for every URL whose
+# content changed and, once a week, for pages whose prices changed. The weekly Claude agent (notes/seo/RUNBOOK.md in
+# the private project) reads this report. Free: GitHub-hosted runner, no secrets, no paid APIs.
+name: SEO weekly
+
+on:
+  schedule:
+    - cron: '20 3 * * 1'      # Monday 06:20 / 05:20 Kyiv
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: seo-bot
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Rebuild (keeps pages in step with data and rate)
+        run: node seo-bot/build.mjs
+      - name: Lighthouse (mobile) on the live site
+        continue-on-error: true
+        run: |
+          set -u
+          mkdir -p "$RUNNER_TEMP/lh"
+          i=0
+          for p in $(jq -r '.lighthouse.urls[]' seo-bot/config.json); do
+            i=$((i+1))
+            npx --yes lighthouse@12.2.1 "$(jq -r .base seo-bot/config.json)$p" --quiet --output=json \
+              --output-path="$RUNNER_TEMP/lh/$i.json" --only-categories=performance,seo,accessibility,best-practices \
+              --form-factor=mobile --chrome-flags="--headless=new --no-sandbox" || echo "lighthouse failed for $p"
+          done
+      - name: Audit → seo-bot/report/seo-report.json
+        run: |
+          python3 -m pip install --quiet 'jsonschema>=4,<5'
+          python3 seo-bot/audit.py --lighthouse "$RUNNER_TEMP/lh" --out seo-bot/report/seo-report.json
+          mkdir -p seo-bot/report/history
+          cp seo-bot/report/seo-report.json "seo-bot/report/history/$(date -u +%F).json"
+          ls -1t seo-bot/report/history/*.json | tail -n +27 | xargs -r rm --   # keep half a year
+      - name: Commit
+        id: commit
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A uk en he ro de fr it facts sitemap.xml sitemap-*.xml robots.txt llms.txt llms-full.txt seo-bot/state.json seo-bot/report
+          if git diff --cached --quiet; then echo "pushed=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          git commit -q -m "seo: weekly audit $(date -u +%F) ($(jq -r '.issueCounts | to_entries | map(.value) | add // 0' seo-bot/report/seo-report.json) issues)"
+          for i in 1 2 3; do git pull --rebase --quiet origin main && git push && echo "pushed=true" >> "$GITHUB_OUTPUT" && exit 0; sleep 15; done
+          exit 1
+      - name: IndexNow (content changes + weekly price updates)
+        continue-on-error: true
+        run: |
+          set -eu
+          if [ "${{ steps.commit.outputs.pushed }}" = "true" ]; then sleep 120; fi
+          python3 seo-bot/indexnow.py --mode weekly
+          git add seo-bot/state.json
+          if ! git diff --cached --quiet; then
+            git commit -q -m "seo: IndexNow ping recorded"
+            for i in 1 2 3; do git pull --rebase --quiet origin main && git push && exit 0; sleep 15; done
+          fi

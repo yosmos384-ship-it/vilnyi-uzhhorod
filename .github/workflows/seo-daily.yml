@@ -1,0 +1,68 @@
+# SEO daily — ЖК VILNYI static SEO / GEO pages (seo-bot/). Runs after every «NBU rate» run (the rate changes the
+# prices in the static pages, JSON-LD, llms*.txt) and once a day as a fallback. Rebuilds with seo-bot/build.mjs
+# (no dependencies), checks the result with seo-bot/audit.py --strict (nothing is committed if a check fails),
+# commits only when a file changed, then pings IndexNow for URLs whose content (not only the price) changed.
+# Free: GitHub-hosted runner, no secrets except the built-in GITHUB_TOKEN, no paid APIs.
+name: SEO daily
+
+on:
+  workflow_run:
+    workflows: ['NBU rate']
+    types: [completed]
+  schedule:
+    - cron: '50 4 * * *'      # 07:50 / 06:50 Kyiv — fallback if the rate workflow did not run
+  workflow_dispatch:
+    inputs:
+      ping:
+        description: 'IndexNow mode: daily | weekly | all | none'
+        default: 'daily'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: seo-bot
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Latest main (the rate bot may have just pushed)
+        run: git pull --ff-only origin main
+      - name: Rebuild static pages, sitemaps, llms.txt
+        run: node seo-bot/build.mjs
+      - name: Check (links, meta, hreflang, JSON-LD) — stop if anything is wrong
+        run: |
+          python3 -m pip install --quiet 'jsonschema>=4,<5'
+          python3 seo-bot/audit.py --strict --out "$RUNNER_TEMP/daily-report.json"
+      - name: Commit
+        id: commit
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A uk en he ro de fr it facts sitemap.xml sitemap-*.xml robots.txt llms.txt llms-full.txt seo-bot/state.json
+          if git diff --cached --quiet; then echo "nothing changed"; echo "pushed=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          git commit -q -m "seo: daily rebuild — prices at NBU $(jq -r .rate rate.json) UAH/USD for $(jq -r .date rate.json)"
+          for i in 1 2 3; do git pull --rebase --quiet origin main && git push && echo "pushed=true" >> "$GITHUB_OUTPUT" && exit 0; sleep 15; done
+          exit 1
+      - name: IndexNow (Bing, Yandex, Seznam …) for changed URLs
+        if: ${{ (github.event.inputs.ping || 'daily') != 'none' }}
+        continue-on-error: true
+        run: |
+          set -eu
+          if [ "${{ steps.commit.outputs.pushed }}" = "true" ]; then sleep 120; fi   # let GitHub Pages publish first
+          python3 seo-bot/indexnow.py --mode "${{ github.event.inputs.ping || 'daily' }}"
+          git add seo-bot/state.json
+          if ! git diff --cached --quiet; then
+            git commit -q -m "seo: IndexNow ping recorded"
+            for i in 1 2 3; do git pull --rebase --quiet origin main && git push && exit 0; sleep 15; done
+          fi

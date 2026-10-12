@@ -1,0 +1,29 @@
+{
+ "base": "https://vilnyi-gt-city.uz.ua",
+ "indexnow": {
+  "key": "3df119a518e2b1c204e8151c04a02099",
+  "endpoints": [
+   "https://api.indexnow.org/indexnow",
+   "https://www.bing.com/indexnow",
+   "https://yandex.com/indexnow",
+   "https://search.seznam.cz/indexnow"
+  ]
+ },
+ "verification": {
+  "google": "",
+  "bing": "",
+  "yandex": "",
+  "_note": "Paste ONLY the token value the search console gives (content of the meta tag). The generator then adds <meta name=google-site-verification> / msvalidate.01 / yandex-verification to every home page."
+ },
+ "lighthouse": {
+  "urls": [
+   "/",
+   "/uk/",
+   "/en/",
+   "/uk/apartments/",
+   "/uk/layout/1b01/",
+   "/uk/faq/"
+  ]
+ },
+ "pingPricePagesEveryDays": 7
+}

@@ -1,0 +1,725 @@
+{
+"source": "data/pois.json (project data; OpenStreetMap and the plans) — copied for the static-page generator",
+"pois": [
+{
+"id": "stop-hrushevskoho",
+"category": "transport",
+"kind": "bus",
+"distanceM": 72,
+"name": {
+"uk": "Зупинка «вул. Грушевського»",
+"en": "Bus stop · Hrushevskoho St"
+},
+"approx": true,
+"key": true,
+"ll": [
+48.611689,
+22.277672
+]
+},
+{
+"id": "bus-station",
+"category": "transport",
+"kind": "busstation",
+"distanceM": 1573,
+"name": {
+"uk": "Автовокзал «Ужгород-1»",
+"en": "Uzhhorod-1 bus station"
+},
+"approx": false,
+"key": false,
+"ll": [
+48.60953,
+22.29807
+]
+},
+{
+"id": "rail",
+"category": "transport",
+"kind": "rail",
+"distanceM": 1799,
+"name": {
+"uk": "Залізничний вокзал Ужгород",
+"en": "Uzhhorod railway station"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.609369,
+22.301134
+]
+},
+{
+"id": "airport",
+"category": "transport",
+"kind": "airport",
+"distanceM": 2727,
+"name": {
+"uk": "Аеропорт «Ужгород» · UDJ",
+"en": "Uzhhorod International Airport · UDJ"
+},
+"approx": false,
+"key": false,
+"ll": [
+48.63417,
+22.26333
+]
+},
+{
+"id": "border-sk",
+"category": "transport",
+"kind": "border",
+"distanceM": 4788,
+"name": {
+"uk": "КПП «Ужгород» – Вишнє Нємецьке (Словаччина)",
+"en": "Uzhhorod – Vyšné Nemecké border crossing (Slovakia)"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.65377,
+22.26586
+]
+},
+{
+"id": "border-hu",
+"category": "transport",
+"kind": "border",
+"distanceM": 20882,
+"name": {
+"uk": "Чоп · КПП «Тиса» – Захонь (Угорщина)",
+"en": "Chop · Tysa – Záhony border crossing (Hungary)"
+},
+"approx": true,
+"key": false,
+"ll": [
+48.43056,
+22.2
+]
+},
+{
+"id": "onsite-market",
+"category": "shopping",
+"kind": "supermarket",
+"distanceM": 0,
+"name": {
+"uk": "Супермаркет у комплексі",
+"en": "On-site supermarket"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.61133,
+22.27685
+]
+},
+{
+"id": "palladium",
+"category": "shopping",
+"kind": "mall",
+"distanceM": 101,
+"name": {
+"uk": "ТЦ «Палладіум»",
+"en": "Palladium shopping centre"
+},
+"approx": true,
+"key": false,
+"ll": [
+48.61218,
+22.27732
+]
+},
+{
+"id": "zina",
+"category": "shopping",
+"kind": "shop",
+"distanceM": 102,
+"name": {
+"uk": "Зіна",
+"en": "Zina"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.611412,
+22.278225
+]
+},
+{
+"id": "tc-novyi",
+"category": "shopping",
+"kind": "mall",
+"distanceM": 580,
+"name": {
+"uk": "ТЦ «Новий»",
+"en": "Novyi shopping centre"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.60774,
+22.27112
+]
+},
+{
+"id": "vopak",
+"category": "shopping",
+"kind": "supermarket",
+"distanceM": 594,
+"name": {
+"uk": "Вопак",
+"en": "Vopak"
+},
+"approx": false,
+"key": false,
+"ll": [
+48.607796,
+22.270795
+]
+},
+{
+"id": "silpo",
+"category": "shopping",
+"kind": "supermarket",
+"distanceM": 754,
+"name": {
+"uk": "Сільпо",
+"en": "Silpo"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.612589,
+22.266777
+]
+},
+{
+"id": "tokio",
+"category": "shopping",
+"kind": "mall",
+"distanceM": 756,
+"name": {
+"uk": "ТРЦ «Токіо» · кінотеатр «5 елемент»",
+"en": "Tokio mall · 5th Element cinema"
+},
+"approx": true,
+"key": false,
+"ll": [
+48.60866,
+22.26739
+]
+},
+{
+"id": "atb",
+"category": "shopping",
+"kind": "supermarket",
+"distanceM": 759,
+"name": {
+"uk": "АТБ-маркет",
+"en": "ATB-Market"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.604549,
+22.275683
+]
+},
+{
+"id": "velmart",
+"category": "shopping",
+"kind": "hyper",
+"distanceM": 1172,
+"name": {
+"uk": "Велмарт",
+"en": "Velmart hypermarket"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.61159,
+22.26091
+]
+},
+{
+"id": "epicentr",
+"category": "shopping",
+"kind": "hyper",
+"distanceM": 1203,
+"name": {
+"uk": "Епіцентр К",
+"en": "Epicentr K"
+},
+"approx": false,
+"key": false,
+"ll": [
+48.613716,
+22.260893
+]
+},
+{
+"id": "market",
+"category": "shopping",
+"kind": "market",
+"distanceM": 1332,
+"name": {
+"uk": "«П'яний базар»",
+"en": "\"Pianyi Bazar\" farmers market"
+},
+"approx": true,
+"key": false,
+"ll": [
+48.60263,
+22.289303
+]
+},
+{
+"id": "zdo8",
+"category": "education",
+"kind": "kinder",
+"distanceM": 329,
+"name": {
+"uk": "ЗДО №8 «Дзвіночок»",
+"en": "Kindergarten No. 8 \"Dzvinochok\""
+},
+"approx": false,
+"key": true,
+"ll": [
+48.61023,
+22.281
+]
+},
+{
+"id": "zdo12",
+"category": "education",
+"kind": "kinder",
+"distanceM": 377,
+"name": {
+"uk": "ЗДО №12",
+"en": "Kindergarten No. 12"
+},
+"approx": false,
+"key": false,
+"ll": [
+48.61413,
+22.27975
+]
+},
+{
+"id": "lyceum12",
+"category": "education",
+"kind": "highschool",
+"distanceM": 517,
+"name": {
+"uk": "Ужгородський ліцей №12",
+"en": "Uzhhorod Lyceum No. 12"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.61068,
+22.28382
+]
+},
+{
+"id": "lyceum-imidzh",
+"category": "education",
+"kind": "highschool",
+"distanceM": 517,
+"name": {
+"uk": "Ліцей «Імідж» (школа №19)",
+"en": "Lyceum \"Imidzh\" (School No. 19)"
+},
+"approx": false,
+"key": false,
+"ll": [
+48.60984,
+22.27019
+]
+},
+{
+"id": "lyceum15",
+"category": "education",
+"kind": "highschool",
+"distanceM": 609,
+"name": {
+"uk": "Ужгородський ліцей №15",
+"en": "Uzhhorod Lyceum No. 15"
+},
+"approx": false,
+"key": false,
+"ll": [
+48.61187,
+22.28509
+]
+},
+{
+"id": "zdo42",
+"category": "education",
+"kind": "kinder",
+"distanceM": 626,
+"name": {
+"uk": "ЗДО №42 «Джерельце»",
+"en": "Kindergarten No. 42 \"Dzhereltse\""
+},
+"approx": false,
+"key": false,
+"ll": [
+48.60927,
+22.26893
+]
+},
+{
+"id": "uzhnu",
+"category": "education",
+"kind": "university",
+"distanceM": 2861,
+"name": {
+"uk": "Ужгородський національний університет",
+"en": "Uzhhorod National University"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.63553,
+22.29008
+]
+},
+{
+"id": "prevention",
+"category": "health",
+"kind": "clinic",
+"distanceM": 552,
+"name": {
+"uk": "Клініка Prevention",
+"en": "Prevention clinic"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.607366,
+22.281371
+]
+},
+{
+"id": "pharmacy",
+"category": "health",
+"kind": "pharmacy",
+"distanceM": 607,
+"name": {
+"uk": "Аптека «Хустфарм»",
+"en": "Khustpharm pharmacy"
+},
+"approx": false,
+"key": false,
+"ll": [
+48.607503,
+22.27096
+]
+},
+{
+"id": "amb4",
+"category": "health",
+"kind": "clinic",
+"distanceM": 716,
+"name": {
+"uk": "Амбулаторія №4",
+"en": "Family medicine outpatient clinic No. 4"
+},
+"approx": false,
+"key": false,
+"ll": [
+48.61317,
+22.286188
+]
+},
+{
+"id": "child-clinic",
+"category": "health",
+"kind": "clinic",
+"distanceM": 1198,
+"name": {
+"uk": "Міська дитяча поліклініка",
+"en": "City children's polyclinic"
+},
+"approx": false,
+"key": false,
+"ll": [
+48.601178,
+22.282315
+]
+},
+{
+"id": "reg-hospital",
+"category": "health",
+"kind": "hospital",
+"distanceM": 1401,
+"name": {
+"uk": "Обласна клінічна лікарня ім. А. Новака",
+"en": "Zakarpattia Regional Clinical Hospital"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.62009,
+22.29055
+]
+},
+{
+"id": "city-hospital",
+"category": "health",
+"kind": "hospital",
+"distanceM": 1407,
+"name": {
+"uk": "Міська багатопрофільна клінічна лікарня",
+"en": "City multidisciplinary clinical hospital"
+},
+"approx": false,
+"key": false,
+"ll": [
+48.60026,
+22.28613
+]
+},
+{
+"id": "peremohy",
+"category": "parks",
+"kind": "park",
+"distanceM": 804,
+"name": {
+"uk": "Парк Перемоги",
+"en": "Peremohy (Victory) Park"
+},
+"approx": false,
+"key": false,
+"ll": [
+48.6113,
+22.28779
+]
+},
+{
+"id": "uzh",
+"category": "parks",
+"kind": "river",
+"distanceM": 969,
+"name": {
+"uk": "Річка Уж",
+"en": "Uzh river"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.62,
+22.2782
+]
+},
+{
+"id": "bozdosh",
+"category": "parks",
+"kind": "park",
+"distanceM": 1360,
+"name": {
+"uk": "Боздоський парк",
+"en": "Bozdosh Park"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.62208,
+22.26802
+]
+},
+{
+"id": "linden",
+"category": "parks",
+"kind": "park",
+"distanceM": 1699,
+"name": {
+"uk": "Липова алея · набережна Незалежності",
+"en": "Linden Alley · Nezalezhnosti embankment"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.62409,
+22.28956
+]
+},
+{
+"id": "botanic",
+"category": "parks",
+"kind": "garden",
+"distanceM": 2279,
+"name": {
+"uk": "Ботанічний сад УжНУ",
+"en": "Botanical Garden"
+},
+"approx": false,
+"key": false,
+"ll": [
+48.61993,
+22.30499
+]
+},
+{
+"id": "onsite-spa",
+"category": "leisure",
+"kind": "pool",
+"distanceM": 0,
+"name": {
+"uk": "VILNYI SPA · фітнес і басейн",
+"en": "VILNYI SPA · fitness & pool"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.61133,
+22.27685
+]
+},
+{
+"id": "avtomobilist",
+"category": "leisure",
+"kind": "stadium",
+"distanceM": 480,
+"name": {
+"uk": "Стадіон «Автомобіліст»",
+"en": "Avtomobilist football pitch"
+},
+"approx": false,
+"key": false,
+"ll": [
+48.61429,
+22.27209
+]
+},
+{
+"id": "yunist",
+"category": "leisure",
+"kind": "gym",
+"distanceM": 941,
+"name": {
+"uk": "Спорткомплекс «Юність»",
+"en": "Yunist sports complex"
+},
+"approx": false,
+"key": false,
+"ll": [
+48.61271,
+22.28948
+]
+},
+{
+"id": "avangard",
+"category": "leisure",
+"kind": "stadium",
+"distanceM": 1385,
+"name": {
+"uk": "Стадіон «Авангард»",
+"en": "Avanhard Stadium"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.62378,
+22.27742
+]
+},
+{
+"id": "theatre",
+"category": "leisure",
+"kind": "theatre",
+"distanceM": 1747,
+"name": {
+"uk": "Закарпатський музично-драматичний театр",
+"en": "Zakarpattia Music and Drama Theatre"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.62163,
+22.2948
+]
+},
+{
+"id": "narodna",
+"category": "city",
+"kind": "square",
+"distanceM": 1757,
+"name": {
+"uk": "Площа Народна",
+"en": "Narodna Square"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.625229,
+22.288217
+]
+},
+{
+"id": "ped-bridge",
+"category": "city",
+"kind": "square",
+"distanceM": 1932,
+"name": {
+"uk": "Пішохідний міст · Театральна площа",
+"en": "Pedestrian bridge · Teatralna Square"
+},
+"approx": false,
+"key": false,
+"ll": [
+48.62164,
+22.29801
+]
+},
+{
+"id": "korzo",
+"category": "city",
+"kind": "oldtown",
+"distanceM": 2080,
+"name": {
+"uk": "Вулиця Корзо · старе місто",
+"en": "Korzo Street · Old Town"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.62342,
+22.29845
+]
+},
+{
+"id": "cathedral",
+"category": "city",
+"kind": "landmark",
+"distanceM": 2272,
+"name": {
+"uk": "Хрестовоздвиженський кафедральний собор",
+"en": "Holy Cross Cathedral"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.622912,
+22.302313
+]
+},
+{
+"id": "castle",
+"category": "city",
+"kind": "landmark",
+"distanceM": 2475,
+"name": {
+"uk": "Ужгородський замок",
+"en": "Uzhhorod Castle"
+},
+"approx": false,
+"key": true,
+"ll": [
+48.62166,
+22.30667
+]
+}
+]
+}

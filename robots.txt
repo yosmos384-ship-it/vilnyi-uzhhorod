@@ -1,6 +1,104 @@
+# ЖК VILNYI — search engines and AI assistants are welcome to read and cite this site.
+
+User-agent: GPTBot
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
+User-agent: Claude-SearchBot
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
+User-agent: Claude-User
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
+User-agent: anthropic-ai
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
+User-agent: Perplexity-User
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
+User-agent: Applebot
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
+User-agent: Applebot-Extended
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
+User-agent: Bingbot
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
+User-agent: CCBot
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
+User-agent: Googlebot
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
+User-agent: YandexBot
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
+User-agent: DuckDuckBot
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
+User-agent: Amazonbot
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
+User-agent: meta-externalagent
+Allow: /
+Disallow: /crm.html
+Disallow: /dev/
+
 User-agent: *
 Allow: /
 Disallow: /crm.html
 Disallow: /dev/
+Disallow: /seo-bot/
 
 Sitemap: https://vilnyi-gt-city.uz.ua/sitemap.xml

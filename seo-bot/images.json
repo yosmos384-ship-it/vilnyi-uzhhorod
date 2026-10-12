@@ -1,0 +1,391 @@
+{
+"og": {
+"home": "assets/og/home.jpg",
+"apartments": "assets/og/apartments.jpg",
+"b1": "assets/og/b1.jpg",
+"b2": "assets/og/b2.jpg",
+"b3": "assets/og/b3.jpg",
+"b4": "assets/og/b4.jpg",
+"location": "assets/og/location.jpg",
+"parking": "assets/og/parking.jpg",
+"progress": "assets/og/progress.jpg"
+},
+"sizes": {
+"assets/gallery/aerial-east.jpg": [
+2400,
+1722
+],
+"assets/gallery/aerial-south.jpg": [
+2400,
+1775
+],
+"assets/gallery/aerial-southeast.jpg": [
+2400,
+1757
+],
+"assets/gallery/commercial-podium-corner.jpg": [
+2400,
+1350
+],
+"assets/gallery/commercial-podium-entrance.jpg": [
+2400,
+1451
+],
+"assets/gallery/courtyard-walkway-detail.jpg": [
+2400,
+1350
+],
+"assets/gallery/day-corner-view.jpg": [
+2400,
+1350
+],
+"assets/gallery/night-corner-view.jpg": [
+2400,
+1350
+],
+"assets/gallery/site-before-1.jpg": [
+2279,
+1484
+],
+"assets/gallery/site-before-2.jpg": [
+2394,
+1482
+],
+"assets/gallery/site-before-3.jpg": [
+2276,
+1707
+],
+"assets/gallery/site-before-4.jpg": [
+2258,
+1689
+],
+"assets/gallery/street-east-buildings-2-1.jpg": [
+2400,
+1511
+],
+"assets/gallery/street-south-buildings-4-2.jpg": [
+2400,
+1435
+],
+"assets/gallery/street-southeast-panorama.jpg": [
+2400,
+1350
+],
+"assets/gallery/tower-and-spa.jpg": [
+2400,
+1793
+],
+"assets/gallery/sm/aerial-south-1200.webp": [
+1200,
+888
+],
+"assets/gallery/sm/aerial-south-640.webp": [
+640,
+473
+],
+"assets/gallery/sm/aerial-southeast-1200.webp": [
+1200,
+878
+],
+"assets/gallery/sm/aerial-southeast-640.webp": [
+640,
+469
+],
+"assets/gallery/sm/commercial-podium-corner-1200.webp": [
+1200,
+675
+],
+"assets/gallery/sm/commercial-podium-corner-640.webp": [
+640,
+360
+],
+"assets/gallery/sm/commercial-podium-entrance-1200.webp": [
+1200,
+726
+],
+"assets/gallery/sm/commercial-podium-entrance-640.webp": [
+640,
+387
+],
+"assets/gallery/sm/courtyard-walkway-detail-1200.webp": [
+1200,
+675
+],
+"assets/gallery/sm/courtyard-walkway-detail-640.webp": [
+640,
+360
+],
+"assets/gallery/sm/day-corner-view-1200.webp": [
+1200,
+675
+],
+"assets/gallery/sm/day-corner-view-640.webp": [
+640,
+360
+],
+"assets/gallery/sm/group-03-640.webp": [
+640,
+419
+],
+"assets/gallery/sm/group-07-640.webp": [
+640,
+419
+],
+"assets/gallery/sm/group-12-1-1200.webp": [
+1200,
+675
+],
+"assets/gallery/sm/group-12-1-640.webp": [
+640,
+360
+],
+"assets/gallery/sm/lun-04-1200.webp": [
+1200,
+720
+],
+"assets/gallery/sm/lun-04-640.webp": [
+640,
+384
+],
+"assets/gallery/sm/lun-05-1200.webp": [
+1200,
+675
+],
+"assets/gallery/sm/lun-05-640.webp": [
+640,
+360
+],
+"assets/gallery/sm/lun-06-1200.webp": [
+1200,
+675
+],
+"assets/gallery/sm/lun-06-640.webp": [
+640,
+360
+],
+"assets/gallery/sm/lun-07-1200.webp": [
+1200,
+675
+],
+"assets/gallery/sm/lun-07-640.webp": [
+640,
+360
+],
+"assets/gallery/sm/lun-12-1200.webp": [
+1200,
+829
+],
+"assets/gallery/sm/lun-12-640.webp": [
+640,
+442
+],
+"assets/gallery/sm/lun-13-1200.webp": [
+1200,
+675
+],
+"assets/gallery/sm/lun-13-640.webp": [
+640,
+360
+],
+"assets/gallery/sm/lun-15-1200.webp": [
+1200,
+704
+],
+"assets/gallery/sm/lun-15-640.webp": [
+640,
+375
+],
+"assets/gallery/sm/night-corner-view-1200.webp": [
+1200,
+675
+],
+"assets/gallery/sm/night-corner-view-640.webp": [
+640,
+360
+],
+"assets/gallery/sm/street-east-buildings-2-1-1200.webp": [
+1200,
+756
+],
+"assets/gallery/sm/street-east-buildings-2-1-640.webp": [
+640,
+403
+],
+"assets/gallery/sm/street-south-buildings-4-2-1200.webp": [
+1200,
+718
+],
+"assets/gallery/sm/street-south-buildings-4-2-640.webp": [
+640,
+383
+],
+"assets/gallery/sm/street-southeast-panorama-1200.webp": [
+1200,
+675
+],
+"assets/gallery/sm/street-southeast-panorama-640.webp": [
+640,
+360
+],
+"assets/gallery/sm/tower-and-spa-1200.webp": [
+1200,
+896
+],
+"assets/gallery/sm/tower-and-spa-640.webp": [
+640,
+478
+],
+"assets/web/group-02.jpg": [
+678,
+1006
+],
+"assets/web/group-03.jpg": [
+1200,
+785
+],
+"assets/web/group-07.jpg": [
+1200,
+785
+],
+"assets/web/group-12-1.jpg": [
+1920,
+1080
+],
+"assets/web/group-12-2.jpg": [
+1200,
+675
+],
+"assets/web/group-13.jpg": [
+1920,
+1080
+],
+"assets/web/group-17.jpg": [
+1200,
+725
+],
+"assets/web/group-20.jpg": [
+1920,
+1148
+],
+"assets/web/group-26.jpg": [
+1920,
+1080
+],
+"assets/web/group-build-2.png": [
+1098,
+710
+],
+"assets/web/group-build-3.png": [
+1098,
+710
+],
+"assets/web/group-habitat.jpg": [
+678,
+1006
+],
+"assets/web/group-hero-image-vilnyi-zhk-mob.jpg": [
+745,
+1117
+],
+"assets/web/group-hero-image-vilnyi-zhk.jpg": [
+1920,
+1080
+],
+"assets/web/group-photo-2024-06-27-15-01-34-1.jpg": [
+1024,
+1280
+],
+"assets/web/group-q-citium-apts-1.jpg": [
+678,
+1006
+],
+"assets/web/group-qcc2.jpg": [
+678,
+1006
+],
+"assets/web/group-vilnyi-form.jpg": [
+1056,
+820
+],
+"assets/web/group-zhk-vilnyi-benefits-mobile.png": [
+722,
+574
+],
+"assets/web/group-zhk-vilnyi.png": [
+674,
+1008
+],
+"assets/web/lun-01.jpg": [
+1920,
+1080
+],
+"assets/web/lun-02.jpg": [
+1920,
+1080
+],
+"assets/web/lun-03.jpg": [
+1920,
+1080
+],
+"assets/web/lun-04.jpg": [
+1600,
+960
+],
+"assets/web/lun-05.jpg": [
+1600,
+900
+],
+"assets/web/lun-06.jpg": [
+1600,
+900
+],
+"assets/web/lun-07.jpg": [
+1600,
+900
+],
+"assets/web/lun-08.jpg": [
+1920,
+1161
+],
+"assets/web/lun-09.jpg": [
+1920,
+1209
+],
+"assets/web/lun-10.jpg": [
+1920,
+1080
+],
+"assets/web/lun-11.jpg": [
+1920,
+1434
+],
+"assets/web/lun-12.jpg": [
+1920,
+1327
+],
+"assets/web/lun-13.jpg": [
+1920,
+1080
+],
+"assets/web/lun-14.jpg": [
+1920,
+1080
+],
+"assets/web/lun-15.jpg": [
+1920,
+1126
+],
+"assets/web/lun-16.jpg": [
+1920,
+1447
+],
+"assets/web/lun-17.jpg": [
+1920,
+1459
+],
+"assets/web/lun-genplan.png": [
+1600,
+1200
+]
+}
+}

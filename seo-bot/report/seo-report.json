@@ -1,0 +1,55 @@
+{
+ "generated": "2026-10-12T00:59:48Z",
+ "base": "https://vilnyi-gt-city.uz.ua",
+ "pages": 961,
+ "sitemapUrls": 961,
+ "jsonldTypes": {
+  "AboutPage": 8,
+  "AggregateOffer": 21,
+  "Apartment": 854,
+  "ApartmentComplex": 961,
+  "BreadcrumbList": 952,
+  "CollectionPage": 35,
+  "ContactPage": 7,
+  "FAQPage": 7,
+  "ImageGallery": 7,
+  "ItemList": 28,
+  "LocalBusiness": 7,
+  "Offer": 854,
+  "Organization": 961,
+  "ParkingFacility": 7,
+  "Place": 7,
+  "Residence": 970,
+  "WebPage": 904,
+  "WebSite": 961
+ },
+ "htmlBytes": {
+  "min": 14932,
+  "max": 48111,
+  "avg": 22841
+ },
+ "eagerImageBytes": {
+  "min": 0,
+  "max": 445602,
+  "avg": 12360
+ },
+ "titleLength": {
+  "min": 16,
+  "max": 103,
+  "avg": 31
+ },
+ "descriptionLength": {
+  "min": 105,
+  "max": 280,
+  "avg": 125
+ },
+ "issueCounts": {},
+ "issues": {},
+ "indexnow": {
+  "pinged": 0,
+  "neverPinged": 962,
+  "lastPing": null
+ },
+ "lighthouse": [],
+ "ok": true
+}
