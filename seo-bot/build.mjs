@@ -172,7 +172,7 @@ function head(l, p) {
     + LANGS.filter(x => x !== l).map(x => `<meta property="og:locale:alternate" content="${S[x].locale}">`).join('')
     + `<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(p.title)}"><meta name="twitter:description" content="${esc(p.desc)}"><meta name="twitter:image" content="${og}">`
     + verif
-    + `<link rel="icon" type="image/svg+xml" href="/assets/brand/group-favicon.svg"><link rel="apple-touch-icon" href="/assets/brand/group-apple-touch-icon.png"><link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">`
+    + `<link rel="icon" type="image/png" href="/assets/brand/group-apple-touch-icon.png"><link rel="apple-touch-icon" href="/assets/brand/group-apple-touch-icon.png"><link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">`
     + `<style>${CSS}</style><script type="application/ld+json">${JSON.stringify(p.ld).replace(/</g, '\\u003c')}</script></head>`;
 }
 
