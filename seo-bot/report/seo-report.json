@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-12T00:59:48Z",
+ "generated": "2026-10-12T01:08:12Z",
  "base": "https://vilnyi-gt-city.uz.ua",
  "pages": 961,
  "sitemapUrls": 961,
@@ -46,10 +46,93 @@
  "issueCounts": {},
  "issues": {},
  "indexnow": {
-  "pinged": 0,
-  "neverPinged": 962,
-  "lastPing": null
+  "pinged": 962,
+  "neverPinged": 0,
+  "lastPing": {
+   "date": "2026-10-12",
+   "urls": 962,
+   "mode": "daily"
+  }
  },
- "lighthouse": [],
+ "lighthouse": [
+  {
+   "url": "https://vilnyi-gt-city.uz.ua/",
+   "scores": {
+    "performance": 34,
+    "accessibility": 93,
+    "best-practices": 100,
+    "seo": 100
+   },
+   "lcp_ms": 9871,
+   "cls": 0.138,
+   "tbt_ms": 1801,
+   "bytes": 2789938
+  },
+  {
+   "url": "https://vilnyi-gt-city.uz.ua/uk/",
+   "scores": {
+    "performance": 100,
+    "accessibility": 100,
+    "best-practices": 100,
+    "seo": 100
+   },
+   "lcp_ms": 1549,
+   "cls": 0,
+   "tbt_ms": 0,
+   "bytes": 372445
+  },
+  {
+   "url": "https://vilnyi-gt-city.uz.ua/en/",
+   "scores": {
+    "performance": 100,
+    "accessibility": 100,
+    "best-practices": 100,
+    "seo": 100
+   },
+   "lcp_ms": 1544,
+   "cls": 0,
+   "tbt_ms": 0,
+   "bytes": 371494
+  },
+  {
+   "url": "https://vilnyi-gt-city.uz.ua/uk/apartments/",
+   "scores": {
+    "performance": 98,
+    "accessibility": 100,
+    "best-practices": 100,
+    "seo": 100
+   },
+   "lcp_ms": 2454,
+   "cls": 0,
+   "tbt_ms": 0,
+   "bytes": 318201
+  },
+  {
+   "url": "https://vilnyi-gt-city.uz.ua/uk/layout/1b01/",
+   "scores": {
+    "performance": 100,
+    "accessibility": 100,
+    "best-practices": 100,
+    "seo": 100
+   },
+   "lcp_ms": 885,
+   "cls": 0,
+   "tbt_ms": 0,
+   "bytes": 240443
+  },
+  {
+   "url": "https://vilnyi-gt-city.uz.ua/uk/faq/",
+   "scores": {
+    "performance": 100,
+    "accessibility": 100,
+    "best-practices": 100,
+    "seo": 100
+   },
+   "lcp_ms": 790,
+   "cls": 0,
+   "tbt_ms": 0,
+   "bytes": 240271
+  }
+ ],
  "ok": true
 }
