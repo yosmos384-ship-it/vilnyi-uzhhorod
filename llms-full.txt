@@ -1,6 +1,6 @@
 # ЖК VILNYI — full facts (Українською + English)
 
-Source: https://vilnyi-gt-city.uz.ua/ · updated 2026-10-16 · prices at the NBU rate of 2026-10-16
+Source: https://vilnyi-gt-city.uz.ua/ · updated 2026-10-17 · prices at the NBU rate of 2026-10-17
 
 ## Факти
 - Назва: ЖК VILNYI (VILNYI, «Вільний»)
@@ -17,7 +17,7 @@ Source: https://vilnyi-gt-city.uz.ua/ · updated 2026-10-16 · prices at the NBU
 - Квартир: 462
 - Квартири за кімнатами: 310 однокімнатних, 130 двокімнатних, 22 трикімнатних
 - Площі: 1-кімн. 24,48–45,97 м²; 2-кімн. 38,89–88,60 м²; 3-кімн. 69,53–122,50 м²
-- Ціна: 1300 $ за м² загальної площі; 58 353 ₴ за м² за курсом НБУ 44,8871 на 16 жовтня 2026 р.
+- Ціна: 1300 $ за м² загальної площі; 58 353 ₴ за м² за курсом НБУ 44,8871 на 17 жовтня 2026 р.
 - Ціни від: 1-кімн. 1 428 481 ₴; 2-кімн. 2 269 348 ₴; 3-кімн. 4 057 284 ₴
 - Оплата: 100% або розтермінування від забудовника до 17 місяців, перший внесок 30–50%
 - Знижки: 5% військовим і медичним працівникам (не сумуються)
@@ -58,7 +58,7 @@ Source: https://vilnyi-gt-city.uz.ua/ · updated 2026-10-16 · prices at the NBU
 Девелопер — VILNYI Group (15 років досвіду; проєкти QCC2, Q CITIUM і Habitat у Ларнаці, Кіпр). Замовник будівництва — ОК «ЖБК «ВІЛЬНИЙ», генпідрядник — ТОВ «ВІНЕРБУД» (за даними публічного оголошення).
 
 ### Скільки коштує квартира в ЖК VILNYI?
-Ціна для всіх квартир — 1300 $ за м² загальної площі, у гривні за офіційним курсом НБУ: 58 353 ₴ за м² (курс 44,8871 ₴/$ на 16 жовтня 2026 р.). Однокімнатні — від 1 428 481 ₴, двокімнатні — від 2 269 348 ₴, трикімнатні — від 4 057 284 ₴.
+Ціна для всіх квартир — 1300 $ за м² загальної площі, у гривні за офіційним курсом НБУ: 58 353 ₴ за м² (курс 44,8871 ₴/$ на 17 жовтня 2026 р.). Однокімнатні — від 1 428 481 ₴, двокімнатні — від 2 269 348 ₴, трикімнатні — від 4 057 284 ₴.
 
 ### Чи є розтермінування?
 Так. Розтермінування від забудовника — до 17 місяців (1 рік 5 місяців), перший внесок 30–50%. Можлива також повна оплата при укладанні договору.
@@ -108,7 +108,7 @@ Source: https://vilnyi-gt-city.uz.ua/ · updated 2026-10-16 · prices at the NBU
 - Apartments: 462
 - Apartments by rooms: 310 one-room, 130 two-room, 22 three-room
 - Areas: 1-room 24.48–45.97 m²; 2-room 38.89–88.60 m²; 3-room 69.53–122.50 m²
-- Price: 1300 $ per m² of total area; 58,353 ₴ per m² at the NBU rate of 44.8871 on October 16, 2026
+- Price: 1300 $ per m² of total area; 58,353 ₴ per m² at the NBU rate of 44.8871 on October 17, 2026
 - Prices from: 1-room 1,428,481 ₴; 2-room 2,269,348 ₴; 3-room 4,057,284 ₴
 - Payment: 100% or developer instalments up to 17 months, 30–50% first payment
 - Discounts: 5% for military personnel and for medical workers (not combined)
@@ -149,7 +149,7 @@ VILNYI is being built at 4A Mykhaila Hrushevskoho St, Uzhhorod, Ukraine — at t
 The developer is VILNYI Group (15 years of experience; projects QCC2, Q CITIUM and Habitat in Larnaca, Cyprus). The construction customer is ОК «ЖБК «ВІЛЬНИЙ», the general contractor ТОВ «ВІНЕРБУД» (per the public listing).
 
 ### How much does an apartment at VILNYI cost?
-One price for every apartment: 1300 $ per m² of total area, paid in hryvnia at the official National Bank of Ukraine rate — 58,353 ₴ per m² (rate 44.8871 UAH/$ on October 16, 2026). One-room apartments from 1,428,481 ₴, two-room from 2,269,348 ₴, three-room from 4,057,284 ₴.
+One price for every apartment: 1300 $ per m² of total area, paid in hryvnia at the official National Bank of Ukraine rate — 58,353 ₴ per m² (rate 44.8871 UAH/$ on October 17, 2026). One-room apartments from 1,428,481 ₴, two-room from 2,269,348 ₴, three-room from 4,057,284 ₴.
 
 ### Are instalments available?
 Yes. Developer instalments for up to 17 months (1 year 5 months) with a 30–50% first payment, or full payment when the contract is signed.
