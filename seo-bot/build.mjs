@@ -292,7 +292,7 @@ function pageHome(l) {
   b += `<h2>${esc(T(l, 'secBuildings'))}</h2><ul class="cards">${B_IDS.map(x => `<li><a class="t" href="${rel(l, `building-${BLD[x].no}/`)}">${esc(T(l, 'building', { n: BLD[x].no }))}</a><br>${esc(T(l, 'floors'))}: ${BLD[x].floors} · ${esc(T(l, 'flats'))}: ${BLD[x].apartments}<br>${esc(T(l, 'kDelivery'))}: ${esc(qTxt(l, BLD[x].delivery))}</li>`).join('')}</ul>`;
   b += `<h2>${esc(T(l, 'secLife'))}</h2><p>${esc(st(l, 'life.lead'))}</p><div class="grid2">${['market', 'playland', 'spa', 'parking', 'shelter', 'yard'].map(k => `<div><h3>${esc(st(l, `life.${k}.t`))}</h3><p>${esc(st(l, `life.${k}.d`))}</p></div>`).join('')}</div>`;
   b += `<h2>${esc(T(l, 'secTerms'))}</h2><p>${esc(st(l, 'terms.lead'))}</p><ul><li>${esc(st(l, 'terms.priceD', { usdM2: D.USD_PER_M2, rateDate: N.date }))}</li><li>${esc(st(l, 'terms.instD'))}</li><li>${esc(st(l, 'terms.discT'))}: ${esc(st(l, 'terms.discD'))}</li><li>${esc(st(l, 'terms.deliveryD'))}</li><li>${esc(st(l, 'terms.programs'))}</li></ul>` + guideLink(l);
-  b += `<h2>${esc(T(l, 'secLocation'))}</h2><p>${esc(st(l, 'loc.lead'))}</p><ul>${[1, 2, 3, 4].map(i => `<li>${esc(st(l, `loc.pt${i}`))}</li>`).join('')}</ul><p><a href="${rel(l, 'location/')}">${esc(S[l].nav.location)} →</a></p>`;
+  b += `<h2>${esc(T(l, 'secLocation'))}</h2><p>${esc(st(l, 'loc.lead'))}</p><ul>${[1, 2, 3, 4].map(i => `<li>${esc(st(l, `loc.pt${i}`))}</li>`).join('')}</ul><p><a href="${rel(l, 'location/')}">${esc(T(l, 'locGuideLink'))} →</a></p>`;
   b += `<h2>${esc(T(l, 'secFaq'))}</h2><dl class="faq">${S[l].faq.slice(0, 5).map(([q, a]) => `<dt>${esc(fill(q, N))}</dt><dd>${esc(fill(a, N))}</dd>`).join('')}</dl><p><a href="${rel(l, 'faq/')}">${esc(S[l].nav.faq)} →</a> · <a href="${rel(l, 'facts/')}">${esc(S[l].nav.facts)} →</a></p>`;
   addPage(l, '', p, b);
 }
@@ -393,20 +393,36 @@ function pageBuilding(l, bId) {
   addPage(l, key, p, b);
 }
 
+// distances: great-circle (straight-line) metres from the plot centre (P.geo = data/pois.json → project); walking ≈ 80 m/min
+const R_EARTH = 6371008.8, rad = d => d * Math.PI / 180;
+const distM = ll => { const [la, lo] = ll, dLa = rad(la - P.geo.lat), dLo = rad(lo - P.geo.lon); const h = Math.sin(dLa / 2) ** 2 + Math.cos(rad(P.geo.lat)) * Math.cos(rad(la)) * Math.sin(dLo / 2) ** 2; return 2 * R_EARTH * Math.asin(Math.sqrt(h)); };
+const NEAR = POIS.map(x => ({ ...x, d: x.distanceM === 0 ? 0 : Math.round(distM(x.ll)) })).sort((a, c) => a.d - c.d);
+const poiName = (l, x) => x.name[l === 'uk' ? 'uk' : 'en'];
+const distTxt = (l, x) => x.d === 0 ? T(l, 'onSite') : (x.approx ? '≈ ' : '') + (x.d >= 1000 ? `${nf(l, 1).format(x.d / 1000)} ${S[l].kmU}` : `${Math.max(10, Math.round(x.d / 10) * 10)} ${S[l].mU}`);
+const walkTxt = (l, x) => x.d === 0 || x.d > 2500 ? '—' : T(l, 'walkMin', { n: Math.max(1, Math.ceil(x.d / 80)) });
+const nearTxt = (l, x) => x ? `${distTxt(l, x)} (${walkTxt(l, x)})` : '—';
+const LOC_GROUPS = [['transport', x => x.category === 'transport'], ['kinder', x => x.kind === 'kinder'], ['school', x => x.kind === 'highschool' || x.kind === 'university'], ['health', x => x.category === 'health'], ['shopping', x => x.category === 'shopping'], ['parks', x => x.category === 'parks'], ['leisure', x => x.category === 'leisure'], ['city', x => x.category === 'city']];
 function pageLocation(l) {
   const p = { title: T(l, 'locTitle'), desc: T(l, 'locDesc'), h1: T(l, 'locH1'), og: 'location', section: 'location', crumbs: crumb(l, [S[l].nav.location, rel(l, 'location/')]) };
   p.canonical = url(l, 'location/');
-  const near = POIS.filter(x => x.distanceM > 0 && x.key).map(x => ({ '@type': 'Place', name: x.name[l === 'uk' ? 'uk' : 'en'], geo: { '@type': 'GeoCoordinates', latitude: x.ll[0], longitude: x.ll[1] } }));
-  p.ld = graph(l, p, [{ '@type': 'Place', '@id': `${p.canonical}#nearby`, name: T(l, 'secLocation'), containedInPlace: { '@id': `${BASE}/#complex` }, containsPlace: near }, ...B_IDS.map(x => buildingLd(l, x))], 'WebPage', true);
+  const off = NEAR.filter(x => x.d > 0);
+  const first = f => off.find(f);
+  const ans = T(l, 'locAnswer', { addr: st(l, 'loc.addressV'), stop: nearTxt(l, first(x => x.kind === 'bus')), kg: nearTxt(l, first(x => x.kind === 'kinder')), school: nearTxt(l, first(x => x.kind === 'highschool')), shop: nearTxt(l, first(x => x.kind === 'supermarket')), centre: nearTxt(l, first(x => x.id === 'narodna')) });
+  const list = { '@type': 'ItemList', '@id': `${p.canonical}#nearby`, name: T(l, 'hNear'), description: T(l, 'distNote'), numberOfItems: off.length, itemListOrder: 'https://schema.org/ItemListOrderAscending',
+    itemListElement: off.map((x, i) => ({ '@type': 'ListItem', position: i + 1, name: poiName(l, x),
+      item: { '@type': 'Place', name: poiName(l, x), geo: { '@type': 'GeoCoordinates', latitude: x.ll[0], longitude: x.ll[1] }, additionalProperty: [{ '@type': 'PropertyValue', name: T(l, 'thDist'), value: x.d, unitCode: 'MTR' }] } })) };
+  p.ld = graph(l, p, [list, ...B_IDS.map(x => buildingLd(l, x))], 'WebPage', true);
   const osm = `https://www.openstreetmap.org/?mlat=${P.geo.lat}&mlon=${P.geo.lon}#map=17/${P.geo.lat}/${P.geo.lon}`;
-  let b = `<h1>${esc(p.h1)}</h1><p class="lead">${esc(st(l, 'loc.lead'))}</p><figure class="hero">${picture(l, IMGS.location, { eager: true, sizes: '(max-width: 1100px) 100vw, 1100px' })}</figure>`;
+  let b = `<h1>${esc(p.h1)}</h1><p class="lead">${esc(ans)}</p><p>${esc(st(l, 'loc.lead'))}</p><figure class="hero">${picture(l, IMGS.location, { eager: true, sizes: '(max-width: 1100px) 100vw, 1100px' })}</figure>`;
   b += `<dl class="kv"><div><dt>${esc(T(l, 'kAddress'))}</dt><dd>${esc(st(l, 'loc.addressV'))}</dd></div><div><dt>${esc(T(l, 'fDistrict'))}</dt><dd>${esc(st(l, 'loc.title'))}</dd></div><div><dt>${esc(T(l, 'coords'))}</dt><dd>${P.geo.lat}, ${P.geo.lon} · <a href="${osm}" rel="noopener">OpenStreetMap</a></dd></div></dl>`;
   b += `<ul>${[1, 2, 3, 4].map(i => `<li>${esc(st(l, `loc.pt${i}`))}</li>`).join('')}</ul>`;
-  for (const cat of ['transport', 'shopping', 'education', 'health', 'parks', 'leisure', 'city']) {
-    const xs = POIS.filter(x => x.category === cat).sort((a, c) => a.distanceM - c.distanceM); if (!xs.length) continue;
-    b += `<h2>${esc(S[l].cat[cat])}</h2><div class="tw"><table><tbody>${xs.map(x => `<tr><td>${esc(x.name[l === 'uk' ? 'uk' : 'en'])}</td><td class="n">${x.distanceM === 0 ? '—' : (x.approx ? '≈ ' : '') + (x.distanceM >= 1000 ? nf(l, 1).format(x.distanceM / 1000) + ' km' : Math.round(x.distanceM / 10) * 10 + ' m')}</td></tr>`).join('')}</tbody></table></div>`;
+  b += `<h2>${esc(T(l, 'hNear'))}</h2><p class="note">${esc(T(l, 'distNote'))} ${esc(T(l, 'walkNote'))}</p>`;
+  for (const [g, f] of LOC_GROUPS) {
+    const xs = NEAR.filter(f); if (!xs.length) continue;
+    b += `<h3>${esc(S[l].cat[g])}</h3><div class="tw"><table><thead><tr><th>${esc(T(l, 'thPlace'))}</th><th>${esc(T(l, 'thDist'))}</th><th>${esc(T(l, 'thWalk'))}</th></tr></thead><tbody>${xs.map(x => `<tr><td>${esc(poiName(l, x))}</td><td class="n">${esc(distTxt(l, x))}</td><td class="n">${esc(walkTxt(l, x))}</td></tr>`).join('')}</tbody></table></div>`;
   }
-  b += `<p class="note">${esc(T(l, 'distNote'))} © OpenStreetMap contributors.</p>` + ctas(l, '#location');
+  b += `<p class="note">© OpenStreetMap contributors.</p>` + ctas(l, '#location');
+  b += `<h2>${esc(T(l, 'seeAlso'))}</h2><ul>${[['faq/', S[l].nav.faq], ['guide/', S[l].guide.link], ['apartments/', S[l].nav.apartments], ['construction/', S[l].nav.progress], ['contacts/', S[l].nav.contacts]].map(([k, t]) => `<li><a href="${rel(l, k)}">${esc(t)}</a></li>`).join('')}</ul>`;
   addPage(l, 'location/', p, b);
 }
 
@@ -449,7 +465,7 @@ function pageFaq(l) {
   p.ld = graph(l, p, [], 'FAQPage');
   const wp = p.ld['@graph'].find(n => n['@type'] === 'FAQPage');
   wp.mainEntity = qa.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } }));
-  let b = `<h1>${esc(p.h1)}</h1>` + guideLink(l) + `<dl class="faq">${qa.map(([q, a]) => `<dt>${esc(q)}</dt><dd>${esc(a)}</dd>`).join('')}</dl>` + ctas(l) + priceNote(l);
+  let b = `<h1>${esc(p.h1)}</h1>` + guideLink(l) + `<p><a href="${rel(l, 'location/')}">${esc(T(l, 'locGuideLink'))} →</a></p><dl class="faq">${qa.map(([q, a]) => `<dt>${esc(q)}</dt><dd>${esc(a)}</dd>`).join('')}</dl>` + ctas(l) + priceNote(l);
   addPage(l, 'faq/', p, b);
 }
 
@@ -551,7 +567,7 @@ function llms() {
   let s = `# ЖК VILNYI (VILNYI residential complex), Uzhhorod, Ukraine\n\n`;
   s += `> ${st('en', 'hero.lead')} Address: ${st('en', 'loc.addressV')} (${st('uk', 'loc.addressV')}). Developer: VILNYI Group. ${E.n} apartments in 4 buildings (16, 6, 17 and 10 floors). Price: ${D.USD_PER_M2} $ per m² of total area, paid in hryvnia at the official NBU rate (${E.uah} per m² at ${E.rate} UAH/$ on ${RATE.date}). Planned completion: building 2 ${E.q2}, buildings 1 and 3 ${E.q1}, building 4 ${E.q4}. Sales: ${E.phone}, WhatsApp/Viber ${E.wa}, Instagram @vilnyi.uzhhorod.\n\n`;
   s += `Facts on this site come from the project's architectural drawings, the developer (vilnyi.group) and the public lun.ua listing; prices follow one rule (1300 $/m² × NBU rate) and are regenerated daily. Apartment numbering is provisional.\n\n`;
-  s += `## Key pages (English)\n${link('en', '', 'Overview')}\n${link('en', 'facts/', 'Key facts', 'one quotable list')}\n${link('en', 'apartments/', 'Apartments and layouts', `${TYPES.length} layouts with plans and prices`)}\n${[1, 2, 3].map(r => link('en', `apartments/${r}-room/`, S.en.roomsPl[r], `from ${E['p' + r]}, ${E['a' + r]}`)).join('\n')}\n${B_IDS.map(b => link('en', `building-${BLD[b].no}/`, `Building ${BLD[b].no}`, `${BLD[b].floors} floors, ${BLD[b].apartments} apartments, completion ${qTxt('en', BLD[b].delivery)}`)).join('\n')}\n${link('en', 'location/', 'Location and distances')}\n${link('en', 'parking/', 'Underground parking', `${PARK.std} + ${PARK.tandem} tandem + ${PARK.moto} motorcycle places, ${PARK.ev} EV chargers`)}\n${link('en', 'construction/', 'Construction progress', 'monthly photos')}\n${link('en', 'guide/', 'How to buy', 'price, instalments, discounts, eOselia, contract and documents, steps')}\n${link('en', 'faq/', 'FAQ')}\n${link('en', 'contacts/', 'Contacts')}\n\n`;
+  s += `## Key pages (English)\n${link('en', '', 'Overview')}\n${link('en', 'facts/', 'Key facts', 'one quotable list')}\n${link('en', 'apartments/', 'Apartments and layouts', `${TYPES.length} layouts with plans and prices`)}\n${[1, 2, 3].map(r => link('en', `apartments/${r}-room/`, S.en.roomsPl[r], `from ${E['p' + r]}, ${E['a' + r]}`)).join('\n')}\n${B_IDS.map(b => link('en', `building-${BLD[b].no}/`, `Building ${BLD[b].no}`, `${BLD[b].floors} floors, ${BLD[b].apartments} apartments, completion ${qTxt('en', BLD[b].delivery)}`)).join('\n')}\n${link('en', 'location/', 'Location and what is nearby', 'schools, kindergartens, shops, healthcare, transport with straight-line distances')}\n${link('en', 'parking/', 'Underground parking', `${PARK.std} + ${PARK.tandem} tandem + ${PARK.moto} motorcycle places, ${PARK.ev} EV chargers`)}\n${link('en', 'construction/', 'Construction progress', 'monthly photos')}\n${link('en', 'guide/', 'How to buy', 'price, instalments, discounts, eOselia, contract and documents, steps')}\n${link('en', 'faq/', 'FAQ')}\n${link('en', 'contacts/', 'Contacts')}\n\n`;
   s += `## Основні сторінки (українською)\n${link('uk', '', 'Огляд ЖК VILNYI')}\n${link('uk', 'facts/', 'Ключові факти')}\n${link('uk', 'apartments/', 'Квартири та планування')}\n${[1, 2, 3].map(r => link('uk', `apartments/${r}-room/`, S.uk.roomsPl[r], `від ${U['p' + r]}`)).join('\n')}\n${B_IDS.map(b => link('uk', `building-${BLD[b].no}/`, `Будинок №${BLD[b].no}`)).join('\n')}\n${link('uk', 'location/', 'Розташування')}\n${link('uk', 'parking/', 'Паркінг')}\n${link('uk', 'construction/', 'Хід будівництва')}\n${link('uk', 'guide/', 'Як купити квартиру', 'ціна, розтермінування, знижки, єОселя, договір і документи, кроки')}\n${link('uk', 'faq/', 'Питання та відповіді')}\n${link('uk', 'contacts/', 'Контакти')}\n\n`;
   s += `## Optional\n- [Full facts for language models (uk + en)](${BASE}/llms-full.txt)\n- [Plain facts page](${BASE}/facts/)\n- [Interactive 3D site: finder, 3D walkthrough of every apartment, 360° tour](${BASE}/)\n- Other languages: ${['he', 'ro', 'de', 'fr', 'it'].map(l => `[${S[l].langName}](${url(l)})`).join(', ')}\n`;
   return s;

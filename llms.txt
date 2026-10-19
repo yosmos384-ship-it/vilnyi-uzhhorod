@@ -15,7 +15,7 @@ Facts on this site come from the project's architectural drawings, the developer
 - [Building 2](https://vilnyi-gt-city.uz.ua/en/building-2/): 6 floors, 53 apartments, completion Q4 2026
 - [Building 3](https://vilnyi-gt-city.uz.ua/en/building-3/): 17 floors, 159 apartments, completion Q3 2027
 - [Building 4](https://vilnyi-gt-city.uz.ua/en/building-4/): 10 floors, 113 apartments, completion Q4 2027
-- [Location and distances](https://vilnyi-gt-city.uz.ua/en/location/)
+- [Location and what is nearby](https://vilnyi-gt-city.uz.ua/en/location/): schools, kindergartens, shops, healthcare, transport with straight-line distances
 - [Underground parking](https://vilnyi-gt-city.uz.ua/en/parking/): 150 + 29 tandem + 4 motorcycle places, 76 EV chargers
 - [Construction progress](https://vilnyi-gt-city.uz.ua/en/construction/): monthly photos
 - [How to buy](https://vilnyi-gt-city.uz.ua/en/guide/): price, instalments, discounts, eOselia, contract and documents, steps
