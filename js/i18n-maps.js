@@ -5,8 +5,8 @@ import { lang } from './i18n.js';
 
 const M = {
   uk: {
-    eyebrow: 'Google Maps · локація', title: 'Район з висоти',
-    lead: 'Облетіть квартал навколо ЖК VILNYI, подивіться, що поруч, і прокладіть маршрут до будівництва одним дотиком.',
+    eyebrow: 'Google Maps · локація', title: 'Дізнайтеся більше про район',
+    lead: 'Знайдіть місця поруч на карті й прокладіть маршрут одним дотиком. Відкрийте вигляд з повітря, щоб побачити район з іншого ракурсу.',
     'fly.label': '3D-облет навколо ЖК VILNYI', 'fly.start': 'Запустити 3D-облет', 'fly.pause': 'Зупинити облет', 'fly.play': 'Продовжити облет',
     'fly.loading': 'Завантажуємо 3D-карту…',
     'fly.g3d': '3D-карта Google',
@@ -30,8 +30,8 @@ const M = {
     'sv.label': 'Панорама Google Street View вулиці перед ЖК VILNYI', 'sv.date': 'Знімок Google: {d}',
   },
   en: {
-    eyebrow: 'Google Maps · location', title: 'The neighbourhood from above',
-    lead: 'Fly around the block of ЖК VILNYI, see what is nearby and start navigation to the site with one tap.',
+    eyebrow: 'Google Maps · location', title: 'Explore the neighbourhood',
+    lead: 'Find nearby places on the map and start navigation with one tap. Open the aerial view for a different perspective.',
     'fly.label': '3D flyover around ЖК VILNYI', 'fly.start': 'Start the 3D flyover', 'fly.pause': 'Pause the flyover', 'fly.play': 'Resume the flyover',
     'fly.loading': 'Loading the 3D map…',
     'fly.g3d': 'Google 3D map',
@@ -55,8 +55,8 @@ const M = {
     'sv.label': 'Google Street View panorama of the street in front of ЖК VILNYI', 'sv.date': 'Google imagery: {d}',
   },
   he: {
-    eyebrow: 'Google Maps · מיקום', title: 'השכונה ממעוף הציפור',
-    lead: 'טוסו מסביב למתחם ЖК VILNYI, ראו מה יש בסביבה והתחילו ניווט לאתר בנגיעה אחת.',
+    eyebrow: 'Google Maps · מיקום', title: 'הכירו את הסביבה',
+    lead: 'גלו מה נמצא בקרבת הפרויקט על המפה וצאו לדרך בלחיצה אחת. למבט נוסף, פתחו את התצוגה האווירית.',
     'fly.label': 'טיסת תלת־ממד מסביב ל־ЖК VILNYI', 'fly.start': 'הפעלת טיסת תלת־ממד', 'fly.pause': 'עצירת הטיסה', 'fly.play': 'המשך הטיסה',
     'fly.loading': 'טוען את מפת התלת־ממד…',
     'fly.g3d': 'מפת תלת־ממד של Google',
@@ -80,8 +80,8 @@ const M = {
     'sv.label': 'פנורמת Google Street View של הרחוב מול ЖК VILNYI', 'sv.date': 'צילום Google: {d}',
   },
   ro: {
-    eyebrow: 'Google Maps · locație', title: 'Cartierul văzut de sus',
-    lead: 'Zburați în jurul complexului ЖК VILNYI, vedeți ce este în apropiere și porniți navigația spre șantier cu o singură atingere.',
+    eyebrow: 'Google Maps · locație', title: 'Descoperiți împrejurimile',
+    lead: 'Găsiți locurile din apropiere pe hartă și porniți navigația cu o singură atingere. Deschideți vederea aeriană pentru o altă perspectivă.',
     'fly.label': 'Zbor 3D în jurul ЖК VILNYI', 'fly.start': 'Porniți zborul 3D', 'fly.pause': 'Opriți zborul', 'fly.play': 'Continuați zborul',
     'fly.loading': 'Se încarcă harta 3D…',
     'fly.g3d': 'Hartă 3D Google',
@@ -105,8 +105,8 @@ const M = {
     'sv.label': 'Panoramă Google Street View a străzii din fața ЖК VILNYI', 'sv.date': 'Imagini Google: {d}',
   },
   de: {
-    eyebrow: 'Google Maps · Lage', title: 'Die Nachbarschaft von oben',
-    lead: 'Umfliegen Sie das Quartier von ЖК VILNYI, sehen Sie, was in der Nähe ist, und starten Sie die Navigation zur Baustelle mit einem Tipp.',
+    eyebrow: 'Google Maps · Lage', title: 'Entdecken Sie die Umgebung',
+    lead: 'Finden Sie Orte in der Nähe auf der Karte und starten Sie die Navigation mit einem Tipp. Öffnen Sie die Luftansicht für eine andere Perspektive.',
     'fly.label': '3D-Rundflug um ЖК VILNYI', 'fly.start': '3D-Rundflug starten', 'fly.pause': 'Rundflug anhalten', 'fly.play': 'Rundflug fortsetzen',
     'fly.loading': '3D-Karte wird geladen…',
     'fly.g3d': 'Google-3D-Karte',
@@ -130,8 +130,8 @@ const M = {
     'sv.label': 'Google-Street-View-Panorama der Straße vor ЖК VILNYI', 'sv.date': 'Google-Aufnahme: {d}',
   },
   fr: {
-    eyebrow: 'Google Maps · emplacement', title: 'Le quartier vu d’en haut',
-    lead: 'Survolez le quartier de ЖК VILNYI, découvrez ce qui se trouve à proximité et lancez la navigation vers le chantier d’un seul geste.',
+    eyebrow: 'Google Maps · emplacement', title: 'Découvrez le quartier',
+    lead: 'Repérez les lieux à proximité sur la carte et lancez votre itinéraire en un geste. Ouvrez la vue aérienne pour une autre perspective.',
     'fly.label': 'Survol 3D autour de ЖК VILNYI', 'fly.start': 'Lancer le survol 3D', 'fly.pause': 'Mettre le survol en pause', 'fly.play': 'Reprendre le survol',
     'fly.loading': 'Chargement de la carte 3D…',
     'fly.g3d': 'Carte 3D Google',
@@ -155,8 +155,8 @@ const M = {
     'sv.label': 'Panorama Google Street View de la rue devant ЖК VILNYI', 'sv.date': 'Images Google : {d}',
   },
   it: {
-    eyebrow: 'Google Maps · posizione', title: 'Il quartiere dall’alto',
-    lead: 'Sorvolate l’isolato di ЖК VILNYI, scoprite cosa c’è nei dintorni e avviate la navigazione verso il cantiere con un tocco.',
+    eyebrow: 'Google Maps · posizione', title: 'Scoprite il quartiere',
+    lead: 'Trovate i luoghi vicini sulla mappa e avviate la navigazione con un tocco. Aprite la vista aerea per una prospettiva diversa.',
     'fly.label': 'Sorvolo 3D intorno a ЖК VILNYI', 'fly.start': 'Avvia il sorvolo 3D', 'fly.pause': 'Metti in pausa il sorvolo', 'fly.play': 'Riprendi il sorvolo',
     'fly.loading': 'Caricamento della mappa 3D…',
     'fly.g3d': 'Mappa 3D Google',

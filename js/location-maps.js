@@ -11,7 +11,7 @@
 // page view only (never in localStorage) — Google Maps Platform terms. Google's logo and attributions are never hidden.
 import { PROJECT } from './data.js';
 import { lang, onLangChange } from './i18n.js';
-import { mt, GMAPS_LANG } from './i18n-maps.js';
+import { mt, GMAPS_LANG } from './i18n-maps.js?v=light-map-1';
 import { POIS } from './panorama.js';
 import { poiName, CARD } from './i18n-panorama.js';
 import { GOOGLE_MAPS_API_KEY, MAPS } from './maps-config.js';
