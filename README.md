@@ -49,6 +49,7 @@ The page always opens in Ukrainian. Order: `?lang=` → the visitor's own choice
 | `js/data-plates.js`, `data-progress.js`, `data-sales.js` | GENERATED — never edit by hand (see below) |
 | `js/app.js`, `plan.js`, `booking.js`, `progress.js`, `panorama.js`, `hero3d.js`, `hero-slides.js`, `pano-tour.js` | page modules |
 | `js/three/` | 3D engine: exterior, commons, apartment, walkthrough, environment, cars, materials |
+| `js/location-maps.js`, `js/i18n-maps.js`, `css/maps.css`, `js/maps-config.js` | «Location on Google Maps» (#gmaps): 3D flyover, map + nearby (Places API New), Google Maps / Waze links, Street View. The Google key lives ONLY in `js/maps-config.js`; Cloud Console: allow referrers `https://vilnyi-gt-city.uz.ua/*`, `https://www.vilnyi-gt-city.uz.ua/*`; enable Maps JavaScript API + Places API (New) (+ Routes API if `ROUTE_TIMES`). |
 | `js/i18n.js`, `js/i18n/<lang>.ui.js`, `<lang>.site.js` | translations (ui = interface, site = project copy); module-own strings in `js/i18n-hero.js`, `i18n-panorama.js`, `i18n-progress.js`, `i18n-tour.js` |
 | `assets/gallery/manifest.json` | the gallery: `[{src, type: exterior|amenity|interior|lobby, caption:{7 languages}}]` — list only files that exist |
 | `assets/hero-slides.json` | hero slideshow |

@@ -1,0 +1,85 @@
+/* ЖК VILNYI (Uzhhorod) — «Location on Google Maps» (#gmaps, js/location-maps.js). Uses the tokens of css/site.css. */
+.gmx { background: var(--bg-2); border-top: 1px solid var(--line); }
+.gmx .h3 { font: 500 clamp(24px, 4.6vw, 34px)/1.1 var(--f-display); color: var(--ivory); margin: 0 0 8px; }
+.gmx .gmx-sublead { color: var(--muted); font-size: 14px; margin: 0 0 18px; max-width: 62ch; }
+
+/* ---------- 1. flyover ---------- */
+.gmx-fly { position: relative; margin: 0; aspect-ratio: 4 / 5; max-height: 78vh; overflow: hidden; border: 1px solid var(--line); background: #0d0c0a; }
+@media (min-width: 700px) { .gmx-fly { aspect-ratio: 16 / 9; } }
+.gmx-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity .9s var(--ease); }
+.gmx[data-fly="poster"] .gmx-poster, .gmx[data-fly="loading"] .gmx-poster, .gmx[data-fly="off"] .gmx-poster { animation: gmxDrift 38s ease-in-out infinite alternate; }
+@keyframes gmxDrift { from { transform: scale(1.04) translateX(-1.2%); } to { transform: scale(1.12) translateX(1.2%); } }
+@media (prefers-reduced-motion: reduce) { .gmx .gmx-poster { animation: none !important; } }
+.gmx-live .gmx-poster { opacity: 0; pointer-events: none; }
+.gmx-stage { position: absolute; inset: 0; }
+.gmx-stage > * { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.gmx-fly::after { content: ""; position: absolute; inset: auto 0 0 0; height: 38%; pointer-events: none; background: linear-gradient(to top, rgba(11, 10, 8, .72), transparent); transition: opacity .6s; }
+.gmx-live .gmx-fly::after { opacity: 0; }
+.gmx-badge { position: absolute; inset-inline-start: 14px; top: 14px; z-index: 2; max-width: calc(100% - 84px); padding: 7px 12px; font-size: 12px; line-height: 1.35; color: var(--ivory); background: rgba(11, 10, 8, .72); border: 1px solid var(--line-2); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.gmx[data-fly="loading"] .gmx-badge::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-inline-end: 8px; vertical-align: -1px; border: 1.5px solid var(--gold); border-top-color: transparent; border-radius: 50%; animation: gmxSpin .9s linear infinite; }
+@keyframes gmxSpin { to { transform: rotate(360deg); } }
+.gmx[data-fly="off"] .gmx-badge { inset: auto 14px 14px 14px; top: auto; max-width: none; }
+.gmx-flybtn { position: absolute; inset-inline-end: 14px; top: 14px; z-index: 2; }
+.gmx-flybtn .i-play { display: none; } .gmx-flybtn[data-play="1"] .i-play { display: block; } .gmx-flybtn[data-play="1"] .i-pause { display: none; }
+.gmx-flybtn svg { fill: currentColor; stroke: none; }
+
+/* ---------- 3. navigate ---------- */
+.gmx-nav { display: grid; gap: 18px; margin: 28px 0 0; padding: 22px 0; border-block: 1px solid var(--line); }
+.gmx-nav .h3 { margin: 0 0 4px; }
+.gmx-nav p { margin: 0; color: var(--muted); font-size: 14px; }
+.gmx-btns { display: grid; gap: 10px; }
+.gmx-btns .btn { white-space: normal; text-align: center; line-height: 1.25; }
+.gmx-btns .btn svg { width: 20px; height: 20px; }
+@media (min-width: 560px) { .gmx-btns { grid-template-columns: repeat(3, auto); justify-content: start; } }
+@media (min-width: 1000px) { .gmx-nav { grid-template-columns: 1fr auto; align-items: center; } }
+
+/* ---------- 2. map + nearby ---------- */
+.gmx-near { margin-top: 56px; }
+.gmx-chips { margin-bottom: 18px; }
+.gmx-chips .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; margin-inline: calc(-1 * var(--gutter)); padding-inline: var(--gutter); }
+.gmx-chips .chips::-webkit-scrollbar { display: none; }
+@media (min-width: 900px) { .gmx-chips .chips { flex-wrap: wrap; overflow: visible; margin-inline: 0; padding-inline: 0; } }
+.gmx-grid { display: grid; gap: 14px; }
+@media (min-width: 900px) { .gmx-grid { grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr); align-items: stretch; } }
+.gmx-map { position: relative; overflow: hidden; min-height: 340px; height: 56vh; max-height: 560px; border: 1px solid var(--line); background: #0d0c0a; }
+@media (min-width: 900px) { .gmx-map { height: 520px; } }
+.gmx-map-off .gmx-map { display: none; }
+.gmx-map-off .gmx-grid { grid-template-columns: 1fr; }
+.gmx-mapoff { display: none; }
+.gmx-map-off .gmx-mapoff { display: block; margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+.gmx-side { display: flex; flex-direction: column; min-height: 0; }
+.gmx-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); overflow: auto; max-height: 520px; }
+.gmx-map-off .gmx-list { max-height: none; display: grid; }
+@media (min-width: 700px) { .gmx-map-off .gmx-list { grid-template-columns: 1fr 1fr; column-gap: 28px; } }
+.gmx-it { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 10px; border-bottom: 1px solid var(--line); transition: background .2s; }
+.gmx-it.on { background: rgba(201, 169, 106, .08); }
+.gmx-it-b { display: flex; gap: 12px; align-items: flex-start; padding: 12px 4px; text-align: start; color: inherit; background: none; border: 0; font: inherit; cursor: pointer; min-width: 0; }
+.gmx-n { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid var(--gold); border-radius: 50%; color: var(--gold-hi); font-size: 12px; font-weight: 600; }
+.gmx-it.on .gmx-n { background: var(--gold); color: #17130c; }
+.gmx-it-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gmx-name { color: var(--ivory); font-size: 14.5px; line-height: 1.35; overflow-wrap: anywhere; }
+.gmx-sub { color: var(--dim); font-size: 12px; }
+.gmx-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12.5px; color: var(--muted); }
+.gmx-meta b { color: var(--gold-hi); font-weight: 600; }
+.gmx-route { padding: 8px 4px; font-size: 12px; color: var(--gold); white-space: nowrap; border-bottom: 1px solid rgba(201, 169, 106, .35); margin-inline-end: 4px; }
+.gmx-route:hover { color: var(--gold-hi); }
+@media (max-width: 420px) { .gmx-it { grid-template-columns: 1fr; } .gmx-it-b { padding-bottom: 6px; } .gmx-route { justify-self: start; margin: -6px 0 12px 42px; } :dir(rtl) .gmx-route { margin: -6px 42px 12px 0; } }
+.gmx-msg { padding: 16px 4px; color: var(--muted); font-size: 14px; }
+.gmx-note { margin: 12px 0 0; font-size: 12px; color: var(--dim); line-height: 1.5; }
+/* Places attribution: the words «Google Maps», never translated (Google Maps Platform attribution rules) */
+.gmx-attr { margin: 6px 0 0; font: 500 12px/1.3 Roboto, Arial, sans-serif; color: var(--muted); }
+
+/* markers on the 2D map */
+.gmx-pin { position: absolute; transform: translate(-50%, -100%); display: flex; align-items: flex-end; gap: 6px; pointer-events: none; z-index: 5; }
+.gmx-pin img { width: 40px; height: 51px; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .55)); }
+.gmx-pin-l { position: absolute; left: 44px; bottom: 18px; display: flex; flex-direction: column; padding: 5px 9px; white-space: nowrap; background: rgba(11, 10, 8, .88); border: 1px solid var(--gold); color: var(--ivory); font: 500 12px/1.25 var(--f-body); }
+.gmx-pin-l b { color: var(--gold-hi); letter-spacing: .06em; }
+.gmx-pin-l small { color: var(--muted); font-size: 11px; }
+.gmx-dot { position: absolute; transform: translate(-50%, -50%); width: 26px; height: 26px; padding: 0; display: grid; place-items: center; border-radius: 50%; border: 1.5px solid #0b0a08; background: var(--ivory); color: #17130c; font: 700 11.5px/1 var(--f-body); cursor: pointer; box-shadow: 0 3px 8px rgba(0, 0, 0, .45); transition: transform .2s; }
+.gmx-dot:hover, .gmx-dot.on { background: var(--gold); transform: translate(-50%, -50%) scale(1.18); z-index: 4; }
+
+/* ---------- 4. street view ---------- */
+.gmx-sv { margin-top: 56px; }
+.gmx-pano { width: 100%; aspect-ratio: 4 / 3; max-height: 70vh; border: 1px solid var(--line); background: #0d0c0a; }
+@media (min-width: 700px) { .gmx-pano { aspect-ratio: 21 / 9; } }
+.gmx-svdate { margin: 8px 0 0; font-size: 12px; color: var(--dim); }

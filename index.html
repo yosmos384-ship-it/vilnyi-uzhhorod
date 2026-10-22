@@ -37,6 +37,7 @@
 <link rel="stylesheet" href="css/plan.css">
 <link rel="stylesheet" href="css/panorama.css">
 <link rel="stylesheet" href="css/progress.css">
+<link rel="stylesheet" href="css/maps.css">
 <link rel="preload" as="image" href="assets/hero-real-night.jpg" imagesrcset="assets/hero-real-night-1280.jpg 1280w, assets/hero-real-night.jpg 2400w" imagesizes="(max-width: 820px) 420px, 100vw" fetchpriority="high">
 <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js","three/addons/":"./vendor/addons/"}}</script>
 <link rel="modulepreload" href="js/data.js">
@@ -45,6 +46,7 @@
 <script type="module" src="js/panorama.js"></script>
 <script type="module" src="js/hero-slides.js"></script>
 <script type="module" src="js/progress.js"></script>
+<script type="module" src="js/location-maps.js"></script>
 </head>
 <body>
 <a class="skip" href="#main" data-i18n="skip">Перейти до основного вмісту</a>
@@ -257,6 +259,52 @@
         <div class="addr" id="addr"></div>
       </div>
       <figure class="map" id="map"></figure>
+    </div>
+  </section>
+
+  <!-- LOCATION ON GOOGLE MAPS (js/location-maps.js, css/maps.css, key in js/maps-config.js): 3D flyover, navigate,
+       map + what's nearby (Places API New), Street View. Texts: js/i18n-maps.js (data-mt). Nothing loads from Google
+       until the section approaches the viewport. -->
+  <section class="gmx section" id="gmaps" aria-labelledby="gmx-h" data-fly="poster">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow" data-mt="eyebrow"></p>
+        <h2 id="gmx-h" class="h2" data-mt="title"></h2>
+        <p class="lead" data-mt="lead"></p>
+      </div>
+      <figure class="gmx-fly" id="gmxFly" data-mt-attr="aria-label:fly.label" role="group">
+        <img class="gmx-poster" src="assets/maps/flyover-poster-1280.jpg" srcset="assets/maps/flyover-poster-800.jpg 800w, assets/maps/flyover-poster-1280.jpg 1280w" sizes="(max-width: 820px) 100vw, 1280px" alt="" width="1280" height="720" loading="lazy" decoding="async">
+        <div class="gmx-stage" id="gmxFlyStage"></div>
+        <p class="gmx-badge" id="gmxFlyBadge" aria-live="polite"></p>
+        <button type="button" class="icon-btn gmx-flybtn" id="gmxFlyBtn" hidden><svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg><svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg></button>
+      </figure>
+      <div class="gmx-nav">
+        <div><h3 class="h3" data-mt="nav.title"></h3><p dir="auto" data-mt="nav.lead"></p></div>
+        <div class="gmx-btns">
+          <a class="btn primary" id="gmxDir" href="https://www.google.com/maps/dir/?api=1&amp;destination=48.61133,22.27685&amp;travelmode=driving" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg><span data-mt="nav.gmaps"></span></a>
+          <a class="btn gold-outline" id="gmxWaze" href="https://waze.com/ul?ll=48.61133,22.27685&amp;navigate=yes" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 13.5c0-4.7 3.4-8 7.8-8s7.7 3.3 7.7 7.4c0 3.6-2.7 5.9-6.2 5.9H10c-1.2 1.3-3 1.6-4.2.8.8-.6 1-1.4.9-2.3-1.4-.9-2.2-2.2-2.2-3.8z"/><circle cx="10" cy="11" r=".6"/><circle cx="15" cy="11" r=".6"/><path d="M10 14c1.2 1 2.8 1 4 0"/></svg><span data-mt="nav.waze"></span></a>
+          <a class="btn ghost" id="gmxOpen" href="https://www.google.com/maps/search/?api=1&amp;query=48.61133,22.27685" target="_blank" rel="noopener"><span data-mt="nav.open"></span></a>
+        </div>
+      </div>
+      <div class="gmx-near">
+        <h3 class="h3" data-mt="near.title"></h3>
+        <p class="gmx-sublead" data-mt="near.lead"></p>
+        <div class="gmx-chips"><div class="chips" id="gmxChips" role="radiogroup" data-mt-attr="aria-label:near.title"></div></div>
+        <div class="gmx-grid">
+          <div class="gmx-map" id="gmxMap" role="region" data-mt-attr="aria-label:map.label"></div>
+          <div class="gmx-side">
+            <ol class="gmx-list" id="gmxList" aria-live="polite"></ol>
+            <p class="gmx-attr" id="gmxAttr" translate="no" hidden>Google Maps</p>
+            <p class="gmx-note" id="gmxNote"></p>
+          </div>
+        </div>
+      </div>
+      <div class="gmx-sv" id="gmxSv" hidden>
+        <h3 class="h3" data-mt="sv.title"></h3>
+        <p class="gmx-sublead" data-mt="sv.lead"></p>
+        <div class="gmx-pano" id="gmxPano" role="region" data-mt-attr="aria-label:sv.label"></div>
+        <p class="gmx-svdate" id="gmxSvDate"></p>
+      </div>
     </div>
   </section>
 
