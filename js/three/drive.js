@@ -1006,12 +1006,14 @@ export const driveMixin = {
   // ======================= the map on the centre screen =======================
   // the streets within ≈ 350 m (data.js STREETS + the city data when it is loaded); underground: the aisles and ramps of the car park
   _mapRoads(x, y, z) {
-    const under = y < -1.5, c = this._mapC, M = this._city();
-    if (c && c.under === under && c.city === !!M && Math.hypot(x - c.x, z - c.z) < 70) return c;
+    const under = y < -1.5, c = this._mapC, M = this._city(), g3d = !!(M && M.CITY.g3d);   // Google 3D city on: no OSM streets on the screen (Google's terms)
+    if (c && c.under === under && c.city === !!M && c.g3d === g3d && Math.hypot(x - c.x, z - c.z) < 70) return c;
     const roads = [], names = [], R = 380;
     if (under) {
       for (const a of PARKING.aisles || []) roads.push({ pts: a.pts, w: Math.min(3, a.width || 6) });
       for (const r of RAMPS) if (r.centerline) roads.push({ pts: r.centerline.map(p => [p[0], p[2]]), w: 3, main: true });
+    } else if (g3d) {
+      for (const r of RAMPS) if (r.centerline) roads.push({ pts: r.centerline.map(p => [p[0], p[2]]), w: 4 });
     } else {
       for (const st of DATA.STREETS || []) { const pts = (st.pts || []).filter(p => Math.hypot(p[0] - x, p[1] - z) < R + 150); if (pts.length > 1) { roads.push({ pts: st.pts, w: st.w || 6, main: !!st.main }); names.push(st); } }
       if (M && M.roadsNear) { try { for (const r of M.roadsNear(x, z, R)) if (r.car && !r.near) { roads.push({ pts: r.pts, w: r.w || 6, main: r.cls === 'primary' || r.cls === 'secondary' }); names.push(r); } } catch { /* optional */ } }
@@ -1023,7 +1025,7 @@ export const driveMixin = {
       let best = null; for (const st of names) { const pts = st.pts; for (let i = 0; i + 1 < pts.length; i++) { const ax = pts[i][0], az = pts[i][1], ux = pts[i + 1][0] - ax, uz = pts[i + 1][1] - az, L2 = ux * ux + uz * uz || 1, t = clamp(((px - ax) * ux + (pz - az) * uz) / L2), d = Math.hypot(px - ax - ux * t, pz - az - uz * t); if (d < 14 && (!best || d < best.d)) best = { d, st }; } }
       const n = best && best.st.name; return n ? (typeof n === 'string' ? n : n[lang] || n.uk || n.en || '') : '';
     };
-    return (this._mapC = { x, z, under, city: !!M, roads, name, marks: under ? [] : [{ x: SITE_CENTER[0], z: SITE_CENTER[1], label: 'VILNYI', r: 5 }], rev: ((c && c.rev) || 0) + 1 });
+    return (this._mapC = { x, z, under, city: !!M, g3d, roads, name, marks: under ? [] : [{ x: SITE_CENTER[0], z: SITE_CENTER[1], label: 'VILNYI', r: 5 }], rev: ((c && c.rev) || 0) + 1 });
   },
 
   // ======================= mirrors =======================

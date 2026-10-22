@@ -12,6 +12,7 @@ export const CITY = {
   ready: false, meta: null, bounds: null, boundary: [], seam: null, places: {},
   roads: [], graph: { nodes: [], edges: [] }, crossings: [], signals: [], buildings: [], pois: [], areas: [], rails: [], railCrossings: [],
   busStops: [], trees: new Float32Array(0), lamps: new Float32Array(0), hours: [], cats: [], signs: {},
+  g3d: false,                                     // true while the Google 3D city (google3d.js) replaces the drawn one
 };
 let _promise = null; const _readyCbs = [];
 export function onCityReady(cb) { if (CITY.ready) cb(CITY); else _readyCbs.push(cb); }
@@ -337,9 +338,10 @@ function tilesIn(x, z, r, fn) { for (let i = Math.floor((x - r) / TILE); i <= Ma
 export function collidersNear(x, z, r) {
   const out = { polys: [], walls: [], posts: [] }; if (!CITY.ready) return out;
   for (const b of buildingsNear(x, z, r)) if (b.kind !== 'canopy') out.polys.push({ id: b.id, poly: b.poly, h: b.h, kind: b.kind });
+  const ghost = !!CITY.g3d;                           // Google 3D city on screen (google3d.js): the generated fences, trees, lamps, posts are not drawn → not solid
   tilesIn(x, z, r, (i, j) => { const c = tileColliders(i, j);
-    for (const w of c.walls) { const dx = w[2] - w[0], dz = w[3] - w[1], l2 = dx * dx + dz * dz || 1; let t = ((x - w[0]) * dx + (z - w[1]) * dz) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t; if (hyp(x - w[0] - dx * t, z - w[1] - dz * t) <= r) out.walls.push(w); }
-    for (const p of c.posts) if (hyp(p[0] - x, p[1] - z) <= r + p[2]) out.posts.push(p); });
+    for (const w of c.walls) { if (ghost && w[5] !== 'parapet') continue; const dx = w[2] - w[0], dz = w[3] - w[1], l2 = dx * dx + dz * dz || 1; let t = ((x - w[0]) * dx + (z - w[1]) * dz) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t; if (hyp(x - w[0] - dx * t, z - w[1] - dz * t) <= r) out.walls.push(w); }
+    if (!ghost) for (const p of c.posts) if (hyp(p[0] - x, p[1] - z) <= r + p[2]) out.posts.push(p); });
   return out;
 }
 /** Everything around a point in one call (spatial index helper for the other modules). */

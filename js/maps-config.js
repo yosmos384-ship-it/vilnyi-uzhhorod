@@ -23,4 +23,17 @@ export const MAPS = {
   // Places (New) nearby search: radius per category in metres, results per category (max 20).
   RADIUS: 1500, MAX_RESULTS: 8,
 };
-export default { GOOGLE_MAPS_API_KEY, MAPS };
+// ---- Google Photorealistic 3D Tiles inside the 3D worlds (js/three/google3d.js) ----------------------------------------
+// A SEPARATE key for the Map Tiles API. Empty '' = the feature is OFF and the 3D worlds are exactly the classic ones
+// (OpenStreetMap / procedural city); nothing is downloaded from Google by them. Set it = ON: a "🌍 Google 3D / 🗺 Classic"
+// toggle appears in the 3D views and the real city is streamed live from Google.
+// The key MUST belong to a Google Cloud project whose billing account has a billing address OUTSIDE the EEA: since 8 July 2025
+// Google answers 403 "…not available for your account and region" for EEA billing accounts (Map Tiles API EEA terms). On a
+// 403 / 429 / no network / no 3D coverage the worlds fall back to the classic city by themselves, with a short note.
+// Restrict the key in Cloud Console → Credentials: Websites = this site's domains; APIs = Map Tiles API only. Never log it.
+export const GOOGLE_3D_KEY = '';
+// No photorealistic coverage (only a coarse globe): if the finest tile on screen stays coarser than this (metres of
+// geometric error) once loading has settled, the world goes back to the classic city ("no Google 3D coverage here").
+export const GOOGLE_3D_MIN_DETAIL_M = 6;
+
+export default { GOOGLE_MAPS_API_KEY, MAPS, GOOGLE_3D_KEY, GOOGLE_3D_MIN_DETAIL_M };
