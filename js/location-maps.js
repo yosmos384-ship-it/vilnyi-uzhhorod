@@ -336,23 +336,6 @@ function focusItem(i, pan = true) {
   if (!pan) root.querySelector(`.gmx-it[data-i="${i}"]`)?.scrollIntoView({ block: 'nearest', behavior: REDUCED ? 'auto' : 'smooth' });
 }
 
-const DARK = [
-  { elementType: 'geometry', stylers: [{ color: '#1b1813' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#a89f8e' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#0b0a08' }] },
-  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#3a3328' }] },
-  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#211d17' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#1f2a1d' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2c271f' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#14120e' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#4a3d27' }] },
-  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#c9b893' }] },
-  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#29241c' }] },
-  { featureType: 'transit.station', elementType: 'labels.text.fill', stylers: [{ color: '#c9a96a' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0e1a1f' }] },
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#5d7b80' }] },
-];
-
 async function startNearby() {
   try {
     const g = await loadGoogle(); if (authFailed) throw new Error('auth');
@@ -360,13 +343,13 @@ async function startNearby() {
     near.g = g;
     const host = $('#gmxMap');
     near.map = new Map(host, {
-      center: HERE, zoom: 15, clickableIcons: false, gestureHandling: 'cooperative', streetViewControl: false,
+      center: HERE, zoom: 15, mapTypeId: 'roadmap', clickableIcons: false, gestureHandling: 'cooperative', streetViewControl: false,
       mapTypeControl: true, fullscreenControl: true, mapTypeControlOptions: { mapTypeIds: ['roadmap', 'hybrid'] },
-      ...(MAPS.MAP_ID ? { mapId: MAPS.MAP_ID, colorScheme: g.ColorScheme?.DARK ?? 'DARK', backgroundColor: '#0b0a08' } : { styles: DARK, backgroundColor: '#0b0a08' }),
+      ...(MAPS.MAP_ID ? { mapId: MAPS.MAP_ID, colorScheme: g.ColorScheme?.LIGHT ?? 'LIGHT', backgroundColor: '#f4f3ef' } : { backgroundColor: '#f4f3ef' }),
     });
     const pin = document.createElement('div');
     pin.className = 'gmx-pin';
-    pin.innerHTML = `<img src="assets/maps/pin.svg" alt="" width="40" height="51"><span class="gmx-pin-l"><b>${esc(mt('map.you'))}</b><small>${esc(mt('map.addr'))}</small></span>`;
+    pin.innerHTML = `<img src="assets/maps/pin.svg" alt="" width="40" height="51"><span class="gmx-pin-l"><img class="gmx-pin-brand" src="assets/brand/vilnyi-logo-new.svg" alt="VILNYI" width="68" height="27"><b>${esc(mt('map.you'))}</b><small>${esc(mt('map.addr'))}</small></span>`;
     near.pinEl = pin; htmlMarker(pin, HERE);
     root.classList.add('gmx-map-live');
     authWatch.add(() => mapOff());
@@ -406,6 +389,17 @@ async function startStreetView() {
 // ================================================================ boot
 function boot() {
   root = $('#gmaps'); if (!root) return;
+  const flyBlock = $('#gmxFly'), flyDetails = document.createElement('details');
+  flyDetails.className = 'gmx-extra';
+  flyDetails.innerHTML = '<summary data-mt="fly.label"></summary>';
+  flyBlock.before(flyDetails);
+  flyDetails.append(flyBlock);
+  $('.gmx-nav').after(flyDetails);
+  $('.gmx-nav').before($('.gmx-near'));
+  flyDetails.addEventListener('toggle', () => {
+    fly.onVisible(flyDetails.open);
+    if (flyDetails.open) fly.start();
+  });
   applyTexts();
   root.addEventListener('change', e => { if (e.target.name === 'gmxCat') loadCat(e.target.value); });
   root.addEventListener('click', e => {
@@ -415,11 +409,11 @@ function boot() {
   onLangChange(() => { applyTexts(); if (near.status !== 'idle') loadCat(near.cat); });
   authWatch.add(() => { if (fly.state !== 'poster') fly.off(); $('#gmxSv').hidden = true; });
 
-  const go = () => { fly.start(); startNearby().then(startStreetView); };
+  const go = () => { startNearby().then(startStreetView); };
   if (!('IntersectionObserver' in window)) { fly.visible = true; go(); return; }
   const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { io.disconnect(); go(); } }, { rootMargin: '400px 0px' });
   io.observe(root);
-  const vis = new IntersectionObserver(es => es.forEach(e => fly.onVisible(e.isIntersecting)), { threshold: 0.15 });
+  const vis = new IntersectionObserver(es => es.forEach(e => fly.onVisible(flyDetails.open && e.isIntersecting)), { threshold: 0.15 });
   vis.observe($('#gmxFly'));
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true }); else boot();

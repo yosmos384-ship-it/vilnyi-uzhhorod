@@ -75,11 +75,20 @@
 .gmx-pin-l { position: absolute; left: 44px; bottom: 18px; display: flex; flex-direction: column; padding: 5px 9px; white-space: nowrap; background: rgba(11, 10, 8, .88); border: 1px solid var(--gold); color: var(--ivory); font: 500 12px/1.25 var(--f-body); }
 .gmx-pin-l b { color: var(--gold-hi); letter-spacing: .06em; }
 .gmx-pin-l small { color: var(--muted); font-size: 11px; }
-.gmx-dot { position: absolute; transform: translate(-50%, -50%); width: 26px; height: 26px; padding: 0; display: grid; place-items: center; border-radius: 50%; border: 1.5px solid #0b0a08; background: var(--ivory); color: #17130c; font: 700 11.5px/1 var(--f-body); cursor: pointer; box-shadow: 0 3px 8px rgba(0, 0, 0, .45); transition: transform .2s; }
-.gmx-dot:hover, .gmx-dot.on { background: var(--gold); transform: translate(-50%, -50%) scale(1.18); z-index: 4; }
+.gmx-dot { position: absolute; transform: translate(-50%, -50%); width: 26px; height: 26px; padding: 0; display: grid; place-items: center; border-radius: 50%; border: 1.5px solid #0b0a08; background: var(--gold); color: #17130c; font: 700 11.5px/1 var(--f-body); cursor: pointer; box-shadow: 0 3px 8px rgba(0, 0, 0, .45); transition: transform .2s; }
+.gmx-dot:hover, .gmx-dot.on { background: #17130c; color: var(--gold-hi); outline: 2px solid var(--gold); transform: translate(-50%, -50%) scale(1.18); z-index: 4; }
 
 /* ---------- 4. street view ---------- */
 .gmx-sv { margin-top: 56px; }
 .gmx-pano { width: 100%; aspect-ratio: 4 / 3; max-height: 70vh; border: 1px solid var(--line); background: #0d0c0a; }
 @media (min-width: 700px) { .gmx-pano { aspect-ratio: 21 / 9; } }
 .gmx-svdate { margin: 8px 0 0; font-size: 12px; color: var(--dim); }
+
+/* Optional satellite flyover: native disclosure supports keyboard and touch. */
+.gmx-extra { min-width: 0; border: 1px solid var(--line); }
+.gmx-extra > summary { cursor: pointer; min-height: 48px; padding: 14px 18px; color: var(--gold-hi); font: 600 15px/1.4 var(--f-body); }
+.gmx-extra > summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+.gmx-extra[open] > summary { border-bottom: 1px solid var(--line); }
+
+.gmx-pin .gmx-pin-brand { width: 68px; height: 27px; object-fit: contain; margin-bottom: 5px; filter: none; }
+.gmx-map { color-scheme: light; }
