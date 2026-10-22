@@ -362,7 +362,7 @@ async function startNearby() {
     near.map = new Map(host, {
       center: HERE, zoom: 15, clickableIcons: false, gestureHandling: 'cooperative', streetViewControl: false,
       mapTypeControl: true, fullscreenControl: true, mapTypeControlOptions: { mapTypeIds: ['roadmap', 'hybrid'] },
-      ...(MAPS.MAP_ID ? { mapId: MAPS.MAP_ID } : { styles: DARK, backgroundColor: '#0b0a08' }),
+      ...(MAPS.MAP_ID ? { mapId: MAPS.MAP_ID, colorScheme: g.ColorScheme?.DARK ?? 'DARK', backgroundColor: '#0b0a08' } : { styles: DARK, backgroundColor: '#0b0a08' }),
     });
     const pin = document.createElement('div');
     pin.className = 'gmx-pin';
