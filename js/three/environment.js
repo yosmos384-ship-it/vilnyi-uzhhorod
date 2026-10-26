@@ -1074,11 +1074,13 @@ export function createEnvironment(scene, renderer, opts = {}) {
     if (ext.context && ext.context.update) ext.context.update(dt, camera);
     if (!cityCtl) return;
     if (cityCtl.api) cityCtl.api.update(dt, camera);
+    if (g3d) g3d.update(camera, dt);
     if (camera && cityCtl.auto && (!cityCtl.promise || cityCtl.detail === 'far') && camera.position.y < 8 && camera.position.y > -1 && !inPoly(SITE_PLOT, camera.position.x, camera.position.z)) cityCtl.enable();
   }
 
   function dispose() {
     disposed = true;
+    if (g3d) { try { g3d.dispose(); } catch (err) { console.warn(err); } g3d = null; }
     if (cityCtl && cityCtl.api) { try { cityCtl.api.dispose(); } catch (err) { console.warn(err); } cityCtl.api = null; cityCtl.active = false; }
     if (attrEl) { attrEl.remove(); attrEl = null; }
     if (ext.context) { const e = ext.context; if (e.dispose) { try { e.dispose(); } catch (err) { console.warn(err); } } if (e.group) group.remove(e.group); }
@@ -1107,7 +1109,7 @@ export function createEnvironment(scene, renderer, opts = {}) {
       cityCtl.promise = import('./city.js').then(m => m.createCity(scene, { mode, quality: opts.cityQuality, detail: want })).then(api => {
         api.setDetail(cityCtl.detail);
         if (disposed) { api.dispose(); return null; }
-        cityCtl.api = api; cityCtl.active = true; hideBeltForCity(); api.setMode(mode); showAttribution();
+        cityCtl.api = api; cityCtl.active = true; hideBeltForCity(); api.setMode(mode); showAttribution(); startGoogle3D(api);
         return api;
       }).catch(e => { cityCtl.error = e; console.warn('[env] city failed to load — the generic neighbourhood stays', e); return null; });
       return cityCtl.promise;
@@ -1126,6 +1128,64 @@ export function createEnvironment(scene, renderer, opts = {}) {
     };
     group.updateMatrixWorld(true); for (const c of group.children) visit(c);
     for (let i = nightOnly.length - 1; i >= 0; i--) if (nightOnly[i].userData.cityHidden) nightOnly.splice(i, 1);
+  }
+  // ---------------- Google Photorealistic 3D Tiles (js/three/google3d.js) — only with GOOGLE_3D_KEY in js/maps-config.js.
+  // Started with the real city (street walk, GT drive, balcony views); while Google is shown the OSM city, the generic
+  // neighbourhood, the neighbours of CONTEXT_BLOCKS, the far hills and the OSM credit are hidden (Google's terms: no other
+  // map data mixed in). The plot and our towers, the people, the cars, the sky and the lights stay; Google's mesh is cut
+  // away over the plot. The OSM data keeps working unseen: the car's colliders (buildings, bridges), traffic, routes.
+  let g3d = null, g3dP = null;
+  function startGoogle3D(api) {
+    if (g3dP || disposed || !renderer) return;
+    g3dP = Promise.all([import('./google3d.js'), import('./city-data.js'), import('../data.js')]).then(([M, CD, D]) => {
+      if (disposed || !M.google3dConfigured()) return null;
+      const hid = new Map(), KEEP = new Set(['sky', 'site-plan', 'site-furniture', 'traffic', 'g3d-wrap']), m = 8;
+      const inPlot = (b) => b && b.min.x > PLOT_BB.x0 - m && b.max.x < PLOT_BB.x1 + m && b.min.z > PLOT_BB.z0 - m && b.max.z < PLOT_BB.z1 + m;
+      // forced every time (the car-park culling of walk.js may bring a hidden object back); restored = shown unless the
+      // city had hidden it for good, then setMode() puts the dusk / night-only objects right again
+      const hide = (o) => { if (!hid.has(o)) hid.set(o, !o.userData.cityHidden); o.visible = false; };
+      const hideNow = () => {
+        if (api.group) hide(api.group);
+        for (const o of group.children) {
+          if (o.isLight || KEEP.has(o.name) || o.name.startsWith('trees-site')) continue;
+          if (ext.context && o === ext.context.group) { for (const c of o.children) if (c.name !== 'context-cars') hide(c); continue; }
+          if (o.isMesh && !o.isInstancedMesh && o.geometry) { if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); if (inPlot(o.geometry.boundingBox)) continue; }
+          else if (o.isInstancedMesh) continue;           // instances off the plot were already removed for the city
+          hide(o);
+        }
+      };
+      const cx = (PLOT_BB.x0 + PLOT_BB.x1) / 2, cz = (PLOT_BB.z0 + PLOT_BB.z1) / 2;
+      g3d = M.attachGoogle3D(THREE, {
+        id: 'walk', lang: (typeof document !== 'undefined' && document.documentElement.lang) || 'uk', renderer, parent: group,
+        frame: { toLL: (x, z) => D.worldToLL(x, z), fromLL: (la, lo) => D.llToWorld(la, lo), h0: 156 },   // plot ≈ 115 m ASL + geoid ≈ 41 m
+        clip: [{ x: cx, z: cz, ux: 1, uz: 0, hw: (PLOT_BB.x1 - PLOT_BB.x0) / 2 + 1, hd: (PLOT_BB.z1 - PLOT_BB.z0) / 2 + 1, top: 400 }],
+        padColor: '#7d7b74',
+        hideClassic(h) {
+          CD.CITY.g3d = h;
+          if (h) hideNow(); else { for (const [o, v] of hid) o.visible = v; hid.clear(); setMode(mode); }
+          if (attrEl) attrEl.style.display = h ? 'none' : '';
+        },
+        refPoints(x, z) {                                // carriageway points of the streets around (surface = y 0)
+          const out = [];
+          for (const r of CD.roadsNear(x, z, 45)) { if (!r.car || r.bridge || r.tunnel) continue; const p = r.pts; for (let i = 0; i < p.length; i++) { out.push(p[i]); if (i + 1 < p.length) out.push([(p[i][0] + p[i + 1][0]) / 2, (p[i][1] + p[i + 1][1]) / 2]); } }
+          return out.map(q => [q[0], q[1], Math.hypot(q[0] - x, q[1] - z)]).filter(q => q[2] < 60).sort((a, b) => a[2] - b[2]).slice(0, 14);
+        },
+        tint: () => (mode === 'night' ? 0.3 : mode === 'dusk' ? 0.62 : 1),
+        cls: 'g3d-env',
+        css: '.g3d-wrap.g3d-env{left:50%;transform:translateX(-50%);top:calc(12px + env(safe-area-inset-top,0px))}'
+          + '.vw:not(.driving) .g3d-wrap.g3d-env{top:calc(98px + env(safe-area-inset-top,0px))}'   // on foot: below the day / dusk / night switch
+          + '.vw.phone .g3d-wrap.g3d-env{left:calc(6px + env(safe-area-inset-left,0px));transform:none;align-items:flex-start;max-width:calc(100vw - 20px)}'
+          + '.vw.phone:not(.driving) .g3d-wrap.g3d-env{top:calc(118px + env(safe-area-inset-top,0px))}'   // on foot: under the day / dusk / night switch, clear of the chips and pads
+          + '.vw.phone.driving .g3d-wrap.g3d-env{top:auto;bottom:calc(150px + env(safe-area-inset-bottom,0px))}'
+          + '.vw.phone.driving.drive-deck .g3d-wrap.g3d-env{bottom:calc(var(--deck) + 4px)}'
+          + '.vw.phone .g3d-wrap.g3d-env .g3d-row{padding-left:4px}',
+      });
+      // tiles streamed in by the OSM city while Google is shown are hidden as they come
+      let t = 0; const up = g3d.update;
+      g3d.update = (cam, dt) => { if (g3d.active && (t += dt) > 0.3) { t = 0; hideNow(); } up(cam, dt); };
+      g3d.enter();
+      return g3d;
+    }).catch(e => { console.warn('[env] google3d unavailable', e); return null; });
   }
   let attrEl = null;
   function showAttribution() {
