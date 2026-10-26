@@ -426,6 +426,19 @@ function pageLocation(l) {
   addPage(l, 'location/', p, b);
 }
 
+// one-sentence answer to «when will the buildings be completed» — grouped by quarter from the same BLD data as the table
+function deliveryAnswer(l) {
+  const groups = [];
+  for (const x of [...B_IDS].sort((a, c) => (BLD[a].delivery.year - BLD[c].delivery.year) || (BLD[a].delivery.q - BLD[c].delivery.q) || (BLD[a].no - BLD[c].no))) {
+    const q = qTxt(l, BLD[x].delivery), g = groups.find(e => e.q === q);
+    if (g) g.ns.push(BLD[x].no); else groups.push({ q, ns: [BLD[x].no] });
+  }
+  const and = T(l, 'progAnsAnd'), no = n => T(l, 'progAnsNo', { n });
+  const list = groups.map(g => g.ns.length === 1 ? T(l, 'progAnsOne', { n: g.ns[0], q: g.q })
+    : T(l, 'progAnsMany', { n: g.ns.slice(0, -1).map(no).join(', ') + and + no(g.ns[g.ns.length - 1]), q: g.q }));
+  return T(l, 'progAns', { list: list.join(', ') });
+}
+
 function pageProgress(l) {
   const tl = [...D.PROGRESS.timeline].sort((a, c) => c.date.localeCompare(a.date));
   const photos = tl.reduce((m, e) => m + e.photos.length, 0);
@@ -434,7 +447,7 @@ function pageProgress(l) {
   p.canonical = url(l, 'construction/');
   const latest = tl[0].photos.filter(x => x.local).map(x => ({ '@type': 'ImageObject', contentUrl: `${BASE}/${x.local}`, thumbnailUrl: x.thumb ? `${BASE}/${x.thumb}` : undefined, caption: `${T(l, 'building', { n: x.building.slice(1) })} — ${monthTxt(l, tl[0].date)}`, creditText: x.credit, uploadDate: tl[0].date }));
   p.ld = graph(l, p, [{ '@type': 'ImageGallery', '@id': `${p.canonical}#latest`, name: `${p.h1} — ${v.last}`, image: latest }], 'CollectionPage');
-  let b = `<h1>${esc(p.h1)}</h1><p class="lead">${esc(T(l, 'progLead', v))}</p>`;
+  let b = `<h1>${esc(p.h1)}</h1><p class="lead"><strong>${esc(deliveryAnswer(l))}</strong> ${esc(T(l, 'progAnsNote', { sd: dateTxt(l, STATUS_DATE) }))}</p><p>${esc(T(l, 'progLead', v))}</p>`;
   b += `<div class="tw"><table><thead><tr><th>${esc(T(l, 'building', { n: '' }).trim())}</th><th>${esc(T(l, 'floors'))}</th><th>${esc(T(l, 'status'))}</th><th>${esc(T(l, 'kDelivery'))}</th></tr></thead><tbody>${B_IDS.map(x => `<tr><td><a href="${rel(l, `building-${BLD[x].no}/`)}">${BLD[x].no}</a></td><td>${BLD[x].floors}</td><td>${esc(statusTxt(l, x))} (${esc(T(l, 'statusOn', { d: dateTxt(l, BLD[x].statusDate) }))})</td><td>${esc(qTxt(l, BLD[x].delivery))}</td></tr>`).join('')}</tbody></table></div>`;
   const fig = (e, x) => `<li><figure><a href="/${x.local}"><img src="/${x.thumb || x.local}" width="360" height="240" alt="${esc(`${T(l, 'building', { n: x.building.slice(1) })} — ${monthTxt(l, e.date)}`)}" loading="lazy" decoding="async"></a><figcaption>${esc(T(l, 'building', { n: x.building.slice(1) }))} · ${esc(T(l, 'photoCredit', { c: x.credit }))}</figcaption></figure></li>`;
   for (const e of tl.slice(0, 4)) b += `<h2>${esc(monthTxt(l, e.date))}</h2><p class="muted">${esc(dateTxt(l, e.date))} · ${esc(T(l, 'photosN', { n: e.photos.length }))}</p><ul class="ph">${e.photos.filter(x => x.local).map(x => fig(e, x)).join('')}</ul>`;
@@ -465,7 +478,7 @@ function pageFaq(l) {
   p.ld = graph(l, p, [], 'FAQPage');
   const wp = p.ld['@graph'].find(n => n['@type'] === 'FAQPage');
   wp.mainEntity = qa.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } }));
-  let b = `<h1>${esc(p.h1)}</h1>` + guideLink(l) + `<p><a href="${rel(l, 'location/')}">${esc(T(l, 'locGuideLink'))} →</a></p><dl class="faq">${qa.map(([q, a]) => `<dt>${esc(q)}</dt><dd>${esc(a)}</dd>`).join('')}</dl>` + ctas(l) + priceNote(l);
+  let b = `<h1>${esc(p.h1)}</h1>` + guideLink(l) + `<p><a href="${rel(l, 'location/')}">${esc(T(l, 'locGuideLink'))} →</a></p><dl class="faq">${qa.map(([q, a], i) => `<dt>${esc(q)}</dt><dd>${esc(a)}${S[l].faq[i][1].includes('{q1}') ? ` <a href="${rel(l, 'construction/')}">${esc(S[l].nav.progress)} →</a>` : ''}</dd>`).join('')}</dl>` + ctas(l) + priceNote(l);
   addPage(l, 'faq/', p, b);
 }
 
