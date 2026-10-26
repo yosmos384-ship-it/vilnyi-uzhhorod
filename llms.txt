@@ -1,6 +1,6 @@
 # ЖК VILNYI (VILNYI residential complex), Uzhhorod, Ukraine
 
-> A business-class residential complex 2 km from the centre of Uzhhorod: four buildings around a closed green courtyard, with its own supermarket, a fitness club with a swimming pool and underground parking. Address: 4A Mykhaila Hrushevskoho St, Uzhhorod, Ukraine (вул. Михайла Грушевського, 4А, Ужгород). Developer: VILNYI Group. 462 apartments in 4 buildings (16, 6, 17 and 10 floors). Price: 1300 $ per m² of total area, paid in hryvnia at the official NBU rate (58,763 ₴ per m² at 45.2021 UAH/$ on 2026-10-26). Planned completion: building 2 Q4 2026, buildings 1 and 3 Q3 2027, building 4 Q4 2027. Sales: +38 050 010 07 23, WhatsApp/Viber +38 067 527 98 18, Instagram @vilnyi.uzhhorod.
+> A business-class residential complex 2 km from the centre of Uzhhorod: four buildings around a closed green courtyard, with its own supermarket, a fitness club with a swimming pool and underground parking. Address: 4A Mykhaila Hrushevskoho St, Uzhhorod, Ukraine (вул. Михайла Грушевського, 4А, Ужгород). Developer: VILNYI Group. 462 apartments in 4 buildings (16, 6, 17 and 10 floors). Price: 1300 $ per m² of total area, paid in hryvnia at the official NBU rate (59,200 ₴ per m² at 45.5382 UAH/$ on 2026-10-27). Planned completion: building 2 Q4 2026, buildings 1 and 3 Q3 2027, building 4 Q4 2027. Sales: +38 050 010 07 23, WhatsApp/Viber +38 067 527 98 18, Instagram @vilnyi.uzhhorod.
 
 Facts on this site come from the project's architectural drawings, the developer (vilnyi.group) and the public lun.ua listing; prices follow one rule (1300 $/m² × NBU rate) and are regenerated daily. Apartment numbering is provisional.
 
@@ -8,9 +8,9 @@ Facts on this site come from the project's architectural drawings, the developer
 - [Overview](https://vilnyi-gt-city.uz.ua/en/)
 - [Key facts](https://vilnyi-gt-city.uz.ua/en/facts/): one quotable list
 - [Apartments and layouts](https://vilnyi-gt-city.uz.ua/en/apartments/): 122 layouts with plans and prices
-- [One-room apartments](https://vilnyi-gt-city.uz.ua/en/apartments/1-room/): from 1,438,518 ₴, 24.48–45.97 m²
-- [Two-room apartments](https://vilnyi-gt-city.uz.ua/en/apartments/2-room/): from 2,285,293 ₴, 38.89–88.60 m²
-- [Three-room apartments](https://vilnyi-gt-city.uz.ua/en/apartments/3-room/): from 4,085,791 ₴, 69.53–122.50 m²
+- [One-room apartments](https://vilnyi-gt-city.uz.ua/en/apartments/1-room/): from 1,449,216 ₴, 24.48–45.97 m²
+- [Two-room apartments](https://vilnyi-gt-city.uz.ua/en/apartments/2-room/): from 2,302,288 ₴, 38.89–88.60 m²
+- [Three-room apartments](https://vilnyi-gt-city.uz.ua/en/apartments/3-room/): from 4,116,176 ₴, 69.53–122.50 m²
 - [Building 1](https://vilnyi-gt-city.uz.ua/en/building-1/): 16 floors, 137 apartments, completion Q3 2027
 - [Building 2](https://vilnyi-gt-city.uz.ua/en/building-2/): 6 floors, 53 apartments, completion Q4 2026
 - [Building 3](https://vilnyi-gt-city.uz.ua/en/building-3/): 17 floors, 159 apartments, completion Q3 2027
@@ -26,9 +26,9 @@ Facts on this site come from the project's architectural drawings, the developer
 - [Огляд ЖК VILNYI](https://vilnyi-gt-city.uz.ua/uk/)
 - [Ключові факти](https://vilnyi-gt-city.uz.ua/uk/facts/)
 - [Квартири та планування](https://vilnyi-gt-city.uz.ua/uk/apartments/)
-- [Однокімнатні квартири](https://vilnyi-gt-city.uz.ua/uk/apartments/1-room/): від 1 438 518 ₴
-- [Двокімнатні квартири](https://vilnyi-gt-city.uz.ua/uk/apartments/2-room/): від 2 285 293 ₴
-- [Трикімнатні квартири](https://vilnyi-gt-city.uz.ua/uk/apartments/3-room/): від 4 085 791 ₴
+- [Однокімнатні квартири](https://vilnyi-gt-city.uz.ua/uk/apartments/1-room/): від 1 449 216 ₴
+- [Двокімнатні квартири](https://vilnyi-gt-city.uz.ua/uk/apartments/2-room/): від 2 302 288 ₴
+- [Трикімнатні квартири](https://vilnyi-gt-city.uz.ua/uk/apartments/3-room/): від 4 116 176 ₴
 - [Будинок №1](https://vilnyi-gt-city.uz.ua/uk/building-1/)
 - [Будинок №2](https://vilnyi-gt-city.uz.ua/uk/building-2/)
 - [Будинок №3](https://vilnyi-gt-city.uz.ua/uk/building-3/)
