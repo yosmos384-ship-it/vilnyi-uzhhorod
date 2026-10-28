@@ -85,8 +85,6 @@ const FP_TOP_UI = 56;
 const CSS = `
 .vw-dx{position:absolute;display:flex;gap:8px;align-items:center;direction:ltr}
 .vw-dx button{pointer-events:auto;touch-action:none;-webkit-user-select:none;user-select:none}
-.vw-dgear{min-width:54px;height:44px;border-radius:12px;border:1px solid var(--ln);background:var(--bg);color:var(--g2);font:700 15px/1 "Manrope","Inter Tight",Arial,sans-serif;letter-spacing:.08em;display:inline-flex;align-items:center;justify-content:center;gap:5px;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
-.vw-dgear i{font-style:normal;opacity:.38}.vw-dgear i.on{opacity:1;color:#111;background:linear-gradient(180deg,#f0d596,#b88a3c);border-radius:6px;padding:4px 6px;margin:0 -2px}
 .vw-dround{width:44px;height:44px;border-radius:50%;border:1px solid var(--ln);background:var(--bg);color:var(--g2);display:inline-flex;align-items:center;justify-content:center;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 .vw-dround.on{color:#111;background:linear-gradient(180deg,#f0d596,#b88a3c);border-color:transparent}
 .vw-dxr{right:calc(12px + var(--sr));bottom:calc(150px + var(--sb))}
@@ -119,6 +117,8 @@ const CSS = `
 .vw[dir=rtl].phone .vw-dmenu{right:auto;left:0}
 .vw.phone.dmenu-open .vw-dmenu{display:flex}
 .vw.phone.drive-deck .vw-dmenu{top:auto;bottom:calc(100% + 6px)}
+/* V25 (v0.11): one more key in the menu (cabin quality) — on the narrowest phones it folds onto a second row instead of leaving the screen */
+.vw.phone .vw-dmenu{flex-wrap:wrap;max-width:100%;box-sizing:border-box;justify-content:flex-end}.vw[dir=rtl].phone .vw-dmenu{justify-content:flex-start}
 .vw.phone .vw-dtop [data-k=carview] .lbl{display:none}.vw.phone .vw-dtop [data-k=carview]{width:40px;padding:0;justify-content:center}
 .vw.driving .vw-drive{container-type:size;container-name:vwdrive}
 @container vwdrive (max-width:352px){
@@ -160,8 +160,8 @@ const CSS = `
 .vw:not(.phone) .vw-dradiobtn{left:calc(50% - 21px);bottom:calc(22px + var(--sb))}.vw.radio-open:not(.phone) .vw-dradiobtn{bottom:calc(72px + var(--sb))}
 .vw.drive-fp:not(.phone) .vw-dradio,.vw:not(.phone) .vw-dradio{bottom:calc(22px + var(--sb))}
 .vw.phone .vw-dradio{bottom:calc(166px + var(--sb))!important;top:auto!important;left:50%!important;right:auto!important;transform:translateX(-50%)!important;background:rgba(12,11,9,.72);-webkit-backdrop-filter:none;backdrop-filter:none}
-.vw.phone .vw-dround,.vw.phone .vw-dgear{background:rgba(12,11,9,.42);-webkit-backdrop-filter:none;backdrop-filter:none;border-color:rgba(201,164,92,.28)}
-.vw.phone .vw-dround{width:42px;height:42px}.vw.phone .vw-dgear{height:42px;min-width:52px;font-size:14px}
+.vw.phone .vw-dround{background:rgba(12,11,9,.42);-webkit-backdrop-filter:none;backdrop-filter:none;border-color:rgba(201,164,92,.28)}
+.vw.phone .vw-dround{width:42px;height:42px}
 .vw.phone .vw-dround.on{background:linear-gradient(180deg,#f0d596,#b88a3c)}
 .vw.phone .vw-dx{gap:6px}
 .vw.phone .vw-steer{width:clamp(100px,calc(100% - 300px - var(--sl) - var(--sr)),160px);height:52px;border-radius:26px;left:calc(10px + var(--sl));bottom:calc(14px + var(--sb));background:rgba(12,11,9,.36);border-color:rgba(201,164,92,.26);-webkit-backdrop-filter:none;backdrop-filter:none}
@@ -173,7 +173,7 @@ const CSS = `
 .vw.phone .vw-pedals button.on{background:linear-gradient(180deg,#e6c987,#b88a3c)}
 .vw.phone .vw-spdo{left:50%!important;transform:translateX(-50%)!important;bottom:calc(10px + var(--sb))!important;width:84px!important;height:84px!important;background:radial-gradient(circle at 50% 40%,rgba(28,24,17,.62),rgba(6,6,6,.55) 70%);box-shadow:0 4px 14px rgba(0,0,0,.3)}
 .vw.phone .vw-spdo .num b{font-size:27px!important;text-shadow:0 1px 3px rgba(0,0,0,.6)}
-.vw.phone .vw-spdo .num i{font-size:8px;margin-top:2px}.vw.phone .vw-spdo .gear{bottom:8px;font-size:10px}
+.vw.phone .vw-spdo .num i{font-size:8px;margin-top:2px}
 .vw.phone .vw-spdo .lim{width:28px;height:28px;right:-10px;top:-6px;font-size:11px;line-height:21px;border-width:3px}
 .vw.phone .vw-dxr{right:calc(10px + var(--sr));bottom:calc(114px + var(--sb))!important}
 .vw.phone .vw-dname{bottom:calc(214px + var(--sb))!important}
@@ -216,6 +216,7 @@ const CSS = `
 @media (orientation:landscape){.vw.phone.drive-fp .vw-dtop .vw-btn{height:40px}.vw.phone.drive-fp .vw-dtop .vw-ico,.vw.phone.drive-fp .vw-dtop [data-k=carview]{width:40px}}
 `;
 const ICON = {
+  cabin: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2.2"/><path d="M4.8 10.5h4.9M14.3 10.5h4.9M12 14.2v5.2"/></svg>',
   more: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
   indL: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 12l8-7v4.5h10v5H11V19z"/></svg>',
   indR: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 12l-8-7v4.5H3v5h10V19z"/></svg>',
@@ -228,7 +229,7 @@ const ICON = {
   next: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5v14l10-7z"/></svg>',
   volDn: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.500L12 6v12l-4.500-3.500H4z"/><path d="M16 12h5"/></svg>',
   volUp: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.500L12 6v12l-4.500-3.500H4z"/><path d="M16 12h5M18.500 9.500v5"/></svg>',
-  hand: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6.2"/><path d="M4.600 6.500a9.500 9.500 0 0 0 0 11M19.400 6.500a9.500 9.500 0 0 1 0 11"/><path d="M10.500 15v-6h2.200a1.800 1.800 0 0 1 0 3.600h-2.200"/></svg>',
+  hand: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6.2"/><path d="M4.600 6.500a9.500 9.500 0 0 0 0 11M19.400 6.500a9.500 9.500 0 0 1 0 11"/><path d="M12 8.6v4.4"/><circle cx="12" cy="15.6" r=".9" fill="currentColor" stroke="none"/></svg>',
   radio: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="9" width="18" height="11" rx="2"/><path d="M7 9l10-5"/><circle cx="15.500" cy="14.500" r="2.300"/><path d="M6.500 13h4M6.500 16h4"/></svg>',
   power: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3.500v8"/><path d="M6.600 6.800a7.500 7.500 0 1 0 10.800 0"/></svg>',
 };
@@ -382,7 +383,7 @@ export const driveMixin = {
   /** A disabled car has no drive (it still rolls, steers and brakes). Works for the visitor's car, parked cars and traffic. */
   setCarDisabled(car, on = true) {
     const c = this._findCar(car); if (!c) return false; c.disabled = !!on;
-    if (this.drive && this.drive.rec === c) { this.drive.ctl.disabled = !!on; this._renderDriveHud(true); }
+    if (this.drive && this.drive.rec === c) { this.drive.ctl.disabled = !!on; this.drive.disT = 0; this._renderDriveHud(true); }   // V25: on the visitor's car at most 3 s (then it limps)
     return true;
   },
   /** A shove in m/s (world): addCarImpulse(car, [vx, vz]) | (car, {x, z}) | (car, vx, vz). The visitor's car takes it in full; a traffic car along its lane; a parked car remembers it (rec.impulse). */
@@ -492,7 +493,9 @@ export const driveMixin = {
     if (now - (D.bendT || 0) > 180 || res.died || res.level > before) { D.bendT = now; try { applyDamage(car, rec.dmg); } catch (e) { console.warn('[drive] damage look', e); } } else D.bendDue = true;
     const A = this._carAudio(); if (A && now - (D.sndT || 0) > 90) { D.sndT = now; A.impact(Math.max(speed, I.hard ? 2 : 1), { glass: res.glass, metal: res.kmh > 14 }); }
     if (navigator.vibrate && speed > 2) try { navigator.vibrate(speed > 8 ? 120 : 35); } catch { /* optional */ }
-    if (res.died) { ctl.disabled = true; rec.disabled = true; D.ind = 2; D.indT = now; this._toast(this.t('walk.car.wrecked'), 6000); if (this._eng) this._engineStop(); this._renderDriveHud(true); }
+    // V25 (owner: the car must never stop working): a wrecked car LIMPS — smoke, hazards, little power and top speed, the engine
+    // missing now and then — but it always drives; R / the reset button gives a fresh car
+    if (res.died) { ctl.disabled = false; rec.disabled = false; D.ind = 2; D.indT = now; this._toast(this.t('walk.car.limp'), 6000); this._renderDriveHud(true); }
     else if (res.level > before && res.level >= 2) this._toast(this.t('walk.car.dmg' + Math.min(4, res.level)), 2200);
     const mass = carMass(S), detail = { car: rec, speed, speedKmh: speed * 3.6, impulse: speed * mass, hard: !!I.hard, point: I.point, normal: I.normal, other, zone: res.zone, level: res.level, levelName: DAMAGE_LEVELS[res.level], wrecked: !!rec.dmg.dead, pos: { x: ctl.x, y: ctl.y, z: ctl.z } };
     this._emitDrive('drive:impact', detail); this._emitDrive('drive:collision', detail);
@@ -505,6 +508,7 @@ export const driveMixin = {
     if (this._pushed && this._pushed.size) {
       const world = this._driveWorld();
       for (const [rec, pc] of this._pushed) {
+        if (this.drive && this.drive.rec === rec) { this._pushed.delete(rec); continue; }   // V25: taken over mid-slide
         pc.impact = null; const n = Math.min(4, Math.max(1, Math.ceil(dt * 60))); for (let i = 0; i < n; i++) pc.step(dt / n, {}, world);
         Object.assign(rec, { x: pc.x, y: pc.y, z: pc.z, yaw: pc.yaw, pitch: pc.pitch });
         this.fleet.moved(rec); for (const e of this.solids) if (e.o === rec.collider) e.box = null;
@@ -536,7 +540,7 @@ export const driveMixin = {
     if (this._carFx && (smoking || this._carFx.live > 0 || this._fxWas)) { const k = this.envMode === 'night' ? 0.25 : this.envMode === 'dusk' ? 0.55 : 1; this._fxWas = this._carFx.update(dt, cam.y < -1 ? 0.5 : k, this.renderer.domElement.height / (2 * Math.tan(this.camera.fov * Math.PI / 360))) > 0; }
     // the look of damaged cars that have their detailed model now (one car per frame)
     if (this.fleet.active) for (const rec of this.fleet.active) {
-      if (!rec.dmg) { const sd = SESSION_DMG.get(rec.id); if (sd) { rec.dmg = sd; if (sd.dead) { rec.disabled = true; rec.hazard = true; } (this._dmgRecs || (this._dmgRecs = new Set())).add(rec); } }
+      if (!rec.dmg) { const sd = SESSION_DMG.get(rec.id); if (sd) { rec.dmg = sd; if (sd.dead) { rec.hazard = true; if (!this.drive || this.drive.rec !== rec) rec.disabled = true; } (this._dmgRecs || (this._dmgRecs = new Set())).add(rec); } }
       const car = this.fleet.carOf(rec), want = rec.dmg ? rec.dmg.rev : 0; if (!car || (car.damageRev || 0) === want) continue;
       if (this.drive && this.drive.rec === rec && !this.drive.bendDue && now - (this.drive.bendT || 0) < 180) continue;
       try { applyDamage(car, rec.dmg); } catch (e) { console.warn('[drive] damage look', e); car.damageRev = want; }
@@ -613,20 +617,21 @@ export const driveMixin = {
       if (!car) { this._radioStop(); return; }
       await this._doorSwing(car, 0, 1, 380);
       await this._fade(true);
-      const ctl = new this.mods.cars.CarController(rec);
+      const ctl = new this.mods.cars.CarController(rec); ctl.disabled = false; rec.disabled = false;   // V25: whatever happened to it, it drives
+      if (this._pushed) this._pushed.delete(rec);                           // V25: a car still sliding from a crash: the visitor's controller takes over
       if (!rec.dmg && SESSION_DMG.has(rec.id)) rec.dmg = SESSION_DMG.get(rec.id);
-      if (rec.dmg) { Object.assign(ctl.mod, damageMods(rec.dmg, ctl.S)); if (rec.dmg.dead) ctl.disabled = true; if ((car.damageRev || 0) !== rec.dmg.rev) { try { applyDamage(car, rec.dmg); } catch { /* look only */ } } }
+      if (rec.dmg) { Object.assign(ctl.mod, damageMods(rec.dmg, ctl.S)); if (rec.dmg.dead) rec.hazard = true; if ((car.damageRev || 0) !== rec.dmg.rev) { try { applyDamage(car, rec.dmg); } catch { /* look only */ } } }
       rec.alarmUntil = 0; rec.hazard = false; if (this._carA) this._carA.alarmStop();
       this._fovWalk = this.camera.fov;
       this.drive = { rec, car, ctl, view: lsGet('vrc.walk.carView') === 'chase' ? 'chase' : 'fp', look: { yaw: 0, pitch: 0 }, pad: { gas: 0, brake: 0, steer: 0 }, cam: null, lights: null,
-        gear: 'D', manual: false, dmg: rec.dmg || null, start: { x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw }, trail: [], trailT: 0, rHold: null, turn: null, horn: 0, tilt: 0, obsT: 0, blinkT: 0,
+        dmg: rec.dmg || null, start: { x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw }, trail: [], trailT: 0, rHold: null, turn: null, horn: 0, tilt: 0, obsT: 0, blinkT: 0,
         ind: 0, indT: 0, indSteer: 0, wipers: false, wipT: 0, tickT: 0, frame: 0, mirror: null, hudT: 0 };
       this.glide = null; this.player.vel.set(0, 0, 0); this.keys.clear();
       car.setInside(this.drive.view === 'fp'); car.ensureCockpit && car.ensureCockpit(); if (car.cockpit) car.cockpit.group.visible = true;
       this._mirrorInit(this.drive);
       this.root.classList.add('driving'); this.root.classList.toggle('drive-fp', this.drive.view === 'fp');
       this._renderDriveHud(true);
-      if (!this._carMuted() && !ctl.disabled) this._engineStart(rec.kind);                    // engine sound is on by default, quietly; the HUD button mutes everything
+      if (!this._carMuted()) this._engineStart(rec.kind);                    // engine sound is on by default, quietly; the HUD button mutes everything
       this._driveUpdate(0);
       this._doorSwing(car, 1, 0, 320).then(() => { const A = this._carA; if (A && this.drive) A.door(); });
       if (!this._driveHinted && this._isTouch) { this._driveHinted = true; this._toast(this.t('walk.car.hintTouch'), 6000); }   // desktop: the key list stands in the corner
@@ -662,6 +667,7 @@ export const driveMixin = {
       this._radioStop(); this._carSoundsStop();
       car.setInside(false); car.setLights(false); car.setWheels(ctl.spin, 0); if (this.headSpot) this.headSpot.intensity = 0;
       if (car.cockpit) { car.cockpit.setWipers(0); car.cockpit.setMirrorMap(null); car.cockpit.group.visible = false; }
+      if (car.cabin) { car.cabin.setActive(false); car.cabin.active = false; }
       this._mirrorDispose(D);
       car.group.position.set(ctl.x, ctl.y, ctl.z); car.group.rotation.set(-ctl.pitch, ctl.yaw, 0, 'YXZ'); car.group.updateMatrixWorld(true);
       this.fleet.setFocus(null); this.fleet.moved(rec);
@@ -806,12 +812,6 @@ export const driveMixin = {
       if (!deck) { this.camera.aspect = W / Math.max(1, H); this.camera.updateProjectionMatrix(); }
     }
   },
-  _toggleGear(g) {
-    const D = this.drive; if (!D) return;
-    if (Math.abs(D.ctl.v) > 0.8) { this._toast(this.t('walk.car.stopFirst'), 1400); return; }
-    D.gear = g || (D.gear === 'D' ? 'R' : 'D'); D.manual = D.gear === 'R';
-    this._renderDriveHud(true);
-  },
   // indicators: −1 right, +1 left, 0 off (the same key again cancels; they cancel themselves after the turn); 2 = hazards
   _setIndicator(v) { const D = this.drive; if (!D) return; D.ind = D.ind === v ? 0 : v; D.indT = performance.now(); D.indSteer = 0; },
   _toggleWipers() { const D = this.drive; if (!D) return; D.wipers = !D.wipers; },
@@ -823,9 +823,10 @@ export const driveMixin = {
       await this._fade(true);
       const now = performance.now(), ctl = D.ctl, rec0 = D.rec;
       const p = [...D.trail].reverse().find(q => now - q.t > 2500 && Math.hypot(q.x - ctl.x, q.z - ctl.z) > 2.5) || D.trail[0] || D.start;
-      Object.assign(ctl, { x: p.x, y: p.y, z: p.z, yaw: p.yaw, v: 0, steer: 0, pitch: p.pitch || 0, roll: 0, dive: 0, hit: 0, gear: 'D', _autoR: false, yawKick: 0, beta: 0 });
+      Object.assign(ctl, { x: p.x, y: p.y, z: p.z, yaw: p.yaw, v: 0, steer: 0, pitch: p.pitch || 0, roll: 0, dive: 0, hit: 0, _autoR: false, yawKick: 0, beta: 0 });
       const fresh = !!(rec0.dmg && rec0.dmg.dead); if (fresh) { this.repairCar(rec0); if (!this._carMuted()) this._engineStart(rec0.kind); }
-      D.gear = 'D'; D.manual = false; D.cam = null; D.turn = null; D.trail = D.trail.filter(q => q.t <= p.t);
+      D.cam = null; D.turn = null; D.trail = D.trail.filter(q => q.t <= p.t);
+      if (this._carOverlap(ctl, ctl.x, ctl.z, ctl.yaw, ctl.y)) this._unstick(D, 'reset', 1);   // V25: something stands there now
       this._driveUpdate(0);
       this._toast(this.t(fresh ? 'walk.car.fresh' : 'walk.car.reset'), fresh ? 3000 : 1800);
     } finally { this.busy = false; await this._fade(false); }
@@ -939,6 +940,167 @@ export const driveMixin = {
     }
     return false;
   },
+  _carOverlap(ctl, x, z, yaw, y) {
+    if (!Number.isFinite(x + z + yaw + y)) return true;
+    const S = ctl.S, fx = Math.sin(yaw), fz = Math.cos(yaw), hw = S.wb / 2, w = this._driveWorld();
+    const g = (px, pz) => (w.drivable(px, pz) ? this._groundAt(px, y, pz) : null);
+    const yF = g(x + fx * hw, z + fz * hw), yR = g(x - fx * hw, z - fz * hw);
+    if (yF == null || yR == null || Math.abs(yF - y) > 0.55 || Math.abs(yR - y) > 0.55) return true;
+    const v0 = ctl.v, c0 = ctl.contact, ym = (yF + yR) / 2;
+    try { ctl.v = 1; if (this._carBlocked(ctl, x, z, yaw, ym)) return true; ctl.v = -1; return this._carBlocked(ctl, x, z, yaw, ym); }
+    finally { ctl.v = v0; ctl.contact = c0; }
+  },
+  // ======================= V25 (v0.11): the realistic cabin =======================
+  // quality: ?carq=high|medium|low → the setting (vrc.walk.carQuality: auto | high | medium | low) → auto (touch: medium, else high)
+  _cabinQuality() {
+    const now = performance.now(); if (this._cabQc && now - this._cabQc.t < 1000) return this._cabQc.q;
+    const q = this._cabinQuality0(); this._cabQc = { t: now, q }; return q;
+  },
+  _cabinQuality0() {
+    let q = null; try { const m = /[?&]carq=(high|medium|low|off)\b/.exec(location.search); if (m) q = m[1]; } catch { /* */ }
+    if (!q) { const v = lsGet('vrc.walk.carQuality'); if (v && v !== 'auto') q = v; }
+    return q || (this._isTouch ? 'medium' : 'high');
+  },
+  _cabinNight(ctl) { const m = this.envMode, k = m === 'night' ? 1 : m === 'dusk' ? 0.55 : 0; return ctl && ctl.y < -0.8 ? Math.max(k, 0.7) : k; },
+  // → the cabin of the driven car when it is ready (starts loading it the first time the driver's view is used)
+  _cabinEnsure(D) {
+    const car = D.car, q = this._cabinQuality();
+    if (q === 'off' || this._cabinOff) { if (car.cabin) { car.cabin.dispose(); } return null; }
+    if (car.cabin) { if (car.cabin.quality !== q) { car.cabin.dispose(); D.fpf = null; } else return car.cabin; }
+    if (D.view !== 'fp' || D.cabinP) return null;
+    D.cabinP = import('./car-interior.js').then(m => {
+      D.cabinP = null; if (this.drive !== D || car.cabin) return;
+      const t0 = performance.now(), cab = m.attachCabin(car, { quality: q, renderer: this.renderer }); cab.active = true;
+      try { if (this.renderer.compile) this.renderer.compile(cab.group, this.camera, this.scene); } catch { /* compiled on first draw */ }
+      D.fpf = null; D.cabinMs = Math.round(performance.now() - t0); D.cabinQ = q;
+      this._emitDrive('drive:cabin', { car: D.rec, quality: q, ms: D.cabinMs });
+    }).catch(e => { console.warn('[drive] cabin', e); D.cabinP = null; D.cabinFail = (D.cabinFail || 0) + 1; if (D.cabinFail > 2) this._cabinOff = true; });   // off for this visit only
+    return null;
+  },
+  _cabinCycle() {
+    const order = ['auto', 'high', 'medium', 'low'], cur = lsGet('vrc.walk.carQuality') || 'auto', next = order[(order.indexOf(cur) + 1) % order.length];
+    lsSet('vrc.walk.carQuality', next); this._cabQc = null;
+    const q = this._cabinQuality(), lbl = { high: 'walk.car.qHigh', medium: 'walk.car.qMedium', low: 'walk.car.qLow' }[q];
+    this._toast(this.t('walk.car.quality') + ': ' + (next === 'auto' ? this.t('walk.car.qAuto') + ' · ' : '') + this.t(lbl), 2200);
+    if (this.drive) this._renderDriveHud(true);
+  },
+  // ======================= V25 (v0.11): the car never gets stuck =======================
+  // Watchdog, every frame while driving: (1) the driver asks to go but its moves are refused and it has not got 0.5 m further for 1 s, or the controller
+  // could not free itself (ctl.wedged) → _unstick (after 1 s of refused moves, 1.5 s when the way back is free): a small back-off / side step / turn, else the nearest free pose within 6.5 m,
+  // else the nearest street, else the last free place of the trail; (2) on its side / nose up for 2 s → back on its wheels;
+  // (3) out of the world (no ground under it, far below / above, outside the map) for 0.6 s → the nearest street.
+  _driveWatch(D, dt, gas, brake) {
+    const c = D.ctl, W = D.watch || (D.watch = { t: 0, x: c.x, z: c.z, flip: 0, out: 0, chk: 0 });
+    if (!(dt > 0) || this.busy) return;
+    if (!c._sane()) this._stuckNote(D, 'nan', 'restored', 0);
+    if (Math.abs(c.roll) > 0.45 || Math.abs(c.pitch) > 0.6) { W.flip += dt; if (W.flip > 2) { W.flip = 0; c.roll = 0; c.pitch = 0; c.dive = 0; this._stuckNote(D, 'flip', 'righted', 0); } } else W.flip = 0;
+    W.chk -= dt;
+    if (W.chk <= 0) {
+      W.chk = 0.2;
+      const M = this._city(), far = c.y < -14 || c.y > 80 || (M && M.insideCity && c.y > -1 && this._cityOut(M, c.x, c.z) && !(() => { try { return M.insideCity(c.x, c.z); } catch { return true; } })());
+      const noGround = this._groundAt(c.x, c.y, c.z) == null && this._groundAt(c.x, c.y + 1.5, c.z) == null;
+      if (far || noGround) W.out += 0.2; else W.out = 0;
+      if (W.out > 0.6) { W.out = 0; W.t = 0; this._unstick(D, far ? 'outside' : 'no-ground', 1, { road: true }); return; }
+    }
+    if (D.turn) { W.t = 0; W.x = c.x; W.z = c.z; return; }
+    // pinned = the driver asks to go (gas forward, or the brake once it drives backwards) and the car's moves are being REFUSED
+    // (an obstacle, a kerb): braking to a stop and the short hold before reversing are not "stuck"
+    const wantsGo = (gas > 0.3 && !c._autoR) || (brake > 0.3 && !!c._autoR), refused = (c._clock || 0) - (c.refusedAt ?? -9) < 0.3;
+    const moved = Math.hypot(c.x - W.x, c.z - W.z);
+    if (moved > 0.5) { W.x = c.x; W.z = c.z; W.t = 0; }
+    else {
+      if ((wantsGo && refused) || c.wedged) W.t += dt; else W.t = Math.max(0, W.t - dt * 0.3);   // refusals that come and go (a kerb, a corner) still add up
+    }
+    { // no progress: a pedal held (gas, or the brake — held at a standstill it drives backwards) and the car not 1.2 m away from
+      // where this began (rocking against a wall or a kerb, bouncing off it back and forth is not progress); not while the police
+      // hold it or the handbrake is pulled
+      const held = (gas > 0.3 || brake > 0.3) && !c.hand && !(this._game && this._game.police && this._game.police.arresting);
+      W.idle = held ? 0 : (W.idle || 0) + dt;   // switching from one pedal to the other is not letting go
+      if (W.ax == null || W.idle > 0.6 || Math.hypot(c.x - W.ax, c.z - W.az) > 1.2) { W.ax = c.x; W.az = c.z; W.np = 0; } else if (held) W.np = (W.np || 0) + dt;
+    }
+    if (refused || c.hit > 0.05) W.tT = c._clock || 0;   // it touched something (a creeping manoeuvre in the open is never "stuck")
+    if (W.np > 2.0 && (c._clock || 0) - (W.tT ?? -99) < 2.2 && W.t < 1.6) W.t = 1.6;
+    // the way back free? then the driver can reverse out by themselves: give them 1.5 s before helping (a gentle nudge back), else 1 s
+    if (W.t > 1.0 && W.canBack == null) { const sg = gas >= brake ? 1 : -1, w = this._driveWorld(), bx = c.x - Math.sin(c.yaw) * sg * 0.6, bz = c.z - Math.cos(c.yaw) * sg * 0.6; try { W.canBack = !c.wedged && !w.overlap(c, bx, bz, c.yaw, c.y); } catch { W.canBack = false; } }
+    if (W.t <= 1.0) W.canBack = null;
+    if (W.t > (W.canBack ? 1.5 : 1.0) || c.wedged > 2) {
+      // pinned again where it was freed a moment ago (the same corner): escalate — a wider search, turned away from the obstacle
+      const now = (c._clock || 0) * 1000, H = W.hist || (W.hist = []);   // the car's own clock (driving time), not the wall clock: a slow frame must not age the history
+      while (H.length && now - H[0].t > 6000) H.shift();
+      const lvl = H.filter(q => Math.hypot(q.x - c.x, q.z - c.z) < 2.2).length;
+      const why = c.wedged ? 'wedged' : W.np > 2.0 && W.t < 1.65 ? 'no-progress' : 'pinned'; W.t = 0; W.np = 0; W.ax = null; W.canBack = null; H.push({ t: now, x: c.x, z: c.z });
+      this._unstick(D, why, gas >= brake ? 1 : -1, { level: lvl }); W.x = c.x; W.z = c.z;
+    }
+  },
+  _stuckNote(D, why, how, dist) {
+    const L = this._stuckLog || (this._stuckLog = []); const o = D.ctl.contact && D.ctl.contact.other, oth = !o ? 'wall' : typeof o === 'string' ? o : o.building ? 'house' : o.police ? 'police' : o.path != null ? 'traffic' : o.collider ? 'car' : 'other';
+    L.push({ t: Math.round(performance.now()), why, how, oth, d: +(+dist || 0).toFixed(2), x: +D.ctl.x.toFixed(1), z: +D.ctl.z.toFixed(1), y: +D.ctl.y.toFixed(2) }); if (L.length > 300) L.shift();
+    this._emitDrive('drive:unstuck', { car: D.rec, why, how, dist });
+  },
+  // free the car: dir = +1 it was pushing forwards (back off), −1 backwards. opts.road: go straight to the nearest street
+  _unstick(D, why, dir = 1, opts = {}) {
+    const c = D.ctl, w = this._driveWorld(), x0 = c.x, z0 = c.z, y0 = Number.isFinite(c.y) ? c.y : 0, yw = Number.isFinite(c.yaw) ? c.yaw : 0;
+    const fx = Math.sin(yw), fz = Math.cos(yw), lx = Math.cos(yw), lz = -Math.sin(yw);
+    const yAt = (x, z, y) => { const g = this._groundAt(x, y, z); return g == null ? this._groundAt(x, y + 1.2, z) : g; };
+    const tryAt = (x, z, yaw, yHint = y0) => { const y = yAt(x, z, yHint); if (y == null) return null; return w.overlap(c, x, z, yaw, y) ? null : { x, z, yaw, y }; };
+    let got = null, how = '';
+    const lvl = opts.level || 0, nrm = c.contact && c.contact.normal && Number.isFinite(c.contact.normal[0] + c.contact.normal[1]) ? c.contact.normal : null;
+    // free room the way the driver pushes (0 / 1.5 / 3 m): a pose that only leads back into the same wall is no help
+    const room = p => { for (const d of [1.5, 3]) if (w.overlap(c, p.x + Math.sin(p.yaw) * d * dir, p.z + Math.cos(p.yaw) * d * dir, p.yaw, p.y)) return d - 1.5; return 3; };
+    const best = (cands) => { let b = null, bs = -1e9, n = 0; for (const [x, z, yy] of cands) { const g = tryAt(x, z, yy); if (!g) continue; const dy = Math.abs(Math.atan2(Math.sin(yy - yw), Math.cos(yy - yw))), sc = room(g) - dy * 1.2; if (sc > bs) { bs = sc; b = g; } if (bs >= 2.6 || ++n >= 16) break; } return b; };   // ≤ 16 free poses scored (a frame's budget)
+    const escape = (L) => {
+      // away from the obstacle (its contact normal, else back against the push); turned towards the open side when that frees the way
+      const ax = nrm ? nrm[0] : -fx * dir, az = nrm ? nrm[1] : -fz * dir, away = Math.atan2(ax, az);
+      for (const r of L >= 2 ? [3, 4.5, 6.5, 9] : [1.8, 2.6, 3.6]) {
+        const cands = []; for (const da of [0, 0.5, -0.5, 1, -1, 1.6, -1.6]) for (const dy of L >= 2 ? [0, 0.4, -0.4, 0.8, -0.8, 1.3, -1.3] : [0, 0.3, -0.3, 0.6, -0.6]) cands.push([x0 + Math.sin(away + da) * r, z0 + Math.cos(away + da) * r, yw + dy]);
+        const g = best(cands); if (g) return g;
+      }
+      return null;
+    };
+    if (!opts.road && lvl >= 1) { got = escape(lvl); if (got) how = 'escape' + lvl; }
+    if (!opts.road && !got) {
+      // a small back-off (as a driver would), turned a little to where there is room ahead; straight back into the same wall
+      // (no room at all from there) → the wider escape at once
+      const cands = []; for (const d of [0.8, 1.4]) for (const sd of [0, 0.6, -0.6]) for (const dy of [0, 0.25, -0.25, 0.5, -0.5]) cands.push([x0 - fx * dir * d + lx * sd, z0 - fz * dir * d + lz * sd, yw + dy]);
+      got = best(cands);
+      if (got) how = 'nudge';
+      if (!got || room(got) === 0) { const e = escape(1); if (e && room(e) > 0) { got = e; how = 'escape1'; } }
+      if (!got) {
+        outer: for (const r of [1, 1.8, 2.7, 3.8, 5, 6.5]) for (let k = 0; k < 12; k++) { const a = yw + k * Math.PI / 6; for (const dy of [0, 0.5, -0.5, Math.PI]) { got = tryAt(x0 + Math.sin(a) * r, z0 + Math.cos(a) * r, yw + dy); if (got) break outer; } }
+        if (got) how = 'near';
+      }
+    }
+    if (!got && y0 > -1) { got = this._nearestRoadPose(c, x0, z0, tryAt); if (got) how = 'road'; }
+    if (!got) { for (const q of [...(D.trail || [])].reverse().concat([D.start])) { if (!q) continue; got = tryAt(q.x, q.z, q.yaw, q.y); if (got) break; } if (got) how = 'trail'; }
+    if (!got) { const q = D.start; got = { x: q.x, z: q.z, yaw: q.yaw, y: q.y }; how = 'start'; }
+    Object.assign(c, { x: got.x, y: got.y, z: got.z, yaw: got.yaw, v: 0, steer: 0, beta: 0, yawKick: 0, roll: 0, dive: 0, wedged: 0, _touch: false, _autoR: false, _hold: 0 });
+    D.cam = null; D.turn = null; if (D.watch) { D.watch.x = c.x; D.watch.z = c.z; D.watch.t = 0; }
+    const dist = Math.hypot(got.x - x0, got.z - z0);
+    this._stuckNote(D, why, how, dist);
+    if (how === 'road' || how === 'trail' || how === 'start') this._toast(this.t('walk.car.reset'), 1800);
+    return how;
+  },
+  // the nearest carriageway (city data, else the streets of data.js) with the car along it, a free spot within 250 m
+  _nearestRoadPose(c, x0, z0, tryAt) {
+    const M = this._city(), cands = [];
+    try { if (M && M.roadsNear) for (const r of M.roadsNear(x0, z0, 250)) { if (!r.car || r.near) continue; const p = r.pts;
+      for (let i = 0; i + 1 < p.length; i++) { const a = p[i], b = p[i + 1], ux = b[0] - a[0], uz = b[1] - a[1], L2 = ux * ux + uz * uz || 1, t = clamp(((x0 - a[0]) * ux + (z0 - a[1]) * uz) / L2), qx = a[0] + ux * t, qz = a[1] + uz * t; cands.push({ d: Math.hypot(x0 - qx, z0 - qz), x: qx, z: qz, yaw: Math.atan2(ux, uz), seg: [a, b] }); } } } catch { /* */ }
+    for (const st of DATA.STREETS || []) { const p = st.pts || []; for (let i = 0; i + 1 < p.length; i++) { const a = p[i], b = p[i + 1], ux = b[0] - a[0], uz = b[1] - a[1], L2 = ux * ux + uz * uz || 1, t = clamp(((x0 - a[0]) * ux + (z0 - a[1]) * uz) / L2), qx = a[0] + ux * t, qz = a[1] + uz * t; cands.push({ d: Math.hypot(x0 - qx, z0 - qz), x: qx, z: qz, yaw: Math.atan2(ux, uz), seg: [a, b] }); } }
+    cands.sort((a, b) => a.d - b.d);
+    for (const q of cands.slice(0, 24)) { if (q.d > 400) break;
+      const [a, b] = q.seg, L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L;
+      for (const along of [0, 6, -6, 12, -12, 20, -20]) for (const side of [0, 1.8, -1.8]) { const g = tryAt(q.x + ux * along - uz * side, q.z + uz * along + ux * side, q.yaw, 0); if (g) return g; } }
+    return null;
+  },
+  // V25: every pedal / key / steering input of the drive let go (tab hidden, window blurred, the phone turned, a touch cancelled)
+  _driveInputReset() {
+    const D = this.drive; if (this.keys) this.keys.clear();
+    if (D) { D.pad.gas = 0; D.pad.brake = 0; D.pad.steer = 0; D.pad.hand = 0; D.rHold = null; }
+    const e = this.el; if (!e) return;
+    for (const b of [e.gas, e.brake, e.dhand, e.dhorn]) if (b) { b.classList.remove('on'); b._pid = null; }
+    if (e.knob) e.knob.style.transform = ''; if (e.steerPad) e.steerPad.classList.remove('on');
+    if (this._hornOn) this._hornStop();
+  },
   // does the car's footprint touch a house of the city data? (corners and edge mid-points of the car inside the outline, or a
   // vertex of the outline inside the car)
   _cityHouseHit(M, quad, cx, cz, r) {
@@ -993,6 +1155,9 @@ export const driveMixin = {
       // forecourts (cars.js drive area) — kerbs and everything beyond them stop it. In the extended city (outside the
       // hand-built surroundings) the car may leave the road: only houses, water and the edge of the map stop it.
       // No area yet → 300 m round the yard.
+      // V25: is (x, z, yaw) at height y NOT a legal place for this car? (no ground under an axle / a step > 0.55 m, or anything
+      // solid in the body — tested both ways, as the ray fan of _carBlocked looks only where the car is going)
+      overlap: (ctl, x, z, yaw, y) => this._carOverlap(ctl, x, z, yaw, y),
       drivable: (x, z) => {
         if (this.drive && this.drive.ctl.y < -1) return true;
         const A = this._driveArea();
@@ -1053,16 +1218,18 @@ export const driveMixin = {
     const r = this.renderer, g = D.car.group, ck = D.car.cockpit;
     M.cam.position.copy(ck.mirrorPose.pos); g.localToWorld(M.cam.position);
     M.cam.rotation.set(0, D.ctl.yaw, 0, 'YXZ'); M.cam.updateMatrixWorld(true);   // a camera looks down its −z: with the car's yaw that is straight back
-    const prev = r.getRenderTarget(), vis = ck.group.visible;
-    ck.group.visible = false;
+    const prev = r.getRenderTarget(), vis = ck.group.visible, cg = D.car.cabin && D.car.cabin.group, cv = cg ? cg.visible : false;
+    ck.group.visible = false; if (cg) cg.visible = false;
     try { r.setRenderTarget(M.rt); (render || r.render).call(r, this.scene, M.cam); } catch (e) { if (!this._mirErr) { this._mirErr = true; console.warn('[drive] mirror render', e); } D.mirror = null; ck.setMirrorMap(null); try { M.rt.dispose(); } catch { /* */ } }
-    finally { r.setRenderTarget(prev); ck.group.visible = vis; }
+    finally { r.setRenderTarget(prev); ck.group.visible = vis; if (cg) cg.visible = cv; }
   },
   _mirrorDispose(D) { if (D && D.mirror) { try { D.mirror.rt.dispose(); } catch { /* */ } D.mirror = null; } },
 
   // ======================= per-frame driving =======================
   _driveUpdate(dt) {
     const D = this.drive, { ctl, car, rec } = D, k = this.keys, pad = D.pad, now = performance.now();
+    // V25: a pedal whose touch was lost without a pointerup (iOS: a system gesture, a notification) is let go
+    if (this.el) for (const [b, key] of [[this.el.gas, 'gas'], [this.el.brake, 'brake']]) if (b && pad[key] && b._cap && b._pid != null && now - (b._pt || 0) > 250) { let held = true; try { held = b.hasPointerCapture(b._pid); } catch { held = false; } if (!held) { pad[key] = 0; b._pid = null; b._cap = false; b.classList.remove('on'); } }
     let gas = Math.max(k.has('KeyW') || k.has('ArrowUp') ? 1 : 0, pad.gas);
     let brake = Math.max(k.has('KeyS') || k.has('ArrowDown') ? 1 : 0, pad.brake);
     const hand = Math.max(k.has('Space') ? 1 : 0, pad.hand || 0);                // Space = handbrake (rear wheels): stops the car, and swings the tail round in a turn
@@ -1077,13 +1244,18 @@ export const driveMixin = {
     if (ctl.y > -1 && (A || M)) {
       const sgn = Math.sign(ctl.v || 1), stop = ctl.v * ctl.v / (2 * 7) * sgn, px = ctl.x + fx0 * stop, pz = ctl.z + fz0 * stop;   // where the car could come to rest
       let e = 0;
-      if (M && M.insideCity) { try { e = M.insideCity(px, pz) ? (M.insideCity(px + fx0 * 30 * sgn, pz + fz0 * 30 * sgn) ? 0 : 0.5) : 1; } catch { e = 0; } }
+      // V25: a car that is itself already outside the map (shoved, slid, put there) does NOT turn round — it turned for ever
+      // (the place it would stop at is where it stands). The watchdog puts it back on the nearest street instead.
+      if (M && M.insideCity) { try { e = !M.insideCity(ctl.x, ctl.z) && this._cityOut(M, ctl.x, ctl.z) ? 0 : M.insideCity(px, pz) ? (M.insideCity(px + fx0 * 30 * sgn, pz + fz0 * 30 * sgn) ? 0 : 0.5) : 1; } catch { e = 0; } }
       else if (A && A.edge) { const rx = ctl.x - SITE_CENTER[0], rz = ctl.z - SITE_CENTER[1], rl = Math.hypot(rx, rz) || 1, out = (fx0 * rx + fz0 * rz) / rl * sgn; e = out > 0.2 ? Math.max(A.edge(ctl.x, ctl.z), A.edge(px, pz)) : 0; }
       if (e > 0) {
         D.edge = e;
         if (now - (this._edgeT || 0) > 6000) { this._edgeT = now; this._toast(this.t('walk.car.edge'), 3200); }
         const rx = ctl.x - SITE_CENTER[0], rz = ctl.z - SITE_CENTER[1];
-        if (e > 0.82 && !D.turn) D.turn = { t: 0, yaw0: ctl.yaw, dir: (fx0 * rz - fz0 * rx) > 0 ? -1 : 1 };
+        if (e > 0.82 && !D.turn) {
+          if (D.turnEnd && now - D.turnEnd < 1500) { D.turnEnd = 0; this._unstick(D, 'edge-loop', 1, { road: true }); }   // V25: turned round and still facing out
+          else D.turn = { t: 0, yaw0: ctl.yaw, dir: (fx0 * rz - fz0 * rx) > 0 ? -1 : 1 };
+        }
       }
     }
     D.offRoad = ctl.y > -0.6 && !!M && this._cityOut(M, ctl.x, ctl.z) && !this._onRoad(ctl.x, ctl.z);
@@ -1092,12 +1264,12 @@ export const driveMixin = {
     if (D.turn) {
       // gentle turn-back: brake to a stop, swing the car round half a turn, hand the wheel back
       const T = D.turn;
-      if (Math.abs(ctl.v) > 0.3) { const n = Math.max(1, Math.ceil(dt * 60)); for (let i = 0; i < n; i++) ctl.step(dt / n, { brake: 1, gear: ctl.gear }, world); }
-      else { ctl.v = 0; T.t += dt / 2.2; ctl.yaw = T.yaw0 + T.dir * Math.PI * sstep(T.t); ctl.steer = T.dir * 0.4 * Math.sin(Math.PI * clamp(T.t)); if (T.t >= 1) { D.turn = null; ctl.steer = 0; D.gear = 'D'; D.manual = false; ctl.gear = 'D'; ctl._autoR = false; } }
+      if (Math.abs(ctl.v) > 0.3) { const n = Math.max(1, Math.ceil(dt * 60)); for (let i = 0; i < n; i++) ctl.step(dt / n, { brake: 1 }, world); }
+      else { ctl.v = 0; T.t += dt / 2.2; ctl._sane(); ctl.roll *= 1 - damp(5, dt); ctl.dive *= 1 - damp(5, dt); ctl.yaw = T.yaw0 + T.dir * Math.PI * sstep(T.t); ctl.steer = T.dir * 0.4 * Math.sin(Math.PI * clamp(T.t)); if (T.t >= 1) { D.turn = null; D.turnEnd = now; ctl.steer = 0; ctl._autoR = false; ctl._touch = true; } }
     } else {
       // V19: two pedals only — right = gas (forward), left = brake; holding the brake at a standstill drives backwards
-      // (keys: ↑ / W gas, ↓ / S brake-reverse). D.manual / D.gear remain only as a test hook.
-      const inp = { gas, brake, steer, hand, gear: D.manual ? D.gear : 'D', auto: !D.manual };
+      // (keys: ↑ / W gas, ↓ / S brake-reverse). V25 (v0.11, owner): no gear state at all — no selector, no P / R / D anywhere.
+      const inp = { gas, brake, steer, hand };
       const n = Math.min(6, Math.max(1, Math.ceil(dt / (1 / 60))));   // ≥ 60 Hz dynamics; the controller cuts each step into moves of ≤ 0.3 m
       const hit0 = ctl.hit; ctl.hit = 0;
       for (let i = 0; i < n; i++) ctl.step(dt / n, inp, world);
@@ -1105,12 +1277,13 @@ export const driveMixin = {
       // a trail of free-running poses for the reset
       if (!ctl.hit && Math.abs(ctl.v) > 1.5 && now - D.trailT > 700) { D.trailT = now; D.trail.push({ t: now, x: ctl.x, y: ctl.y, z: ctl.z, yaw: ctl.yaw, pitch: ctl.pitch }); if (D.trail.length > 40) D.trail.shift(); }
     }
+    // V25: the never-stuck watchdog (after the move)
+    try { this._driveWatch(D, dt, gas, brake); } catch (e) { console.warn('[drive] watch', e); }
     // a contact → damage, sound, pushed cars, events (the hardest one of this frame)
     if (ctl.impact && ctl.impact.speed > 0.7 && now - (D.colT || 0) > 60) { D.colT = now; try { this._carImpact(D, ctl.impact, now); } catch (e) { console.warn('[drive] impact', e); } }
     D.scrape = Math.max(0, (D.scrape || 0) - dt * 4);
-    // a wrecked car: the starter turns, nothing else
-    if (ctl.disabled && gas > 0.5 && now - (D.failT || 0) > 2600) { D.failT = now; const A = this._carAudio(); if (A) A.startFail(); if (rec.dmg && rec.dmg.dead && now - (D.failToast || 0) > 9000) { D.failToast = now; this._toast(this.t('walk.car.wrecked'), 5000); } }
-    if (rec.dmg && rec.dmg.dead && D.ind !== 2) { D.ind = 2; D.indT = now; }
+    // V25: the visitor's car is never left without drive (a disabled flag from outside lasts at most 3 s, then it limps)
+    if (ctl.disabled) { D.disT = (D.disT || 0) + (dt || 0); if (D.disT > 3) { ctl.disabled = false; rec.disabled = false; D.disT = 0; Object.assign(ctl.mod, damageMods(rec.dmg || { dead: true, engine: 1, wheels: [0, 0, 0, 0], bumper: {} }, ctl.S)); } } else D.disT = 0;
     // car pose
     Object.assign(rec, { x: ctl.x, y: ctl.y, z: ctl.z, yaw: ctl.yaw, pitch: ctl.pitch, roll: ctl.roll });
     const g = car.group;
@@ -1156,10 +1329,16 @@ export const driveMixin = {
       if (cam.aspect !== fr.src.aspect || cam.fov !== fr.src.fov) { cam.aspect = fr.src.aspect; cam.fov = fr.src.fov; }
       cam.updateProjectionMatrix(); const P = cam.projectionMatrix.elements; P[8] = fr.src.sx; P[9] = fr.src.sy; cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
       const e = fr.eye.clone();
+      // V25: the head moves with the car — leans out of a corner, back under power, forward under braking, a little bob over
+      // bumps and at speed (car frame: +x the driver's side, +z forward; at rest all zero, so the framing of V10 holds)
+      const H = D.head || (D.head = { x: 0, z: 0, y: 0, t: 0 }), k = dt ? damp(5, dt) : 1, gl = x => (Number.isFinite(x) ? clamp(x / 9.81, -1.2, 1.2) : 0);
+      H.x += (-gl(ctl.aLat) * 0.032 - H.x) * k; H.z += (-gl(ctl.aLong) * 0.028 - H.z) * k; H.t += (dt || 0) * (2.4 + Math.min(4, Math.abs(ctl.v) * 0.12));
+      H.y = (ctl.bump || 0) * 0.5 + Math.sin(H.t * 6.2) * 0.0018 * Math.min(1, Math.abs(ctl.v) / 22);
+      e.x += H.x; e.y += H.y; e.z += H.z;
       car.group.localToWorld(e);
       cam.position.copy(e);
       // look a little into the corner, like a driver does; reversing with the view turned far round = looking over the shoulder
-      cam.rotation.set(ctl.pitch * 0.9 + FP_PITCH + L.pitch, ctl.yaw + Math.PI + FP_YAW + L.yaw + ctl.steer * 0.14, -ctl.roll * 0.6, 'YXZ');
+      cam.rotation.set(ctl.pitch * 0.9 + FP_PITCH + L.pitch, ctl.yaw + Math.PI + FP_YAW + L.yaw + ctl.steer * 0.14, -ctl.roll * 0.6 + H.x * 0.5, 'YXZ');
     } else {
       const vf = Math.min(this._fovWalk || cam.fov, cam.aspect < 1 ? 100 : 72) + rush;
       if (Math.abs(cam.fov - vf) > 0.05) { cam.fov += (vf - cam.fov) * (dt ? damp(4, dt) : 1); cam.updateProjectionMatrix(); }
@@ -1178,6 +1357,10 @@ export const driveMixin = {
       cam.lookAt(ctl.x + fx * 1.6, ctl.y + 1.0 + L.pitch * 3, ctl.z + fz * 1.6);
     }
     this._syncEnvMap();
+    // V25: the detailed cabin (car-interior.js, loaded the first time the driver's view is used); active only in that view
+    const cab = this._cabinEnsure(D);
+    if (cab) { const want = D.view === 'fp'; if (cab.active !== want) { cab.setActive(want); cab.active = want; }
+      if (want) cab.update({ dt, scene: this.scene, camera: cam, wipers: !!D.wipers, wipT: D.wipT || 0, night: this._cabinNight(ctl) }); }
     // the instruments and the centre screen (≈ 12 × per second), the mirrors (every few frames)
     if (ck && now - D.hudT > 80) {
       D.hudT = now; const R = this._radio, rs = R ? R.state : null, dn = new Date();
@@ -1185,7 +1368,7 @@ export const driveMixin = {
       const dm = rec.dmg, eng = dm ? dm.engine : 0, night = this.envMode === 'night' || (under && this.envMode !== 'day');
       if (rec.fuel == null) { let h = 0; for (let i = 0; i < rec.id.length; i++) h = (h * 31 + rec.id.charCodeAt(i)) >>> 0; rec.fuel = 0.42 + (h % 53) / 100; }
       const mapR = this._mapRoads(ctl.x, ctl.y, ctl.z);
-      ck.draw({ kmh: kmhAbs, rpm: ctl.perf.eng === 'ev' ? Math.abs(ctl.aLong) / (ctl.perf.acc || 8) * ctl.redline * (gas > 0 ? 1 : 0.25) : ctl.disabled ? 0 : ctl.rpm, redline: ctl.redline, gear: D.turn ? 'P' : ctl.gearShown, gearNo: ctl.gearNo, lights: on, left, right, limit: lim, disabled: ctl.disabled,
+      const st = ({ kmh: kmhAbs, rpm: ctl.perf.eng === 'ev' ? Math.abs(ctl.aLong) / (ctl.perf.acc || 8) * ctl.redline * (gas > 0 ? 1 : 0.25) : ctl.disabled ? 0 : ctl.rpm, redline: ctl.redline, reversing: !!ctl.reversing, gearNo: ctl.gearNo, lights: on, left, right, limit: lim, disabled: ctl.disabled,
         fuel: rec.fuel, temp: clamp(0.5 + eng * 0.46), odo: (D.odo || 0) / 1000, night,
         warn: { engine: eng > 0.3 || ctl.disabled, abs: ctl.abs && blink, hand: ctl.hand, hazard: haz && blink, fuel: rec.fuel < 0.12, door: car.doorOpen > 0.05, temp: eng > 0.75 },
         map: { x: ctl.x, z: ctl.z, yaw: ctl.yaw, roads: mapR.roads, marks: mapR.marks, rev: mapR.rev, scale: under ? 2.2 : kmhAbs > 120 ? 0.55 : 0.95, street: mapR.name(ctl.x, ctl.z) },
@@ -1193,6 +1376,7 @@ export const driveMixin = {
         radio: rs ? { on: rs.on, name: rs.station ? rs.station.name : '', freq: rs.station ? rs.station.freq : '', status: rs.status, volume: rs.volume, muted: rs.muted } : { on: false },
         clock: String(dn.getHours()).padStart(2, '0') + ':' + String(dn.getMinutes()).padStart(2, '0'),
         labels: this._ckLabels || (this._ckLabels = { radio: this.t('walk.radio.title'), off: this.t('walk.radio.off'), connecting: this.t('walk.radio.connecting'), noSignal: this.t('walk.radio.noSignal'), live: this.t('walk.radio.live'), kmh: this.t('walk.car.kmh') }) });
+      ck.draw(st); if (cab && cab.active) cab.drawCluster(st);
     }
     { const dist = Math.abs(ctl.v) * (dt || 0); D.odo = (D.odo || 0) + dist; if (rec.fuel != null && ctl.perf.eng) rec.fuel = Math.max(0.05, rec.fuel - dist * (0.000004 + gas * 0.000006)); }
     this._mirrorRender(D);
@@ -1207,7 +1391,7 @@ export const driveMixin = {
   },
 
   // ======================= HUD =======================
-  // extra controls for driving (gear D / R, horn, radio, tilt steering, reset) — added to walk.js' drive panel once
+  // extra controls for driving (horn, indicators, handbrake, radio, tilt steering, reset; V19/V25: no gear selector) — added to walk.js' drive panel once
   _driveHudInit() {
     const e = this.el; if (!e || e.dxInit || !e.drive) return;
     e.dxInit = true;                                                    // (V19: e.dgear is gone — the controls are built once)
@@ -1241,14 +1425,16 @@ export const driveMixin = {
     this.root.addEventListener('pointerdown', ev => { if (this.root.classList.contains('dmenu-open') && !ev.target.closest('.vw-dmenu,.vw-dmorebtn')) this._driveMenu(false); }, true);
     const mk = (kd, html) => { const b = document.createElement('button'); b.className = 'vw-btn vw-ghost vw-ico'; b.dataset.kd = kd; b.innerHTML = html; menu.insertBefore(b, menu.firstChild); return b; };
     e.dreset = mk('reset', ICON.reset);
+    e.dcabin = mk('cabin', ICON.cabin);                                                                   // V25: cabin quality
     e.dwipers = mk('wipers', ICON.wipers); e.dhazard = mk('hazard', ICON.hazard);                       // V19: wipers, hazard lights
     if (this._isTouch && typeof window.DeviceOrientationEvent !== 'undefined') e.dtilt = mk('tilt', ICON.tilt);
-    e.dgear = null; e.dindL = x.querySelector('[data-kd=indL]'); e.dindR = x.querySelector('[data-kd=indR]'); e.dhorn = x.querySelector('[data-kd=horn]'); e.dname = name; e.dhand = x.querySelector('[data-kd=hand]');
+    e.dindL = x.querySelector('[data-kd=indL]'); e.dindR = x.querySelector('[data-kd=indR]'); e.dhorn = x.querySelector('[data-kd=horn]'); e.dname = name; e.dhand = x.querySelector('[data-kd=hand]');
     { const b = e.dhand, on = ev => { ev.preventDefault(); ev.stopPropagation(); try { b.setPointerCapture(ev.pointerId); } catch { /* */ } b.classList.add('on'); if (this.drive) this.drive.pad.hand = 1; }, off = () => { b.classList.remove('on'); if (this.drive) this.drive.pad.hand = 0; };
       b.addEventListener('pointerdown', on); for (const n of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(n, off); b.addEventListener('contextmenu', ev => ev.preventDefault()); }
     for (const [b, f] of [[e.dindL, () => this._setIndicator(1)], [e.dindR, () => this._setIndicator(-1)], [e.dhazard, () => this._setIndicator(2)], [e.dwipers, () => this._toggleWipers()]]) {
       b.addEventListener('click', ev => { ev.stopPropagation(); f(); this._renderDriveHud(true); }); b.addEventListener('pointerdown', ev => ev.stopPropagation()); }
     e.dreset.addEventListener('click', ev => { ev.stopPropagation(); this._resetCar(); });
+    e.dcabin.addEventListener('click', ev => { ev.stopPropagation(); this._cabinCycle(); }); e.dcabin.addEventListener('pointerdown', ev => ev.stopPropagation());
     if (e.dtilt) e.dtilt.addEventListener('click', ev => { ev.stopPropagation(); this._toggleTilt(); });
     const hOn = ev => { ev.preventDefault(); ev.stopPropagation(); try { e.dhorn.setPointerCapture(ev.pointerId); } catch { /* */ } e.dhorn.classList.add('on'); this._hornStart(); };
     const hOff = () => { e.dhorn.classList.remove('on'); this._hornStop(); };
@@ -1262,11 +1448,9 @@ export const driveMixin = {
   _renderDriveHud(force) {
     const D = this.drive, e = this.el; if (!D || !e) return;
     const ctl = D.ctl, kmh = Math.round(Math.abs(ctl.v) * 3.6), lim = ctl.y < -0.8 || this._rampDist(ctl.x, ctl.z) < 1 ? CAR_PARK_LIMIT : STREET_LIMIT;
-    const gear = D.turn ? 'P' : ctl.gearShown;
-    if (force || kmh !== this._lastKmh || gear !== this._lastGear) {
-      this._lastKmh = kmh; this._lastGear = gear; e.spd.textContent = String(kmh); e.gear.textContent = gear;
+    if (force || kmh !== this._lastKmh) {
+      this._lastKmh = kmh; e.spd.textContent = String(kmh);
       const f = Math.min(1, kmh / (lim === CAR_PARK_LIMIT ? 40 : Math.max(120, ctl.perf.vmax))); e.arc.style.strokeDasharray = `${(141.4 * f).toFixed(1)} 200`;
-      if (e.dgear) for (const i of e.dgear.querySelectorAll('i')) i.classList.toggle('on', i.dataset.g === (ctl.reversing ? 'R' : 'D'));
       if (e.dindL) { e.dindL.classList.toggle('on', D.ind === 1); e.dindR.classList.toggle('on', D.ind === -1); e.dhazard.classList.toggle('on', D.ind === 2); e.dwipers.classList.toggle('on', !!D.wipers); }
       if (e.dmore) e.dmore.classList.toggle('lit', D.ind === 2 || !!D.wipers || !!D.tiltOn);
     }
@@ -1279,7 +1463,7 @@ export const driveMixin = {
       e.dhint.textContent = this.t('walk.car.hint');
       if (e.dname) e.dname.innerHTML = `<b>${ctl.S.name}</b>${D.car.plate ? ' · ' + D.car.plate : ''}`;
       const lab = (b, k) => { if (b) { b.setAttribute('aria-label', this.t(k)); b.title = this.t(k); } };
-      lab(e.dindL, 'walk.car.indL'); lab(e.dindR, 'walk.car.indR'); lab(e.dhazard, 'walk.car.hazard'); lab(e.dwipers, 'walk.car.wipers'); lab(e.dhorn, 'walk.car.horn'); lab(e.dhand, 'walk.car.handbrake'); lab(e.dreset, 'walk.car.resetBtn'); lab(e.dmore, 'walk.car.more'); lab(e.carView, D.view === 'fp' ? 'walk.car.chase' : 'walk.car.cockpit'); lab(e.dtilt, 'walk.car.tilt'); lab(e.carSound, 'walk.car.sound');
+      lab(e.dindL, 'walk.car.indL'); lab(e.dindR, 'walk.car.indR'); lab(e.dhazard, 'walk.car.hazard'); lab(e.dwipers, 'walk.car.wipers'); lab(e.dhorn, 'walk.car.horn'); lab(e.dhand, 'walk.car.handbrake'); lab(e.dreset, 'walk.car.resetBtn'); lab(e.dcabin, 'walk.car.quality'); lab(e.dmore, 'walk.car.more'); lab(e.carView, D.view === 'fp' ? 'walk.car.chase' : 'walk.car.cockpit'); lab(e.dtilt, 'walk.car.tilt'); lab(e.carSound, 'walk.car.sound');
       this._radioBar(null);
       if (e.dradio) { e.dradio.setAttribute('aria-label', this.t('walk.radio.title')); for (const [kr, key] of [['prev', 'walk.radio.prev'], ['next', 'walk.radio.next'], ['down', 'walk.radio.volDown'], ['up', 'walk.radio.volUp'], ['power', 'walk.radio.power']]) lab(e.dradio.querySelector(`[data-kr=${kr}]`), key); this._radioHud(); }
       if (e.dtilt) e.dtilt.classList.toggle('on', !!D.tiltOn);

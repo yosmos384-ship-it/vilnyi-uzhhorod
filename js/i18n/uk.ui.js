@@ -480,4 +480,10 @@ export default {
   "walk.car.door": "Двері",
   "walk.game.takePolice": "Забрати поліцейське авто",
   "walk.game.policeStolen": "Ви викрали патрульне авто — поліція вже шукає вас!",
+  "walk.car.limp": "Авто тяжко пошкоджене — їде на мінімальній потужності. Утримуйте R (або ↺), щоб отримати нове авто",
+  "walk.car.quality": "Якість салону",
+  "walk.car.qHigh": "Висока",
+  "walk.car.qMedium": "Середня",
+  "walk.car.qLow": "Низька",
+  "walk.car.qAuto": "Авто",
 };

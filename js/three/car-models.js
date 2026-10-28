@@ -647,8 +647,10 @@ function steeringGeometry() {
   return mergeAll(parts, ['position', 'normal', 'color', 'mr']);
 }
 // cabin: tub (floor, door cards, rear bulkhead), dashboard with a cowl, console, seats. → { main, door } (door = the driver's door card)
-function interiorGeometry(S, B, GH, ic, door) {
+function interiorGeometry(S, B, GH, ic, door, shell = null) {
   const main = [], dparts = [];
+  // V25 (v0.11): shell = {} → only the tub (door cards, floor, bulkhead, parcel shelf) as plain geometry sorted by material role
+  // ({ main: { leather, dark, accent, carpet }, door: { … } }) for car-interior.js, which builds everything else itself
   const T = (g, hex, m, r, bin = main) => bin.push(tint(g, hex, m, r));
   const rb = (w, h, d, r, x, y, z, rx = 0) => { const g = new RoundedBoxGeometry(w, h, d, 1, Math.min(r, w / 2.2, h / 2.2, d / 2.2)); if (rx) g.rotateX(rx); g.translate(x, y, z); return g; };
   const G = S.gh, yb = S.floor, two = S.seats === 2;
@@ -671,16 +673,25 @@ function interiorGeometry(S, B, GH, ic, door) {
       return tint(ng, hex, m, r);
     };
     const inDoor = z => sg > 0 && door && z > door.z0 && z < door.z1;
-    for (const [pred, hex, m, r] of [[j => j < 2 || j === 5, ic.leather, 0, 0.55], [j => j === 2 || j === 3, ic.dark, 0, 0.6], [j => j === 4, ic.accent, ic.accent === '#8f8f93' ? 1 : 0.1, 0.28]]) {
+    for (const [pred, hex, m, r, role] of [[j => j < 2 || j === 5, ic.leather, 0, 0.55, 'leather'], [j => j === 2 || j === 3, ic.dark, 0, 0.6, 'dark'], [j => j === 4, ic.accent, ic.accent === '#8f8f93' ? 1 : 0.1, 0.28, 'accent']]) {
       const a = mk((j, z) => pred(j) && !inDoor(z), hex, m, r), d = mk((j, z) => pred(j) && inDoor(z), hex, m, r);
       if (a) main.push(a); if (d) dparts.push(d);
+      if (shell) { const sm = shell.main || (shell.main = {}), sd = shell.door || (shell.door = {}); if (a) (sm[role] || (sm[role] = [])).push(a); if (d) (sd[role] || (sd[role] = [])).push(d); }
     }
   }
   const fw = sideX(S.seat, yb + 0.1);
   const fl = new THREE.PlaneGeometry(fw * 2 + 0.06, z1 - z0 + 0.1); fl.rotateX(-Math.PI / 2); fl.translate(0, yb, (z0 + z1) / 2); T(fl, '#1b1a19', 0, 0.95);
   // rear bulkhead + shelf (or, behind two seats, the firewall of the engine bay)
   const bh = belt(z0) - yb; const bk = new THREE.PlaneGeometry(fw * 2 + 0.04, bh); bk.translate(0, yb + bh / 2, z0); T(bk, ic.dark, 0, 0.8);
-  if (!S.dlo.open) { const ps = new THREE.PlaneGeometry(fw * 2, Math.max(0.1, z0 - G.zC)); ps.rotateX(-Math.PI / 2); ps.translate(0, belt(z0) - 0.015, (z0 + G.zC) / 2 + 0.05); T(ps, ic.dark, 0, 0.85); }
+  let ps = null; if (!S.dlo.open) { ps = new THREE.PlaneGeometry(fw * 2, Math.max(0.1, z0 - G.zC)); ps.rotateX(-Math.PI / 2); ps.translate(0, belt(z0) - 0.015, (z0 + G.zC) / 2 + 0.05); T(ps, ic.dark, 0, 0.85); }
+  if (shell) {
+    const sm = shell.main || (shell.main = {}); sm.carpet = [fl]; (sm.dark || (sm.dark = [])).push(bk); if (ps) sm.dark.push(ps);
+    const dRear = S.seat + 0.68, dh = belt(GH.z0A) - 0.035, dTopZ = G.zA - 0.05;
+    Object.assign(shell, { fw, z0, z1, yb, dRear, dh, dTopZ, belt, sideX, two, zRearSeat,
+      zf: x => Math.min(dTopZ, GH.Ob.at(clamp(2 + (1 - Math.abs(x) / Math.max(0.3, GH.Ob.Wf)) * 0.999, 2, 3))[1] - 0.03) });
+    for (const part of [shell.main, shell.door]) for (const k of Object.keys(part || {})) part[k] = part[k].length ? mergeAll(part[k], ['position', 'normal']) : null;
+    return shell;
+  }
   // dashboard: cowl top under the screen, a soft upper roll, a trim band, the lower dash
   const dRear = S.seat + 0.68, dh = belt(GH.z0A) - 0.035, dTopZ = G.zA - 0.05;
   { const n = 14, pos = [], idx = [];
@@ -1017,21 +1028,21 @@ export function buildCar(kind, tier = 0) {
     // screen frame header, twin fairings behind the rear seats, a roll bar hint
     for (const s of [-1, 1]) { const f = new THREE.SphereGeometry(1, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2); f.scale(0.2, 0.085, 0.42); f.translate(s * S.driverX, B.deckY(S.driverX, G.zC - 0.2) - 0.012, G.zC - 0.3); out.paint.push(strip(f.toNonIndexed(), ['position', 'normal'])); }
   }
-  // dashboard displays (they glow: light group 2): the driver's instruments with two dials, the centre screen
+  // dashboard displays (they glow: light group 5 = as 2, and V25: hidden while the detailed cabin of car-interior.js is shown): the driver's instruments with two dials, the centre screen
   if (fine) {
     const dRear = S.seat + 0.68, dh = B.sh(clamp(GH.z0A, G.zC, G.zA)) - 0.035;
     const pl = (w2, h2, x, y, z, tilt, rgb, grad = 0) => {
       const g = new THREE.PlaneGeometry(w2, h2, 1, 1); g.rotateX(tilt); g.rotateY(Math.PI); g.translate(x, y, z);
       const ng = g.toNonIndexed(); g.dispose(); strip(ng, ['position', 'normal']); const p = ng.attributes.position, c = new Float32Array(p.count * 3);
       for (let i = 0; i < p.count; i++) { const k = 1 + grad * (p.getY(i) - y) / h2; c.set([rgb[0] * k, rgb[1] * k, rgb[2] * k], i * 3); }
-      ng.setAttribute('color', new THREE.BufferAttribute(c, 3)); attr(ng, 'lk', 1, [2]); out.lights.push(ng);
+      ng.setAttribute('color', new THREE.BufferAttribute(c, 3)); attr(ng, 'lk', 1, [5]); out.lights.push(ng);
     };
     const dx = S.driverX, y0 = dh + 0.085, z0 = dRear + 0.03, tl = -0.22, GOLD = [0.95, 0.78, 0.48];
     pl(0.33, 0.115, dx, y0, z0, tl, [0.02, 0.028, 0.045], 0.8);
     for (const s of [-1, 1]) {
-      const ring = new THREE.RingGeometry(0.036, 0.04, 28); ring.rotateX(tl); ring.rotateY(Math.PI); ring.translate(dx + s * 0.088, y0, z0 - 0.002); LT(ring, GOLD, 2);
-      for (let k = 0; k <= 6; k++) { const g = new THREE.PlaneGeometry(0.0026, 0.008); g.translate(0, 0.03, 0); g.rotateZ((1 - k / 3) * 2.1); g.rotateX(tl); g.rotateY(Math.PI); g.translate(dx + s * 0.088, y0, z0 - 0.003); LT(g, [0.85, 0.86, 0.9], 2); }
-      const nd = new THREE.PlaneGeometry(0.003, 0.03); nd.translate(0, 0.014, 0); nd.rotateZ(s < 0 ? 1.4 : 0.6); nd.rotateX(tl); nd.rotateY(Math.PI); nd.translate(dx + s * 0.088, y0, z0 - 0.004); LT(nd, [1.0, 0.45, 0.2], 2);
+      const ring = new THREE.RingGeometry(0.036, 0.04, 28); ring.rotateX(tl); ring.rotateY(Math.PI); ring.translate(dx + s * 0.088, y0, z0 - 0.002); LT(ring, GOLD, 5);
+      for (let k = 0; k <= 6; k++) { const g = new THREE.PlaneGeometry(0.0026, 0.008); g.translate(0, 0.03, 0); g.rotateZ((1 - k / 3) * 2.1); g.rotateX(tl); g.rotateY(Math.PI); g.translate(dx + s * 0.088, y0, z0 - 0.003); LT(g, [0.85, 0.86, 0.9], 5); }
+      const nd = new THREE.PlaneGeometry(0.003, 0.03); nd.translate(0, 0.014, 0); nd.rotateZ(s < 0 ? 1.4 : 0.6); nd.rotateX(tl); nd.rotateY(Math.PI); nd.translate(dx + s * 0.088, y0, z0 - 0.004); LT(nd, [1.0, 0.45, 0.2], 5);
     }
     pl(0.07, 0.008, dx, y0 - 0.03, z0 - 0.003, tl, [0.7, 0.8, 0.95]);
     // centre screen: map tiles, a route line, a status bar
@@ -1039,7 +1050,7 @@ export function buildCar(kind, tier = 0) {
     pl(0.32, 0.17, 0, cy, cz, -0.12, [0.018, 0.024, 0.036], 0.6);
     pl(0.13, 0.1, 0.085, cy + 0.02, cz - 0.004, -0.12, [0.05, 0.075, 0.1]); pl(0.13, 0.045, -0.08, cy + 0.045, cz - 0.004, -0.12, [0.085, 0.075, 0.055]); pl(0.13, 0.04, -0.08, cy - 0.005, cz - 0.004, -0.12, [0.045, 0.06, 0.085]);
     pl(0.3, 0.01, 0, cy - 0.068, cz - 0.004, -0.12, GOLD); pl(0.004, 0.07, 0.085, cy + 0.02, cz - 0.006, -0.12, GOLD); pl(0.05, 0.004, 0.065, cy + 0.04, cz - 0.006, -0.12, GOLD);
-    LT(new THREE.BoxGeometry(1.1, 0.005, 0.005).translate(0, dh - 0.135, dRear - 0.012), [0.9, 0.62, 0.3], 2);   // ambient light line
+    LT(new THREE.BoxGeometry(1.1, 0.005, 0.005).translate(0, dh - 0.135, dRear - 0.012), [0.9, 0.62, 0.3], 5);   // ambient light line
   }
   // belt mouldings + window surround (chrome or gloss black)
   if (!D.open && (fine || mid)) {
@@ -1134,15 +1145,15 @@ function mrMaterial(opts = {}) {
 // the left-hand ones (x > 0) and the right-hand ones have a level each).
 function lightMaterial() {
   const m = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: true });
-  m.userData.uK = { value: [0.12, 0.3, 0.1, 0.06, 0.25, 0.25] };
+  m.userData.uK = { value: [0.12, 0.3, 0.1, 0.06, 0.25, 0.25] }; m.userData.uHideDash = { value: 0 };
   m.onBeforeCompile = sh => {
-    sh.uniforms.uK = m.userData.uK;
+    sh.uniforms.uK = m.userData.uK; sh.uniforms.uHideDash = m.userData.uHideDash;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float lk;\nvarying float vLk;\nvarying float vSideX;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLk = lk;\nvSideX = position.x;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uK[6];\nvarying float vLk;\nvarying float vSideX;')
-      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= vLk < 0.5 ? uK[0] : (vLk < 1.5 ? uK[1] : (vLk < 2.5 ? uK[2] : (vLk < 3.5 ? uK[3] : (vSideX > 0.0 ? uK[4] : uK[5]))));');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uK[6];\nuniform float uHideDash;\nvarying float vLk;\nvarying float vSideX;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\nif (vLk > 4.5 && uHideDash > 0.5) discard;\ndiffuseColor.rgb *= vLk < 0.5 ? uK[0] : (vLk < 1.5 ? uK[1] : (vLk < 2.5 ? uK[2] : (vLk < 3.5 ? uK[3] : (vLk > 4.5 ? uK[2] : (vSideX > 0.0 ? uK[4] : uK[5])))));');
   };
-  m.customProgramCacheKey = () => 'vrc-car-lights6';
+  m.customProgramCacheKey = () => 'vrc-car-lights7';
   return m;
 }
 const MATS = {};
@@ -1305,7 +1316,7 @@ export function createCar(kind = 'sedan', colour = 'black', opts = {}) {
   }
   function setDoor(t) { state.door = clamp(t); if (doorG) { doorG.rotation.y = -state.door * 1.12; doorG.updateMatrixWorld(true); } }
   Object.defineProperties(api, Object.getOwnPropertyDescriptors({
-    group, wheels, steering, lights: lightsMat, setLights, setWheels, setInside, setDoor, kind: S.kind, colour, spec: S, name: S.name,
+    group, wheels, steering, lights: lightsMat, setLights, setWheels, setInside, setDoor, kind: S.kind, colour, spec: S, name: S.name, interiorIndex: icIndex, cabin: null,
     eye: new THREE.Vector3(...G.eye), head: new THREE.Vector3(...(G.head || G.eye)), glassKeys, body, door: doorG, hinge: G.door ? G.door.hinge : null, plate: opts.plate === false ? null : plateText(opts.plate ?? hashStr(kind + ':' + colour)),
     get cockpit() { return cockpit; }, /** live cockpit of the driven car (created by setInside(true)); also usable from the chase view */ ensureCockpit(o) { if (!cockpit) { setInside(true, o); setInside(false); } return cockpit; },
     panels: () => carPanels(S.kind),
@@ -1317,6 +1328,17 @@ export function createCar(kind = 'sedan', colour = 'black', opts = {}) {
   return api;
 }
 
+/** V25 (v0.11): what car-interior.js needs to build a cabin for `kind`: the model's own measurements (spec, body, greenhouse,
+ *  glass, head point, door, mirrors, headliner) + the interior shell (door cards, floor, bulkhead) sorted by material role. */
+export function cabinFrame(kind, icIndex = 0) {
+  const S = carSpec(kind), G = buildCar(S.kind, 0), ic = INTERIORS[((icIndex % INTERIORS.length) + INTERIORS.length) % INTERIORS.length];
+  const key = S.kind + ':cabin:' + icIndex; if (GEO[key]) return GEO[key];
+  const shell = interiorGeometry(S, G.B, G.GH, ic, G.door || null, {});
+  if (shell.door && G.door) for (const k of Object.keys(shell.door)) if (shell.door[k]) shell.door[k].translate(-G.door.hinge[0], 0, -G.door.hinge[2]);
+  const dashY = G.B.sh(clamp(G.GH.z0A, S.gh.zC, S.gh.zA)) - 0.035 + 0.085;
+  const wheel = { x: S.driverX, y: Math.min(S.eye - 0.34, S.eye - 0.483 * (S.eye - dashY) - 0.235), z: S.seat + 0.5, tilt: 0.4 };
+  return (GEO[key] = { S, G, B: G.B, GH: G.GH, ic, icIndex, shell, wheel, head: G.head || G.eye, eye: G.eye, mirrorPos: G.mirrorPos, door: G.door || null, headliner: G.headliner, glass: G.glass });
+}
 
 // ------------------------------------------------------------------ body panels (for damage, next wave)
 // The painted skin of the full-detail tier is one mesh (+ the driver's door); every vertex of it belongs to a named panel,
@@ -1352,7 +1374,7 @@ export function carPanels(kind) {
 // the host renders it into a small target every few frames and hands the texture over; without it a neutral still);
 // two wiper arms on the windscreen. 4 draw calls.
 // → { group, draw(state), setMirrorMap(texture | null), mirrorCamera(camera), setWipers(t 0…1), dispose() }
-// state: { kmh, rpm, redline, gear ('P' | 'R' | 'D'), gearNo, ev, lights, left, right, limit, radio: { on, name, freq, status, volume, muted }, labels: { radio, off, connecting, noSignal, kmh }, clock }
+// state: { kmh, rpm, redline, reversing, gearNo, ev, lights, left, right, limit, radio: { on, name, freq, status, volume, muted }, labels: { radio, off, connecting, noSignal, kmh }, clock }
 export function createCockpit(kind, { size = 1 } = {}) {
   const S = typeof kind === 'string' ? carSpec(kind) : kind, G0 = buildCar(S.kind, 0), B = G0.B, GH = G0.GH, G = S.gh;
   const dRear = S.seat + 0.68, dh = B.sh(clamp(GH.z0A, G.zC, G.zA)) - 0.035, dx = S.driverX;
@@ -1462,7 +1484,7 @@ export function createCockpit(kind, { size = 1 } = {}) {
       g.textAlign = 'center'; g.textBaseline = 'alphabetic';
       g.fillStyle = '#f4f1e8'; g.font = `700 82px ${F}`; g.fillText(String(kmh), 368, 142);
       g.fillStyle = '#9aa0ab'; g.font = `600 19px ${F}`; g.fillText((st.labels && st.labels.kmh) || 'km/h', 368, 166);
-      g.fillStyle = '#d9b46a'; g.font = `700 28px ${F}`; g.fillText(st.gear === 'D' && st.gearNo && S.perf.eng !== 'ev' ? 'D' + st.gearNo : (st.gear || 'P'), 368, 200);
+      // V25: two pedals — no gear letter on the cluster (the old 'P' / 'D3' / 'R' is gone)
       if (st.odo != null) { g.fillStyle = '#7d838d'; g.font = `600 14px ${F}`; g.fillText(st.odo.toFixed(1) + ' km', 368, 248); }
       // tell-tales: indicators, lights, the limit of the place
       const arrow = (x, dir, on) => { g.fillStyle = on ? '#39d353' : 'rgba(255,255,255,.1)'; g.beginPath(); g.moveTo(x + dir * 20, 36); g.lineTo(x, 18); g.lineTo(x, 29); g.lineTo(x - dir * 18, 29); g.lineTo(x - dir * 18, 43); g.lineTo(x, 43); g.lineTo(x, 54); g.closePath(); g.fill(); };

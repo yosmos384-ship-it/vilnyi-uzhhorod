@@ -1178,7 +1178,14 @@ export function createEnvironment(scene, renderer, opts = {}) {
           + '.vw.phone:not(.driving) .g3d-wrap.g3d-env{top:calc(118px + env(safe-area-inset-top,0px))}'   // on foot: under the day / dusk / night switch, clear of the chips and pads
           + '.vw.phone.driving .g3d-wrap.g3d-env{top:auto;bottom:calc(150px + env(safe-area-inset-bottom,0px))}'
           + '.vw.phone.driving.drive-deck .g3d-wrap.g3d-env{bottom:calc(var(--deck) + 4px)}'
-          + '.vw.phone .g3d-wrap.g3d-env .g3d-row{padding-left:4px}',
+          + '.vw.phone .g3d-wrap.g3d-env .g3d-row{padding-left:4px}'
+          // V25 (v0.11): the drive HUD fit (V21) — clear of a landscape notch, a touch-size button, above the map credit in landscape
+          + '.vw.phone.driving .g3d-wrap.g3d-env{left:calc(6px + var(--sl,0px))}.vw.phone.driving:not(.drive-deck) .g3d-wrap.g3d-env{bottom:calc(150px + var(--sb,0px))}.vw.phone .g3d-wrap.g3d-env .g3d-btn{height:32px;border-radius:16px;position:relative}.vw.phone .g3d-wrap.g3d-env .g3d-btn::after{content:"";position:absolute;top:-5px;bottom:-5px;left:-2px;right:-2px}'
+          + '@media (orientation:landscape){.vw.phone.driving:not(.drive-deck) .g3d-wrap.g3d-env{bottom:calc(178px + var(--sb,0px))}}'
+          + '.vw.phone.driving.radio-open .g3d-wrap.g3d-env .g3d-btn{display:none}'   // the radio bar takes that place while it is open (the credits stay)
+          + '.vw.inapt:not(.driving):not(.phone) .g3d-wrap.g3d-env{top:calc(152px + var(--st,0px))}'   // in a flat: under its radio / TV pill (V22 fit)
+          + '.vw.phone.inapt:not(.driving) .g3d-wrap.g3d-env .g3d-btn{display:none}'   // a phone in a flat: no room by the TV pill and the view switch (the credits stay)
+          + '@media (orientation:landscape){.vw[dir=rtl].phone:not(.driving) .g3d-wrap.g3d-env{left:auto;right:calc(6px + var(--sr,0px));align-items:flex-end}}',   // RTL landscape on foot: the map credit is on the left there
       });
       // tiles streamed in by the OSM city while Google is shown are hidden as they come
       let t = 0; const up = g3d.update;

@@ -79,7 +79,10 @@ export function damageLevel(d) {
 /** what the damage does to the driving (CarController.mod) */
 export function damageMods(d, spec) {
   if (!d) return { power: 1, top: 1, pull: 0, grip: 1, drag: 0, cut: 0 };
-  const e = d.engine, w = d.wheels, wm = Math.max(...w); void spec;
+  const e = d.engine, w = d.wheels || [0, 0, 0, 0], wm = Math.max(...w); void spec;
+  // V25 (v0.11): a wrecked car limps instead of dying — little power, ≈ a third of its top speed (at least ≈ 60 km/h on the
+  // slowest design), the engine missing now and then, the bent wheels' pull and drag; it always moves
+  if (d.dead) return { power: 0.3, top: 0.32, cut: 0.18, pull: clamp((w[0] - w[1]) * 0.05, -0.04, 0.04), grip: Math.max(0.75, 1 - 0.25 * wm), drag: Math.min(0.9, 0.3 * (w[0] + w[1] + w[2] + w[3])) };
   return { power: 1 - 0.55 * Math.pow(e, 1.5), top: Math.max(0.4, 1 - 0.5 * e), cut: e > 0.55 ? clamp((e - 0.55) * 1.4, 0, 0.6) : 0,
     pull: (w[0] - w[1]) * 0.07 + (w[2] - w[3]) * 0.02, grip: 1 - 0.3 * wm, drag: 0.5 * (w[0] + w[1] + w[2] + w[3]) + (d.bumper.front || d.bumper.rear ? 0.4 : 0) };
 }

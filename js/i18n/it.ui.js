@@ -479,4 +479,10 @@ export default {
   "walk.car.door": "Portiera",
   "walk.game.takePolice": "Prendi l’auto della polizia",
   "walk.game.policeStolen": "Hai rubato un’auto della polizia — la polizia ti cerca!",
+  "walk.car.limp": "L’auto è gravemente danneggiata — procede con poca potenza. Tieni premuto R (o ↺) per un’auto nuova",
+  "walk.car.quality": "Qualità abitacolo",
+  "walk.car.qHigh": "Alta",
+  "walk.car.qMedium": "Media",
+  "walk.car.qLow": "Bassa",
+  "walk.car.qAuto": "Auto",
 };

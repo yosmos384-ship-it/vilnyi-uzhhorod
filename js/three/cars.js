@@ -34,8 +34,9 @@ const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Eule
 //  · a rev counter model: gears by speed, rpm within the gear (for the instruments and the engine sound).
 // world: { ground(x, y, z) → y | null, blocked(car, x, z, yaw, y) → bool (may fill car.contact = {point, normal, other}),
 //          limit(x, y, z) → m/s (limiter of the place), drivable(x, z) → bool }
-// input: { gas 0…1, brake 0…1, steer −1…1 (left +), gear?: 'D' | 'R', auto?: bool }
-//   auto (keyboard): holding the brake at a standstill selects reverse and the brake key then drives backwards.
+// input: { gas 0…1, brake 0…1, steer −1…1 (left +), hand 0…1 }
+//   V19 / V25 (v0.11): two pedals, no gears for the driver — gas = forward; brake = brake, and the brake held at a standstill
+//   drives backwards (gas brakes that, then drives forward again). There is no P / R / D state anyone has to leave.
 export const SUB_STEP = 0.3;
 const REDLINE = { v12: 7000, v10: 8600, v8: 6800, i4: 6500, ev: 16000 };
 const GEAR_TOPS = [0.15, 0.26, 0.39, 0.54, 0.7, 0.87, 1.1];   // top of each gear as a fraction of the top speed
@@ -45,7 +46,7 @@ export class CarController {
     this.rec = rec; this.S = carSpec(rec.kind); this.perf = this.S.perf;
     this.x = rec.x; this.y = rec.y; this.z = rec.z; this.yaw = rec.yaw;
     this.v = 0; this.steer = 0; this.pitch = rec.pitch || 0; this.roll = 0; this.spin = 0; this.bump = 0;
-    this.braking = false; this.reversing = false; this.gear = 'D'; this.hit = 0; this.aLong = 0; this.aLat = 0; this.dive = 0; this.slip = 0;
+    this.braking = false; this.reversing = false; this.hit = 0; this.aLong = 0; this.aLat = 0; this.dive = 0; this.slip = 0;
     this.passive = false;     // true: nobody drives it — a parked car shoved by a crash (slides to rest against its brakes)
     this.rpm = 800; this.gearNo = 1; this.squeal = 0; this.disabled = !!rec.disabled; this.contact = null; this.impact = null; this.yawKick = 0;
     this._hold = 0; this._autoR = false;
@@ -57,21 +58,49 @@ export class CarController {
   }
   /** top speed (m/s) and the drag coefficient that goes with it */
   get top() { return this.perf.vmax / 3.6; }
+  // V25 (v0.11): never a dead car. Every number of the state is checked (a NaN anywhere — a bad input, a zero-length push — used
+  // to freeze the car for good: the old guard reset the position but kept the NaN in beta / yawKick); the last good pose is kept.
+  _sane() {
+    const ok = Number.isFinite(this.x + this.y + this.z + this.yaw + this.v + this.steer + this.beta + this.yawKick + this.pitch + this.roll + this.dive + this.rpm + this.spin);
+    if (ok) { const g = this._good || (this._good = {}); g.x = this.x; g.y = this.y; g.z = this.z; g.yaw = this.yaw; return true; }
+    const g = this._good || this.rec, f = (a, b) => (Number.isFinite(a) ? a : b);
+    this.x = f(g.x, 0); this.y = f(g.y, 0); this.z = f(g.z, 0); this.yaw = f(g.yaw, 0);
+    this.v = 0; this.steer = 0; this.beta = 0; this.yawKick = 0; this.pitch = 0; this.roll = 0; this.dive = 0; this.rpm = 800; this.spin = f(this.spin, 0); this.aLong = 0; this.aLat = 0; this.bump = 0;
+    this.nanFixes = (this.nanFixes || 0) + 1;
+    return false;
+  }
+  // V25: the car stands IN something (a traffic or police car drove into it, a turn-back swung it into a wall, a respawn landed
+  // on a lamp post, a pole slipped between the body's test rays…): every move from there was refused = stuck for ever. Now the
+  // nearest free pose within 1.5 m is searched (first away from the contact, then back / forward / sideways, then with a small
+  // turn) and the car is put there, slowed down. world.overlap(car, x, z, yaw, y) → true when that pose is not a legal place.
+  _depenetrate(world) {
+    const now = this._clock || 0; if (now < (this._depenT || 0)) return false;
+    const yw = this.yaw, fx = Math.sin(yw), fz = Math.cos(yw), lx = Math.cos(yw), lz = -Math.sin(yw), sg = this.v < 0 ? -1 : 1;
+    const n = this.contact && this.contact.normal, dirs = [];
+    if (n && Number.isFinite(n[0] + n[1]) && Math.hypot(n[0], n[1]) > 0.1) { const l = Math.hypot(n[0], n[1]); dirs.push([n[0] / l, n[1] / l]); }
+    dirs.push([-fx * sg, -fz * sg], [lx, lz], [-lx, -lz], [fx * sg, fz * sg]);
+    const k = Math.SQRT1_2; dirs.push([(-fx * sg + lx) * k, (-fz * sg + lz) * k], [(-fx * sg - lx) * k, (-fz * sg - lz) * k], [(fx * sg + lx) * k, (fz * sg + lz) * k], [(fx * sg - lx) * k, (fz * sg - lz) * k]);
+    for (const dy of [0, 0.12, -0.12, 0.3, -0.3]) for (const d of dy ? [0, 0.25, 0.6] : [0.08, 0.18, 0.32, 0.5, 0.75, 1.05, 1.5]) for (const [ux, uz] of d ? dirs : [[0, 0]]) {
+      const x = this.x + ux * d, z = this.z + uz * d;
+      if (!world.overlap(this, x, z, yw + dy, this.y)) { this.x = x; this.z = z; this.yaw = yw + dy; this.v *= 0.25; this.beta = 0; this.yawKick = 0; this.depens = (this.depens || 0) + 1; this.wedged = 0; return true; }
+    }
+    this.wedged = (this.wedged || 0) + 1; this._depenT = now + 0.4;          // the host (drive.js) searches wider; no retry for a moment
+    return false;
+  }
   step(dt, inp, world) {
     if (!(dt > 0)) return this;
-    dt = Math.min(dt, 0.05);
+    dt = Math.min(dt, 0.05); this._clock = (this._clock || 0) + dt;
+    this._sane();
+    if (this._touch && world.overlap && !this.passive) { this._touch = false; if (world.overlap(this, this.x, this.z, this.yaw, this.y)) this._depenetrate(world); }
     const S = this.S, P = this.perf, v = this.v, M = this.mod, top = P.vmax / 3.6 * M.top;
     const cap = Math.min(world.limit(this.x, this.y, this.z), top);
     let gas = this.passive ? 0 : clamp(+inp.gas || 0), brk = this.passive ? 0 : clamp(+inp.brake || 0); const hand = this.passive ? 1 : clamp(+inp.hand || 0); this.hand = hand > 0;
     // a badly hurt engine cuts out for a moment now and then
     if (M.cut > 0) { this._cutT -= dt; if (this._cutT <= 0) { this._cut = !this._cut && Math.random() < M.cut; this._cutT = this._cut ? 0.25 + Math.random() * 0.5 : 0.4 + Math.random() * 1.6; } } else this._cut = false;
-    if (inp.gear === 'D' || inp.gear === 'R') { if (this.gear !== inp.gear && Math.abs(v) < 0.6) { this.gear = inp.gear; this._autoR = false; } }
-    // keyboard convenience: brake held at rest → reverse while it stays held; any throttle → forward again
-    if (inp.auto) {
-      if (this.gear === 'D' && !this._autoR) { if (brk > 0 && !gas && Math.abs(v) < 0.25) { this._hold += dt; if (this._hold > 0.3) this._autoR = true; } else this._hold = 0; }
-      else if (this._autoR && gas > 0 && v > -0.3) { this._autoR = false; this._hold = 0; }
-    } else this._autoR = false;
-    let dir = this.gear === 'R' ? -1 : 1, thr = gas, bk = brk;
+    // two pedals: the brake held at rest → backwards while it stays held; any gas → forward again (passive cars: neither)
+    if (!this._autoR) { if (brk > 0 && !gas && Math.abs(v) < 0.25 && !this.passive) { this._hold += dt; if (this._hold > 0.3) this._autoR = true; } else this._hold = 0; }
+    else if (gas > 0 && v > -0.3) { this._autoR = false; this._hold = 0; }
+    let dir = 1, thr = gas, bk = brk;
     if (this._autoR) { dir = -1; thr = brk; bk = gas; }
     this.reversing = dir < 0;
     // longitudinal
@@ -143,6 +172,7 @@ export class CarController {
       let mv = tryMove(this.yaw + dy, dd);
       if (mv) { apply(mv); continue; }
       if (Math.abs(dd) < 1e-6) break;
+      this._touch = true; this.refusedAt = this._clock;                     // next step: is the car standing IN the obstacle? (+ the watchdog: a move was refused)
       const hitV = Math.abs(nv), con = this.contact;
       // glancing contact: slide along the obstacle (deflect the heading a little, lose speed); head-on: stop with a small rebound
       const s0 = Math.sign(this.steer) || 1;
@@ -178,7 +208,7 @@ export class CarController {
       rt += thr * 350;
     }
     this.rpm += (rt - this.rpm) * clamp(dt * (rt > this.rpm ? 7 : 4.5));
-    if (!Number.isFinite(this.x + this.y + this.z + this.yaw + this.v)) { this.x = this.rec.x; this.y = this.rec.y; this.z = this.rec.z; this.yaw = this.rec.yaw; this.v = 0; this.steer = 0; this.pitch = 0; }
+    this._sane();
     return this;
   }
   // remembers the hardest contact of this step: { speed (m/s lost against the obstacle), hard, point, normal, other }
@@ -188,12 +218,13 @@ export class CarController {
   }
   /** A push from outside (another car, an explosion…): world velocity change [vx, vz] in m/s. */
   addImpulse(vx, vz) {
+    vx = Number.isFinite(vx) ? clamp(vx, -40, 40) : 0; vz = Number.isFinite(vz) ? clamp(vz, -40, 40) : 0;   // V25: a NaN shove froze the car
     const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
     this.v = clamp(this.v + vx * fx + vz * fz, -12, 96); this.yawKick = clamp(this.yawKick + (vx * fz - vz * fx) * 0.12, -1.5, 1.5);
   }
   get speed() { return this.v; }
-  /** D / R / P as shown on the dashboard. */
-  get gearShown() { return this.reversing ? 'R' : Math.abs(this.v) < 0.05 ? 'P' : 'D'; }
+  /** V25: no gear is shown anywhere any more (kept for old callers: always ''). */
+  get gearShown() { return ''; }
   get redline() { return REDLINE[this.perf.eng] || 6800; }
 }
 

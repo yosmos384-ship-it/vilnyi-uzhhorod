@@ -480,4 +480,10 @@ export default {
   "walk.car.door": "דלת",
   "walk.game.takePolice": "לקחת את ניידת המשטרה",
   "walk.game.policeStolen": "גנבתם ניידת — המשטרה כבר מחפשת אתכם!",
+  "walk.car.limp": "הרכב ניזוק קשה — הוא ממשיך בכוח מועט. החזיקו R (או ↺) לקבלת רכב חדש",
+  "walk.car.quality": "איכות תא הנוסעים",
+  "walk.car.qHigh": "גבוהה",
+  "walk.car.qMedium": "בינונית",
+  "walk.car.qLow": "נמוכה",
+  "walk.car.qAuto": "אוטומטי",
 };

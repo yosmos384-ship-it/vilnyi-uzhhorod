@@ -479,4 +479,10 @@ export default {
   "walk.car.door": "Ușă",
   "walk.game.takePolice": "Ia mașina de poliție",
   "walk.game.policeStolen": "Ați furat o mașină de poliție — poliția vă caută!",
+  "walk.car.limp": "Mașina este grav avariată — merge cu putere redusă. Țineți apăsat R (sau ↺) pentru o mașină nouă",
+  "walk.car.quality": "Calitatea habitaclului",
+  "walk.car.qHigh": "Ridicată",
+  "walk.car.qMedium": "Medie",
+  "walk.car.qLow": "Scăzută",
+  "walk.car.qAuto": "Automat",
 };

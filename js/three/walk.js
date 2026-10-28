@@ -680,7 +680,7 @@ const CSS = `
 .vw-spdo .num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}
 .vw-spdo .num b{font-family:"Cormorant Garamond","Bodoni Moda",Georgia,serif;font-weight:500;font-size:38px;color:var(--g2);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 .vw-spdo .num i{font-style:normal;font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:#d9ccb0;margin-top:3px}
-.vw-spdo .gear{position:absolute;left:50%;bottom:13px;transform:translateX(-50%);font-size:11px;font-weight:700;color:var(--g);letter-spacing:.1em}
+
 .vw-spdo .lim{position:absolute;right:-8px;top:-4px;width:34px;height:34px;border-radius:50%;background:#f5f2ea;border:3.5px solid #c8231e;color:#111;
   font:700 12.5px/27px "Manrope","Inter Tight",Arial,sans-serif;text-align:center;box-shadow:0 3px 10px rgba(0,0,0,.4)}
 .vw-steer,.vw-pedals{display:none;touch-action:none;-webkit-user-select:none;user-select:none;direction:ltr}
@@ -4165,7 +4165,7 @@ export class Walkthrough {
       <button class="vw-sofachip vw-btn vw-gold" data-k="sofabed"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M3 18v-6.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2V18"/><path d="M3 15h18"/><path d="M6.5 9.5V8a1.5 1.5 0 0 1 1.5-1.5h8A1.5 1.5 0 0 1 17.5 8v1.5"/><path d="M5 18v1.5M19 18v1.5"/></svg><span class="lbl"></span></button>
       <div class="vw-drive">
         <div class="vw-dtop"><button class="vw-btn vw-ghost vw-ico" data-k="carlights"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 5.5C8 5.5 6 8.6 6 12s2 6.5 6.5 6.5c1.6 0 2.5-2.9 2.5-6.5s-.9-6.5-2.5-6.5z"/><path d="M17.5 8h4M17.5 12h4M17.5 16h4"/></svg></button><button class="vw-btn vw-ghost vw-ico" data-k="carsound"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path class="on" d="M15.5 9.2a4 4 0 0 1 0 5.6M18 7a7 7 0 0 1 0 10"/><path class="off" d="M16 9.5l5 5M21 9.5l-5 5"/></svg></button><button class="vw-btn vw-ghost" data-k="carview"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span class="lbl"></span></button><button class="vw-btn vw-gold" data-k="carexit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M3.5 15.5v-3l2.2-4.6A2 2 0 0 1 7.5 6.8h9a2 2 0 0 1 1.8 1.1l2.2 4.6v3"/><path d="M2.8 15.5h18.4v2.4H2.8z"/><circle cx="7" cy="18.3" r="1.6"/><circle cx="17" cy="18.3" r="1.6"/><path d="M5.2 12.3h13.6"/></svg><span class="lbl"></span></button></div>
-        <div class="vw-spdo"><svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="vwgold" x1="0" x2="1"><stop offset="0" stop-color="#b88a3c"/><stop offset="1" stop-color="#f0d596"/></linearGradient></defs><circle class="bg" cx="50" cy="50" r="30"/><circle class="arc" cx="50" cy="50" r="30"/></svg><div class="num"><b class="spd">0</b><i>km/h</i></div><span class="gear">P</span><span class="lim" role="img"></span></div>
+        <div class="vw-spdo"><svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="vwgold" x1="0" x2="1"><stop offset="0" stop-color="#b88a3c"/><stop offset="1" stop-color="#f0d596"/></linearGradient></defs><circle class="bg" cx="50" cy="50" r="30"/><circle class="arc" cx="50" cy="50" r="30"/></svg><div class="num"><b class="spd">0</b><i>km/h</i></div><span class="lim" role="img"></span></div>
         <div class="vw-steer" data-pd="steer"><span class="l" aria-hidden="true">◀</span><span class="knob"></span><span class="r" aria-hidden="true">▶</span></div>
         <div class="vw-pedals"><button class="brake" data-pd="brake"><i></i><span></span></button><button class="gas" data-pd="gas"><i></i><span></span></button></div>
         <div class="vw-dhint vw-panel"></div>
@@ -4185,7 +4185,7 @@ export class Walkthrough {
       gear: q('[data-k=gear]'), zoom: q('.vw-zoom'), zv: q('.vw-zoom .zv'), mapBtn: q('.vw-mapbtn'), prow: q('.vw-prow span'),
       modes: q('.vw-modes'), soon: q('.vw-modes .soon'), light: q('.vw-light'),
       carChip: q('.vw-carchip'), carOps: q('.vw-carops'), sofaChip: q('.vw-sofachip'), drive: q('.vw-drive'), carView: q('[data-k=carview]'), carExit: q('[data-k=carexit]'), carLights: q('[data-k=carlights]'), carSound: q('[data-k=carsound]'),
-      spdo: q('.vw-spdo'), spd: q('.vw-spdo .spd'), gear: q('.vw-spdo .gear'), lim: q('.vw-spdo .lim'), arc: q('.vw-spdo .arc'),
+      spdo: q('.vw-spdo'), spd: q('.vw-spdo .spd'), lim: q('.vw-spdo .lim'), arc: q('.vw-spdo .arc'),
       steerPad: q('.vw-steer'), knob: q('.vw-steer .knob'), gas: q('.vw-pedals .gas'), brake: q('.vw-pedals .brake'), dhint: q('.vw-dhint'),
       floorsBtn: q('[data-k=floors]'), liftMusic: q('[data-k=liftmusic]'), tandem: q('[data-k=tandem]'), ucard: q('.vw-ucard'), u1: q('.vw-ucard .u1'), u2: q('.vw-ucard .u2'), ureserve: q('[data-k=ureserve]'),
     };
@@ -4246,8 +4246,8 @@ export class Walkthrough {
     e.help.querySelector('h3').textContent = this.t('walk.help.title');
     e.help.querySelector('[data-k=helpok]').textContent = this.t('walk.help.ok');
     const items = this._isTouch
-      ? [['☝', 'walk.help.drag'], ['⇔', 'walk.help.pinch'], ['▲', 'walk.help.pad'], ['⤢', 'walk.help.dbltap'], ['◉', 'walk.help.click'], ['P', 'walk.car.tapCar'], ['360', 'walk.help.360']]
-      : [['☝', 'walk.help.drag'], ['W', 'walk.help.keys'], ['⤢', 'walk.help.dblclick'], ['◉', 'walk.help.click'], ['P', 'walk.car.tapCar'], ['360', 'walk.help.360']];
+      ? [['☝', 'walk.help.drag'], ['⇔', 'walk.help.pinch'], ['▲', 'walk.help.pad'], ['⤢', 'walk.help.dbltap'], ['◉', 'walk.help.click'], ['🚗', 'walk.car.tapCar'], ['360', 'walk.help.360']]
+      : [['☝', 'walk.help.drag'], ['W', 'walk.help.keys'], ['⤢', 'walk.help.dblclick'], ['◉', 'walk.help.click'], ['🚗', 'walk.car.tapCar'], ['360', 'walk.help.360']];
     if (!PROJECT.features || PROJECT.features.drive === false) items.splice(items.findIndex(i => i[1] === 'walk.car.tapCar'), 1);   // no cars to drive
     e.help.querySelector('ul').innerHTML = '';
     for (const [ic, k] of items) { const li = document.createElement('li'); const i = document.createElement('i'); i.textContent = ic; if (ic === '360') i.style.fontSize = '10px'; const s = document.createElement('span'); s.textContent = this.t(k); li.append(i, s); e.help.querySelector('ul').appendChild(li); }
@@ -4514,8 +4514,10 @@ export class Walkthrough {
     const c = this.canvas, e = this.el;
     this._h = {
       down: ev => this._onDown(ev), move: ev => this._onMove(ev), up: ev => this._onUp(ev),
-      key: ev => this._onKey(ev, true), keyup: ev => this._onKey(ev, false), blur: () => { this.keys.clear(); this.pad = { u: 0, d: 0, l: 0, r: 0 }; },
-      vis: () => { this._paused = document.hidden; if (!this._paused) this.clock.getDelta();
+      key: ev => this._onKey(ev, true), keyup: ev => this._onKey(ev, false), blur: () => { this.keys.clear(); this.pad = { u: 0, d: 0, l: 0, r: 0 }; if (this._driveInputReset) this._driveInputReset(); },
+      // V25: a touch the system took away (call, notification, gesture) lets go of every pedal
+      tcancel: () => { if (this.drive && this._driveInputReset) this._driveInputReset(); },
+      vis: () => { this._paused = document.hidden; if (!this._paused) this.clock.getDelta(); if (this._driveInputReset) this._driveInputReset();   // V25: no pedal held over a tab switch
         // V11: the sound engine (engine, tyres, clicks, people) sleeps with the hidden tab; the radios mute themselves (radio.js)
         try { const ac = this._ac; if (ac) { if (document.hidden) { if (ac.state === 'running') { this._acHid = true; ac.suspend(); } } else if (this._acHid) { this._acHid = false; ac.resume(); } } } catch { /* */ } },
       ctx: ev => ev.preventDefault(), wheel: ev => this._onWheel(ev),
@@ -4523,7 +4525,7 @@ export class Walkthrough {
       poke: ev => this._onAnyDown(ev),
       touch: ev => { if (ev.cancelable) ev.preventDefault(); },      // no page scroll / pinch-zoom over the 3D view
       gesture: ev => ev.preventDefault(),                              // iOS Safari page pinch
-      orient: () => setTimeout(() => this._resize(), 120),
+      orient: () => { if (this._driveInputReset) this._driveInputReset(); setTimeout(() => this._resize(), 120); },
     };
     c.addEventListener('pointerdown', this._h.down);
     c.addEventListener('pointermove', this._h.move);
@@ -4540,6 +4542,8 @@ export class Walkthrough {
     window.addEventListener('keydown', this._h.key);
     window.addEventListener('keyup', this._h.keyup);
     window.addEventListener('blur', this._h.blur);
+    window.addEventListener('touchcancel', this._h.tcancel, true); window.addEventListener('pagehide', this._h.blur);
+    if (window.screen && screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', this._h.orient);
     this._h.aptLight = ev => this._onAptLight(ev.detail || {});          // V19: a room's light switch
     window.addEventListener('vrc:apt-light', this._h.aptLight);
     document.addEventListener('visibilitychange', this._h.vis);
@@ -4554,8 +4558,8 @@ export class Walkthrough {
     }
     // driving: hold-to-press pedals and a drag steering pad (no tilt needed)
     for (const [b, key] of [[e.gas, 'gas'], [e.brake, 'brake']]) {
-      const on = ev => { ev.preventDefault(); try { b.setPointerCapture(ev.pointerId); } catch { /* */ } if (this.drive) this.drive.pad[key] = 1; b.classList.add('on'); };
-      const off = () => { if (this.drive) this.drive.pad[key] = 0; b.classList.remove('on'); };
+      const on = ev => { ev.preventDefault(); try { b.setPointerCapture(ev.pointerId); } catch { /* */ } b._pid = ev.pointerId; b._pt = performance.now(); try { b._cap = b.hasPointerCapture(ev.pointerId); } catch { b._cap = false; } if (this.drive) this.drive.pad[key] = 1; b.classList.add('on'); };
+      const off = () => { b._pid = null; if (this.drive) this.drive.pad[key] = 0; b.classList.remove('on'); };
       b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('lostpointercapture', off);
       b.addEventListener('contextmenu', ev => ev.preventDefault());
     }
@@ -4592,6 +4596,8 @@ export class Walkthrough {
     window.removeEventListener('orientationchange', h.orient);
     if (h.aptLight) window.removeEventListener('vrc:apt-light', h.aptLight);
     window.removeEventListener('keydown', h.key); window.removeEventListener('keyup', h.keyup); window.removeEventListener('blur', h.blur);
+    window.removeEventListener('touchcancel', h.tcancel, true); window.removeEventListener('pagehide', h.blur);
+    if (window.screen && screen.orientation && screen.orientation.removeEventListener) screen.orientation.removeEventListener('change', h.orient);
     document.removeEventListener('visibilitychange', h.vis);
     this.el.hud.removeEventListener('click', h.hud);
     this._ro && this._ro.disconnect(); this._roTop && this._roTop.disconnect();

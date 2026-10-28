@@ -478,4 +478,10 @@ export default {
   "walk.car.door": "Door",
   "walk.game.takePolice": "Take the police car",
   "walk.game.policeStolen": "You stole a patrol car — the police are after you!",
+  "walk.car.limp": "The car is badly damaged — it limps on with little power. Hold R (or ↺) for a fresh car",
+  "walk.car.quality": "Cabin quality",
+  "walk.car.qHigh": "High",
+  "walk.car.qMedium": "Medium",
+  "walk.car.qLow": "Low",
+  "walk.car.qAuto": "Auto",
 };

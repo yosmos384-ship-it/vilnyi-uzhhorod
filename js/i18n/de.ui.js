@@ -478,4 +478,10 @@ export default {
   "walk.car.door": "Tür",
   "walk.game.takePolice": "Streifenwagen nehmen",
   "walk.game.policeStolen": "Sie haben einen Streifenwagen gestohlen — die Polizei sucht Sie!",
+  "walk.car.limp": "Der Wagen ist schwer beschädigt — er fährt mit wenig Leistung weiter. R halten (oder ↺) für einen neuen Wagen",
+  "walk.car.quality": "Innenraum-Qualität",
+  "walk.car.qHigh": "Hoch",
+  "walk.car.qMedium": "Mittel",
+  "walk.car.qLow": "Niedrig",
+  "walk.car.qAuto": "Automatisch",
 };
