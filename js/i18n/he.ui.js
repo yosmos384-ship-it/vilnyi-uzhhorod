@@ -303,6 +303,7 @@ export default {
   "walk.tv.close": "סגירה",
   "walk.tv.source": "ערוץ היוטיוב הרשמי „Studio Kvartal 95 Online”",
   "walk.gt.start": "GT VILNYI: אתם מאחורי ההגה ברחוב סוברנצקה 150 — ליד מלון הדירות Apartel Uzhhorod",
+  "walk.heli": "מבט ממסוק",
   "walk.gt.loading": "GT VILNYI: טוען את העיר…",
   'walk.goto': 'מעבר אל',
   'walk.rooms': 'חדרים',

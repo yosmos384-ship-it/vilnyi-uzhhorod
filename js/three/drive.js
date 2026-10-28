@@ -234,6 +234,7 @@ const ICON = {
   power: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3.500v8"/><path d="M6.600 6.800a7.500 7.500 0 1 0 10.800 0"/></svg>',
 };
 
+const ICON_HELI = '<svg viewBox="0 0 24 24"><path d="M3 5.5h15M10.5 5.5v2.6"/><path d="M5.5 10.5c0-1.4 1.6-2.4 4.3-2.4h2.6c3.6 0 6.1 1.9 6.1 4.6 0 1.6-1.2 2.6-3 2.6H9.6c-2.4 0-4.1-1.9-4.1-4.8z"/><path d="M5.6 10.6H2.2M2.2 9.2v2.8M8.5 15.3l-1 2.7M15 15.3l1 2.7M5.5 18h13"/></svg>';   // V26: «Helicopter view» from the GT game
 export const driveMixin = {
   // ======================= the cars of the car park =======================
   // New car park (drawing): PARKING.bays of data.js → cars.js parkingCars() fills about two thirds of them by its rules.
@@ -1425,6 +1426,7 @@ export const driveMixin = {
     this.root.addEventListener('pointerdown', ev => { if (this.root.classList.contains('dmenu-open') && !ev.target.closest('.vw-dmenu,.vw-dmorebtn')) this._driveMenu(false); }, true);
     const mk = (kd, html) => { const b = document.createElement('button'); b.className = 'vw-btn vw-ghost vw-ico'; b.dataset.kd = kd; b.innerHTML = html; menu.insertBefore(b, menu.firstChild); return b; };
     e.dreset = mk('reset', ICON.reset);
+    { const hb = mk('heli', ICON_HELI); hb.setAttribute('aria-label', this.t('walk.heli')); hb.title = this.t('walk.heli'); hb.addEventListener('click', ev => { ev.stopPropagation(); window.dispatchEvent(new CustomEvent('vrc:heli', { detail: { from: 'gt' } })); }); hb.addEventListener('pointerdown', ev => ev.stopPropagation()); e.dheli = hb; }   // V26
     e.dcabin = mk('cabin', ICON.cabin);                                                                   // V25: cabin quality
     e.dwipers = mk('wipers', ICON.wipers); e.dhazard = mk('hazard', ICON.hazard);                       // V19: wipers, hazard lights
     if (this._isTouch && typeof window.DeviceOrientationEvent !== 'undefined') e.dtilt = mk('tilt', ICON.tilt);

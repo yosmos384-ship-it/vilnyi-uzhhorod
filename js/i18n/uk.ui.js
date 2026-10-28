@@ -303,6 +303,7 @@ export default {
   "walk.tv.close": "Закрити",
   "walk.tv.source": "Офіційний YouTube-канал «Студія Квартал 95 Online»",
   "walk.gt.start": "GT VILNYI: ви за кермом на вул. Собранецькій, 150 — біля апарт-готелю Apartel Uzhhorod",
+  "walk.heli": "Вид з гелікоптера",
   "walk.gt.loading": "GT VILNYI: завантаження міста…",
   'walk.goto': 'Перейти',
   'walk.rooms': 'Кімнати',

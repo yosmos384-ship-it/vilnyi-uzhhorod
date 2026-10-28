@@ -1091,6 +1091,7 @@ html.modal-open .fab, html.walk-open .fab, html.pano-open .fab, html:has(dialog[
 /* V18 (v0.6): building chooser of the 3D tour and the GT VILNYI game button */
 .gt-btn span { letter-spacing: .14em; font-weight: 700; }
 .gt-btn svg { stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linejoin: round; }
+.heli-btn svg { stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .bpick { position: fixed; inset: 0; margin: auto; width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); background: var(--bg-2); border: 1px solid var(--line-2); box-shadow: var(--shadow); overflow: auto; }
 .bp-card { position: relative; padding: 28px 24px 24px; }
 .bp-h { font-family: var(--f-display); font-weight: 500; font-size: clamp(26px, 5vw, 34px); color: var(--ivory); margin: 0 40px 6px 0; }

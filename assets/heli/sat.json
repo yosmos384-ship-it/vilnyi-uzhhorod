@@ -1,0 +1,28 @@
+{
+ "source": "EOX Sentinel-2 cloudless 2016 (s2cloudless_3857), https://s2maps.eu",
+ "licence": "CC BY 4.0",
+ "attribution": "Sentinel-2 cloudless \u2013 https://s2maps.eu by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)",
+ "core": {
+  "z": 15,
+  "x0": 18407,
+  "y0": 11301,
+  "n": 11
+ },
+ "outer": {
+  "z": 12,
+  "x0": 2297,
+  "y0": 1409,
+  "n": 9
+ },
+ "dem": {
+  "source": "Terrain Tiles (Mapzen/Tilezen terrarium on AWS Open Data; SRTM, EU-DEM, etc.)",
+  "z": 12,
+  "x0": 2297,
+  "y0": 1409,
+  "n": 9,
+  "w": 256,
+  "h": 256,
+  "format": "uint16 LE metres, row 0 = north"
+ },
+ "fetched": "2026-10-28"
+}

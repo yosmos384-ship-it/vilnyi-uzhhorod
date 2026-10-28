@@ -302,6 +302,7 @@ export default {
   "walk.tv.close": "Fermer",
   "walk.tv.source": "Chaîne YouTube officielle « Studio Kvartal 95 Online »",
   "walk.gt.start": "GT VILNYI : vous êtes au volant rue Sobranetska 150 — devant l’apart-hôtel Apartel Uzhhorod",
+  "walk.heli": "Vue d’hélicoptère",
   "walk.gt.loading": "GT VILNYI : chargement de la ville…",
   'walk.goto': 'Aller',
   'walk.rooms': 'Pièces',

@@ -16,6 +16,8 @@ export default {
   'hero.cta2': 'סיור תלת־ממד',
   "hero.gt": "GT VILNYI",
   "hero.gtSub": "משחק: מתחילים ברכב ליד מלון הדירות Apartel Uzhhorod",
+  "hero.heli": "מבט ממסוק",
+  "hero.heliSub": "טיסה מודרכת מעל אוז׳הורוד: הטירה, הקתדרלה, הטיילת, VILNYI",
   "tour.choose": "בחרו בניין",
   "tour.chooseLead": "הסיור יתחיל בלובי של הבניין שתבחרו.",
   "tour.floorsN": "קומות: {n}",

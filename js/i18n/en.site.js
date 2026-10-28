@@ -14,6 +14,8 @@ export default {
   'hero.cta2': '3D tour',
   "hero.gt": "GT VILNYI",
   "hero.gtSub": "Game: start in a car by the Apartel Uzhhorod apart-hotel",
+  "hero.heli": "Helicopter view",
+  "hero.heliSub": "Guided flight over Uzhhorod: the castle, the cathedral, the embankment, VILNYI",
   "tour.choose": "Choose a building",
   "tour.chooseLead": "The tour starts in the lobby of the building you choose.",
   "tour.floorsN": "Floors: {n}",

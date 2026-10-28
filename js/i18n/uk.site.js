@@ -15,6 +15,8 @@ export default {
   'hero.cta2': '3D-тур',
   "hero.gt": "GT VILNYI",
   "hero.gtSub": "Гра: старт в авто біля апарт-готелю Apartel Uzhhorod",
+  "hero.heli": "Вид з гелікоптера",
+  "hero.heliSub": "Екскурсія над Ужгородом з пілотом: замок, собор, набережна, ЖК VILNYI",
   "tour.choose": "Оберіть будинок",
   "tour.chooseLead": "Тур почнеться в лобі обраного будинку.",
   "tour.floorsN": "Поверхів: {n}",

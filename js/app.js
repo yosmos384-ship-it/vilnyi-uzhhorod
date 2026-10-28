@@ -1030,6 +1030,12 @@ function bindWalk() {
   const gtb = $('#heroGt');
   if (gtb) { gtb.hidden = !tourUnit() || !GL_OK || (PROJECT.features && PROJECT.features.drive === false);
     gtb.addEventListener('click', () => { const u = tourUnit(); if (u) { walkReturn = gtb; openWalk(u.id, 'gt', 'walk'); } }); }
+
+  // V26: «Helicopter view» — guided helicopter tour / manual flight over Uzhhorod (js/heli/, loaded only on this tap)
+  const hb = $('#heroHeli');
+  const openHeliView = (ret) => import('./heli/heli-app.js').then(m => m.openHeli({ lang: document.documentElement.lang, from: ret === gtb ? 'gt' : 'page', onClose: () => { try { ret && ret.focus(); } catch (e) { /* gone */ } } })).catch(e => console.warn('[heli]', e));
+  if (hb) { hb.hidden = !GL_OK; hb.addEventListener('click', () => openHeliView(hb)); for (const ev of ['pointerenter', 'focus']) hb.addEventListener(ev, () => { import('./heli/heli-app.js').catch(() => {}); }, { once: true }); }
+  window.addEventListener('vrc:heli', () => { if (!$('#walk').hidden) closeWalk(); openHeliView(gtb || hb); });
   const tour = $('#heroTour'); if (!tour) return;
   tour.hidden = !tourUnit();
   // V18 (owner): the 3D tour first asks which building to enter (B1–B4, floors and flats), then starts in its lobby

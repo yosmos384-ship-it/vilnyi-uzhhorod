@@ -15,6 +15,8 @@ export default {
   'hero.cta2': 'Visite 3D',
   "hero.gt": "GT VILNYI",
   "hero.gtSub": "Jeu : départ en voiture devant l’apart-hôtel Apartel Uzhhorod",
+  "hero.heli": "Vue d’hélicoptère",
+  "hero.heliSub": "Survol guidé d’Oujhorod : le château, la cathédrale, les quais, VILNYI",
   "tour.choose": "Choisissez un bâtiment",
   "tour.chooseLead": "La visite commence dans le hall du bâtiment choisi.",
   "tour.floorsN": "Étages : {n}",

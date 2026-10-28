@@ -14,6 +14,8 @@ export default {
   'hero.cta2': '3D-Tour',
   "hero.gt": "GT VILNYI",
   "hero.gtSub": "Spiel: Start im Auto beim Aparthotel Apartel Uzhhorod",
+  "hero.heli": "Hubschrauber-Ansicht",
+  "hero.heliSub": "Rundflug über Uschhorod: Burg, Kathedrale, Uferpromenade, VILNYI",
   "tour.choose": "Gebäude wählen",
   "tour.chooseLead": "Die Tour beginnt in der Lobby des gewählten Gebäudes.",
   "tour.floorsN": "Etagen: {n}",

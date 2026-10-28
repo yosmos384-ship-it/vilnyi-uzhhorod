@@ -14,6 +14,8 @@ export default {
   'hero.cta2': 'Tur 3D',
   "hero.gt": "GT VILNYI",
   "hero.gtSub": "Joc: porniți dintr-o mașină lângă apart-hotelul Apartel Uzhhorod",
+  "hero.heli": "Vedere din elicopter",
+  "hero.heliSub": "Zbor ghidat deasupra Ujhorodului: castelul, catedrala, faleza, VILNYI",
   "tour.choose": "Alegeți clădirea",
   "tour.chooseLead": "Turul începe în holul clădirii alese.",
   "tour.floorsN": "Etaje: {n}",
