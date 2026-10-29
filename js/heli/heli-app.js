@@ -353,10 +353,12 @@ export async function openHeli(opts = {}) {
     else if (T < TL.climb) { const k = ph('reach', 'climb'); if (k < 0.45) G.position.lerpVectors(heli.doorStep, STEPUP, sm(0, 0.45, k)); else G.position.lerpVectors(STEPUP, seatPos, sm(0.45, 1, k)); G.rotation.y = THREE.MathUtils.lerp(Math.atan2(-SIDE, 0), 0, sm(0.35, 0.95, k)); pilot.climb(k); }
     else if (T < TL.close) { const k = ph('climb', 'close'); G.position.copy(seatPos); G.rotation.y = 0; pilot.sit(T); heli.doorOpen = 1 - sm(0, 1, k); }
     if (pilot.lookAtClient) pilot.lookAtClient(T > TL.climb + 0.3 && T < TL.close + 1.5);
+    if (pilot.glassesUp) pilot.glassesUp(T < TL.climb - 0.4);      // aviators up while she greets the client, on before take-off
     if (T < TL.close) { /* cut-scene continues */ }
     else { S.intro = false; heli.doorOpen = 0; heli.pDoorOpen = 0; G.position.copy(seatPos); G.rotation.y = 0; pilot.sit(T); flight.start(); updateModeUI(); }
   }
   /** the client's eye during the cut-scene (helicopter local frame): position + look target */
+  const _pv = new THREE.Vector3();
   function introEye(outP, outL) {
     const T = S.introT, G = pilot.group, head = _p.copy(G.position); head.y += 1.5;
     S.fadeK = 0;
@@ -393,8 +395,12 @@ export async function openHeli(opts = {}) {
     if (S.cam === 'cockpit') {
       heli.eye.getWorldPosition(eyeP); heli.eye.getWorldQuaternion(eyeQ);
       camera.position.copy(eyeP); camera.quaternion.copy(eyeQ);
-      camera.rotateY(Math.PI - 0.3 + S.look.yaw * 1.2); camera.rotateX(-0.15 + S.look.pitch * 0.9);    // eye looks along +z: camera's −z is its view
-      camera.fov = 72; camera.near = 0.08; camera.updateProjectionMatrix();
+      // eye looks along +z (camera's −z is its view); V27: turned towards the pilot so she flies in the right part of the frame
+      // while the way ahead stays in view (portrait screens turn a little more, with a wider lens)
+      const portrait = camera.aspect < 1, yaw0 = portrait ? 1.32 : 0.84;
+      if (portrait) camera.position.add(_pv.set(-0.12, 0, -0.08).applyQuaternion(eyeQ));     // narrow screens: a little towards the centre so she is in frame
+      camera.rotateY(Math.PI - yaw0 + S.look.yaw * 1.2); camera.rotateX(-0.1 + S.look.pitch * 0.9);
+      camera.fov = portrait ? 86 : 72; camera.near = 0.08; camera.updateProjectionMatrix();
       if (!drag.id && S.look.t && performance.now() - S.look.t > 2500) { S.look.yaw *= 1 - damp(1.2, dt); S.look.pitch *= 1 - damp(1.2, dt); }
       return;
     } else if (S.cam === 'orbit') {                           // cinematic: slow circle, landmark behind the helicopter when there is one
@@ -449,6 +455,7 @@ export async function openHeli(opts = {}) {
       const fwd = man ? I.pitch : clamp(-s.pitch * 2.6, -1, 1), lat = man ? I.roll : clamp(s.roll * 1.8, -1, 1);
       const col = s.onGround && !man ? -0.8 : (man ? I.col : clamp(0.1 + s.vy / 5, -1, 1)), ped = man ? -I.yaw : clamp(-s.yawRate / 0.5, -1, 1);
       if (heli.controls) heli.controls.set(fwd, lat, col, ped);
+      if (pilot.setFar) pilot.setFar(!S.intro && S.cam !== 'cockpit' && camera.position.distanceTo(heli.root.position) > 7);
       if (!S.intro) { if (pilot.fly) pilot.fly(s.t, null, dt); else if (flight.s.phase !== 'parked') pilot.sit(s.t); } }
     // city detail: streets / shopfronts near the ground, building volumes only from the air
     const agl = s.y - world.terrainY(s.x, s.z);

@@ -35,7 +35,7 @@ function makeMaterials(src, phone, aa) {
   const P = (o) => new THREE.MeshPhysicalMaterial(o), S = (o) => new THREE.MeshStandardMaterial(o);
   const name = src.name || '';
   if (name === 'pilot-skin') {
-    const m = P({ map: tex(src.map), roughnessMap: tex(src.roughnessMap), roughness: 1, metalness: 0, sheen: 0.35, sheenColor: new THREE.Color('#ffc3b0'), sheenRoughness: 0.55,
+    const m = P({ map: tex(src.map), roughnessMap: tex(src.roughnessMap), roughness: 1, metalness: 0, sheen: phone ? 0 : 0.35, sheenColor: new THREE.Color('#ffc3b0'), sheenRoughness: 0.55,
       clearcoat: phone ? 0 : 0.08, clearcoatRoughness: 0.45, specularIntensity: 0.55 });
     skinPatch(m); return m;
   }
@@ -49,11 +49,11 @@ function makeMaterials(src, phone, aa) {
   if (name === 'pilot-eye') return P({ map: tex(src.map), roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.03 });
   if (name === 'pilot-top') {
     const n = src.normalMap; if (n) { n.wrapS = n.wrapT = THREE.RepeatWrapping; n.repeat.set(26, 26); }
-    return P({ vertexColors: true, roughness: 0.82, normalMap: n || null, normalScale: new THREE.Vector2(0.35, 0.35), sheen: 0.7, sheenColor: new THREE.Color('#7f93bf'), sheenRoughness: 0.6, side: THREE.DoubleSide });
+    return P({ vertexColors: true, roughness: 0.82, normalMap: n || null, normalScale: new THREE.Vector2(0.35, 0.35), sheen: phone ? 0 : 0.7, sheenColor: new THREE.Color('#7f93bf'), sheenRoughness: 0.6, side: THREE.DoubleSide });
   }
   if (name === 'pilot-shorts') {
     const n = src.normalMap; if (n) { n.wrapS = n.wrapT = THREE.RepeatWrapping; n.repeat.set(34, 34); }
-    return P({ vertexColors: true, transparent: true, depthWrite: false, roughness: 0.72, normalMap: n || null, normalScale: new THREE.Vector2(0.25, 0.25), sheen: 0.6, sheenColor: new THREE.Color('#ffffff'), sheenRoughness: 0.5 });
+    return P({ vertexColors: true, transparent: true, depthWrite: false, roughness: 0.72, normalMap: n || null, normalScale: new THREE.Vector2(0.25, 0.25), sheen: phone ? 0 : 0.6, sheenColor: new THREE.Color('#ffffff'), sheenRoughness: 0.5 });
   }
   if (name === 'pilot-briefs') return S({ vertexColors: true, roughness: 0.62 });
   if (name === 'pilot-boots') return P({ vertexColors: true, roughness: 0.38, clearcoat: phone ? 0 : 0.55, clearcoatRoughness: 0.28 });
@@ -154,17 +154,38 @@ export async function createPilot(opts = {}) {
   }
   const group = new THREE.Group(); group.name = 'heli-pilot';
   const root = gltf.scene; root.name = 'pilot-model'; group.add(root);
-  const own = []; let skeleton = null, body = null;
+  const own = []; const morphs = []; let skeleton = null;
   root.traverse((o) => {
     if (!o.isMesh) return;
     o.frustumCulled = false; o.castShadow = false; o.receiveShadow = false;
     const nm = makeMaterials(o.material, phone, opts.antialias); if (nm !== o.material) { nm.name = o.material.name; own.push(o.material); o.material = nm; }
     own.push(o.material, o.geometry);
     if (o.isSkinnedMesh && !skeleton) skeleton = o.skeleton;
-    if (/^Body/.test(o.name) || o.material.name === 'pilot-skin' || (o.morphTargetInfluences && o.morphTargetInfluences.length)) body = body || (o.morphTargetInfluences ? o : null);
+    if (o.morphTargetInfluences && o.morphTargetInfluences.length) morphs.push(o);
     if (o.material.transparent) o.renderOrder = 2;
   });
   const R = makeRig(root, skeleton);
+  // hair moves a little: tips sway with time and with the walk (cheap vertex-shader offset, roots fixed)
+  const hairTime = { value: 0 }, hairSwing = { value: 0 };
+  root.traverse((o) => {
+    if (!o.isMesh || !/pilot-hair/.test(o.material.name)) return;
+    o.material.onBeforeCompile = (sh) => {
+      sh.uniforms.uHairT = hairTime; sh.uniforms.uHairSwing = hairSwing;
+      sh.vertexShader = 'uniform float uHairT; uniform float uHairSwing;\n' + sh.vertexShader.replace('#include <skinning_vertex>', `#include <skinning_vertex>
+        { float tip = clamp( 1.0 - uv.y, 0.0, 1.0 ); tip = tip * tip;
+          float w = sin( uHairT * 1.7 + position.x * 9.0 + position.y * 3.0 ) * 0.006 + uHairSwing * 0.012 * sin( uHairT * 5.0 + position.y * 4.0 );
+          transformed.x += w * tip; transformed.z += ( 0.5 * w - abs( uHairSwing ) * 0.008 ) * tip; }`);
+    };
+    o.material.customProgramCacheKey = () => 'vrc-pilot-' + o.material.name;
+  });
+  // aviators on a hinge (node "Glasses", child of the head bone): up on the head while she greets the client, down to fly
+  const glasses = root.getObjectByName('Glasses'); const gl = { k: 1, want: 1 };
+  function glassesTick(dt) {
+    if (!glasses) return; gl.k += (gl.want - gl.k) * Math.min(1, dt * 3.5);
+    glasses.quaternion.copy(glassesQ).multiply(_gq.setFromAxisAngle(_gx, -0.98 * gl.k)); glasses.position.copy(glassesRest).add(V(0, 0.004 * gl.k, -0.004 * gl.k).applyQuaternion(glassesQ));
+  }
+  const glassesRest = glasses ? glasses.position.clone() : V(), glassesQ = glasses ? glasses.quaternion.clone() : new THREE.Quaternion();
+  const _gq = new THREE.Quaternion(), _gx = V(1, 0, 0);
   const hipY = R.rest.get(R.B.thigh_l).pos.y;      // hip joints above the soles (standing)
   const st = { t: 0, blinkT: 2.5, blink: 0, look: 0, lookT: 6, lookHold: 0, breath: 0, mode: 'stand', cockpit: null, ctl: { fwd: 0, lat: 0, col: 0, ped: 0 } };
   const SEAT_UP = 0.1, SEAT_BACK = -0.08;          // hip joints above the seat cushion / behind the seat anchor
@@ -184,25 +205,26 @@ export async function createPilot(opts = {}) {
   function blinkTick(dt) {
     st.blinkT -= dt; if (st.blinkT <= 0) { st.blink = 0.16; st.blinkT = 2.4 + Math.random() * 3.6; }
     if (st.blink > 0) st.blink = Math.max(0, st.blink - dt);
-    if (body) body.morphTargetInfluences[0] = st.blink > 0 ? Math.sin((1 - st.blink / 0.16) * Math.PI) : 0;
+    const bk = st.blink > 0 ? Math.sin((1 - st.blink / 0.16) * Math.PI) : 0; for (const m of morphs) m.morphTargetInfluences[0] = bk;
+    glassesTick(dt); hairTime.value = st.t;
   }
   let lastT = performance.now() / 1000;
   const dtNow = () => { const n = performance.now() / 1000, d = clamp(n - lastT, 0, 0.1); lastT = n; st.t += d; return d; };
-  const setRoot = (y = 0, z = 0) => { root.position.set(0, y, z); };
+  const setRoot = (y = 0, z = 0, x = 0) => { root.position.set(x, y, z); if (st.mode !== 'walk') hairSwing.value *= 0.9; };
 
   function walk(phase, amp = 1) {
-    const dt = dtNow(); st.mode = 'walk'; base(0.68);
+    const dt = dtNow(); st.mode = 'walk'; base(0.74);
     const s = Math.sin(phase), c = Math.cos(phase), A = 0.42 * amp;
-    R.rot('thigh_l', -A * s, 0, 0); R.rot('thigh_r', A * s, 0, 0);
+    R.rot('thigh_l', -A * s, 0, -0.045); R.rot('thigh_r', A * s, 0, 0.045);          // narrow steps (feet near the line)
     const kneeL = 0.12 + 0.75 * Math.max(0, c) ** 1.4, kneeR = 0.12 + 0.75 * Math.max(0, -c) ** 1.4;
     R.rot('calf_l', kneeL * amp, 0, 0); R.rot('calf_r', kneeR * amp, 0, 0);
     R.rot('foot_l', (A * s - kneeL * 0.55) * 0.6, 0, 0); R.rot('foot_r', (-A * s - kneeR * 0.55) * 0.6, 0, 0);
-    R.rot('pelvis', 0, 0.07 * s * amp, 0.025 * c * amp); R.rot('spine_02', 0.03, -0.05 * s * amp, 0); R.rot('spine_03', 0, -0.04 * s * amp, -0.02 * c * amp);
+    R.rot('pelvis', 0, 0.09 * s * amp, 0.06 * c * amp); R.rot('spine_02', 0.03, -0.05 * s * amp, 0); R.rot('spine_03', 0, -0.04 * s * amp, -0.02 * c * amp);
     R.rot('upperarm_l', 0.32 * s * amp, 0, 0); R.rot('upperarm_r', -0.32 * s * amp, 0, 0);
     R.rot('lowerarm_l', -0.04 - 0.14 * Math.max(0, -s) * amp, 0, 0); R.rot('lowerarm_r', -0.04 - 0.14 * Math.max(0, s) * amp, 0, 0);
     headLook(0.04 * s, 0.03);
     idle(st.t); R.apply(); blinkTick(dt);
-    setRoot(-0.012 + 0.012 * Math.cos(2 * phase) * amp, 0);
+    setRoot(-0.012 + 0.012 * Math.cos(2 * phase) * amp, 0, 0.018 * c * amp); hairSwing.value = amp;
   }
   function stand() { const dt = dtNow(); st.mode = 'stand'; base(); idle(st.t); headLook(0, 0.02); R.apply(); blinkTick(dt); setRoot(0, 0); }
   /** reach for a door handle (k 0..1): right arm forward and up, a small lean */
@@ -260,7 +282,7 @@ export async function createPilot(opts = {}) {
     const C = st.cockpit;
     if (C) { R.curl('r', 0.75, 0.6); R.curl('l', 0.7, 0.5); }      // fingers round the grips (added to the relaxed curl)
     R.apply();
-    if (C) {
+    if (C && !st.far) {
       // wrist a little behind / beside the grip so the closed fingers wrap round it
       if (C.stickGrip) { R.ik('upperarm_r', 'lowerarm_r', 'hand_r', target(C.stickGrip, _t).add(V(-0.045, -0.035, -0.06)), V(-0.9, -0.6, -0.5), R.L.arm1, R.L.arm2); R.orientHand('r', V(0.35, -0.15, 1), V(1, 0, -0.3)); }
       if (C.collGrip) { R.ik('upperarm_l', 'lowerarm_l', 'hand_l', target(C.collGrip, _t).add(V(0.02, 0.03, -0.07)), V(0.9, -0.6, -0.4), R.L.arm1, R.L.arm2); R.orientHand('l', V(-0.25, -0.3, 1), V(-0.2, -1, 0)); }
@@ -282,6 +304,14 @@ export async function createPilot(opts = {}) {
     /** cockpit anchors (Object3D grips / pedal pads from heli-model controls) */
     setCockpit(c) { st.cockpit = c; },
     lookAtClient(on) { st.forceLook = !!on; },
+    /** camera far away (chase / cinematic): small details hidden and the cockpit IK skipped (cheaper on phones) */
+    setFar(far) {
+      far = !!far; if (far === st.far) return; st.far = far;
+      root.traverse(o => { if (o.isMesh && /^(pilot-hair|pilot-lash|pilot-eye)$/.test(o.material.name)) o.visible = !far; });
+    },
+    /** aviators: true = pushed up onto the head (greeting), false = on the eyes (flying) */
+    glassesUp(on) { gl.want = on ? 1 : 0; },
+    get glassesK() { return gl.k; },
     get triangles() { let n = 0; root.traverse(o => { if (o.isMesh) n += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; }); return n; },
     dispose() {
       const tx = new Set(); for (const o of own) if (o && o.isMaterial) for (const k of ['map', 'roughnessMap', 'normalMap']) if (o[k]) tx.add(o[k]);

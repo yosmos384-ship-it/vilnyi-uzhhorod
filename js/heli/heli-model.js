@@ -207,7 +207,7 @@ export function createHeli({ phone = false } = {}) {
       const stick = new THREE.CylinderGeometry(0.02, 0.025, 0.5, 6); stick.translate(0, 0.25, 0); add(stick, M.black, sp);
       const grip = new THREE.CylinderGeometry(0.035, 0.03, 0.13, 8); grip.translate(0, 0.54, 0); add(grip, M.black, sp);
       const gp = new THREE.Object3D(); gp.position.set(0, 0.55, 0); sp.add(gp); if (x === SIDE * 0.42) ctl.stickGrip = gp;
-      const cp = new THREE.Group(); cp.position.set(x + 0.25, 0.9, 1.3); body.add(cp); ctl.colls.push(cp);
+      const cp = new THREE.Group(); cp.position.set(x + 0.2, 0.99, 1.22); body.add(cp); ctl.colls.push(cp);
       const lever = new THREE.CylinderGeometry(0.016, 0.018, 0.42, 6); lever.rotateX(Math.PI / 2); lever.translate(0, 0, 0.21); add(lever, M.black, cp);
       const cgrip = new THREE.CylinderGeometry(0.026, 0.026, 0.12, 8); cgrip.rotateX(Math.PI / 2); cgrip.translate(0, 0, 0.44); add(cgrip, M.black, cp);
       const cg = new THREE.Object3D(); cg.position.set(0, 0.02, 0.43); cp.add(cg); if (x === SIDE * 0.42) ctl.collGrip = cg;
@@ -221,7 +221,7 @@ export function createHeli({ phone = false } = {}) {
   }
   // anchors
   const seat = new THREE.Object3D(); seat.position.set(SIDE * 0.42, 0.98, 1.42); body.add(seat);
-  const eye = new THREE.Object3D(); eye.position.set(-SIDE * 0.42, 1.86, 1.66); body.add(eye);      // the visitor's eye (front passenger seat)
+  const eye = new THREE.Object3D(); eye.position.set(-SIDE * 0.44, 1.84, 1.5); body.add(eye);       // the visitor's eye (front passenger seat; V27: a normal seated head position, so the pilot is beside him)
   const pilotEye = new THREE.Object3D(); pilotEye.position.set(SIDE * 0.42, 1.86, 1.66); body.add(pilotEye);
   const doorStep = new THREE.Vector3(SIDE * 1.75, 0, 1.6);       // where the pilot stands before climbing in (local)
   const pDoorStep = new THREE.Vector3(-SIDE * 1.75, 0, 1.6);     // in front of the passenger door
