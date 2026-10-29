@@ -183,6 +183,14 @@ export function createHeli({ phone = false } = {}) {
   const D1 = makeDoor(SIDE), D2 = makeDoor(-SIDE), door = D1.door;
   // ---------------- cockpit interior (seen in the cockpit view and through the canopy)
   const panel = { canvas: document.createElement('canvas'), tex: null, last: 0 };
+  /** cockpit controls (V27): fwd / lat / col / ped −1..1 move both sets; the pilot's hands and feet follow the grips */
+  const ctl = { sticks: [], colls: [], pedals: [], stickGrip: null, collGrip: null, pedalL: null, pedalR: null, v: { fwd: 0, lat: 0, col: 0, ped: 0 } };
+  ctl.set = (fwd, lat, col, ped) => {
+    const v = ctl.v; v.fwd = fwd; v.lat = lat; v.col = col; v.ped = ped;
+    for (const g of ctl.sticks) { g.rotation.x = fwd * 0.2; g.rotation.z = -lat * 0.18; }
+    for (const g of ctl.colls) g.rotation.x = -(0.15 + col * 0.22);
+    for (const p of ctl.pedals) p.g.position.z = 2.04 + p.s * SIDE * ped * 0.045;
+  };
   {
     panel.canvas.width = 512; panel.canvas.height = 160; panel.tex = new THREE.CanvasTexture(panel.canvas); panel.tex.colorSpace = THREE.SRGBColorSpace; own.push(panel.tex);
     const floor = new THREE.BoxGeometry(1.5, 0.05, 2.3); floor.translate(0, 0.72, 1.6); add(floor, M.interior);
@@ -194,8 +202,20 @@ export function createHeli({ phone = false } = {}) {
     for (const x of [-0.42, 0.42]) {
       const seat = new THREE.BoxGeometry(0.5, 0.12, 0.5); seat.translate(x, 0.95, 1.45); add(seat, M.seat);
       const back = new THREE.BoxGeometry(0.5, 0.75, 0.1); back.rotateX(-0.18); back.translate(x, 1.36, 1.17); add(back, M.seat);
-      const stick = new THREE.CylinderGeometry(0.02, 0.025, 0.5, 6); stick.translate(x, 1.0, 1.95); add(stick, M.black);
-      const grip = new THREE.CylinderGeometry(0.035, 0.03, 0.13, 8); grip.translate(x, 1.29, 1.95); add(grip, M.black);
+      // V27: dual controls that move — cyclic stick (pivot on the floor), collective lever on the left of each seat, pedals
+      const sp = new THREE.Group(); sp.position.set(x, 0.75, 1.82); body.add(sp); ctl.sticks.push(sp);
+      const stick = new THREE.CylinderGeometry(0.02, 0.025, 0.5, 6); stick.translate(0, 0.25, 0); add(stick, M.black, sp);
+      const grip = new THREE.CylinderGeometry(0.035, 0.03, 0.13, 8); grip.translate(0, 0.54, 0); add(grip, M.black, sp);
+      const gp = new THREE.Object3D(); gp.position.set(0, 0.55, 0); sp.add(gp); if (x === SIDE * 0.42) ctl.stickGrip = gp;
+      const cp = new THREE.Group(); cp.position.set(x + 0.25, 0.9, 1.3); body.add(cp); ctl.colls.push(cp);
+      const lever = new THREE.CylinderGeometry(0.016, 0.018, 0.42, 6); lever.rotateX(Math.PI / 2); lever.translate(0, 0, 0.21); add(lever, M.black, cp);
+      const cgrip = new THREE.CylinderGeometry(0.026, 0.026, 0.12, 8); cgrip.rotateX(Math.PI / 2); cgrip.translate(0, 0, 0.44); add(cgrip, M.black, cp);
+      const cg = new THREE.Object3D(); cg.position.set(0, 0.02, 0.43); cp.add(cg); if (x === SIDE * 0.42) ctl.collGrip = cg;
+      for (const s of [-1, 1]) {
+        const pp = new THREE.Group(); pp.position.set(x + s * 0.11, 0.77, 2.04); body.add(pp); ctl.pedals.push({ g: pp, s, pilot: x === SIDE * 0.42 });
+        const pd = new THREE.BoxGeometry(0.09, 0.025, 0.16); pd.rotateX(-0.75); pd.translate(0, 0.07, 0); add(pd, M.black, pp);
+        const fp = new THREE.Object3D(); fp.position.set(0, 0.09, -0.03); pp.add(fp); if (x === SIDE * 0.42) ctl[s * SIDE < 0 ? 'pedalL' : 'pedalR'] = fp;
+      }
     }
     const over = new THREE.BoxGeometry(0.4, 0.08, 0.7); over.translate(0, 2.18, 1.55); add(over, M.interior);
   }
@@ -286,7 +306,7 @@ export function createHeli({ phone = false } = {}) {
     panel.tex.needsUpdate = true;
   }
   return {
-    root, body, rotor, door, seat, eye, pilotEye, doorStep, pDoorStep, SIDE, R, M, lights,
+    root, body, rotor, door, seat, eye, pilotEye, doorStep, pDoorStep, SIDE, R, M, lights, controls: ctl,
     get rpm() { return S.rpm; }, set rpm(v) { S.rpm = Math.max(0, Math.min(1.05, v)); },
     get doorOpen() { return S.door; }, set doorOpen(v) { S.door = Math.max(0, Math.min(1, v)); },
     get pDoorOpen() { return S.pdoor; }, set pDoorOpen(v) { S.pdoor = Math.max(0, Math.min(1, v)); },

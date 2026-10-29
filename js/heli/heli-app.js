@@ -175,7 +175,8 @@ export async function openHeli(opts = {}) {
     if (complex) { complex.group.updateMatrixWorld(true); for (const c of complex.group.children) { const b = new THREE.Box3().setFromObject(c); if (isFinite(b.max.y) && b.max.y > 6) world.extraBoxes.push({ x0: b.min.x, z0: b.min.z, x1: b.max.x, z1: b.max.z, h: b.max.y + 1 }); } }
     progress(0.85);
     heli = HM.createHeli({ phone }); scene.add(heli.root);
-    pilot = PL.createPilot(); heli.body.add(pilot.group);
+    pilot = await PL.createPilot({ phone, antialias: !phone }); heli.body.add(pilot.group); if (pilot.setCockpit) pilot.setCockpit(heli.controls);
+    if (closed) return ctl;
     // Google mode: the photoreal city is not flat (castle hill …) → its surface, sampled by rays, joins the OSM heights
     const g3dCells = new Map(); let g3dRays = 0; const ray = new THREE.Raycaster(), DOWN = new THREE.Vector3(0, -1, 0), RO = new THREE.Vector3();
     const g3dFloorAt = (x, z) => {
@@ -351,6 +352,8 @@ export async function openHeli(opts = {}) {
     else if (T < TL.reach) { const k = ph('round', 'reach'); G.position.copy(heli.doorStep); G.rotation.y = Math.atan2(-SIDE, 0); pilot.reach(Math.sin(k * Math.PI)); heli.doorOpen = sm(0.25, 1, k); }
     else if (T < TL.climb) { const k = ph('reach', 'climb'); if (k < 0.45) G.position.lerpVectors(heli.doorStep, STEPUP, sm(0, 0.45, k)); else G.position.lerpVectors(STEPUP, seatPos, sm(0.45, 1, k)); G.rotation.y = THREE.MathUtils.lerp(Math.atan2(-SIDE, 0), 0, sm(0.35, 0.95, k)); pilot.climb(k); }
     else if (T < TL.close) { const k = ph('climb', 'close'); G.position.copy(seatPos); G.rotation.y = 0; pilot.sit(T); heli.doorOpen = 1 - sm(0, 1, k); }
+    if (pilot.lookAtClient) pilot.lookAtClient(T > TL.climb + 0.3 && T < TL.close + 1.5);
+    if (T < TL.close) { /* cut-scene continues */ }
     else { S.intro = false; heli.doorOpen = 0; heli.pDoorOpen = 0; G.position.copy(seatPos); G.rotation.y = 0; pilot.sit(T); flight.start(); updateModeUI(); }
   }
   /** the client's eye during the cut-scene (helicopter local frame): position + look target */
@@ -440,7 +443,13 @@ export async function openHeli(opts = {}) {
     heli.root.position.set(s.x, s.y, s.z); heli.root.rotation.y = s.yaw;
     heli.body.rotation.x = -s.pitch; heli.body.rotation.z = s.roll;
     heli.rpm = s.rpm; heli.update(dt);
-    if (!S.intro && flight.s.phase !== 'parked') pilot.sit(s.t);
+    // cockpit controls follow the manual inputs (manual) or the autopilot's attitude / climb / turn (tour); the pilot's hands
+    // and feet follow them (V27)
+    { const man = s.mode === 'manual' && !S.intro, I = flight.input;
+      const fwd = man ? I.pitch : clamp(-s.pitch * 2.6, -1, 1), lat = man ? I.roll : clamp(s.roll * 1.8, -1, 1);
+      const col = s.onGround && !man ? -0.8 : (man ? I.col : clamp(0.1 + s.vy / 5, -1, 1)), ped = man ? -I.yaw : clamp(-s.yawRate / 0.5, -1, 1);
+      if (heli.controls) heli.controls.set(fwd, lat, col, ped);
+      if (!S.intro) { if (pilot.fly) pilot.fly(s.t, null, dt); else if (flight.s.phase !== 'parked') pilot.sit(s.t); } }
     // city detail: streets / shopfronts near the ground, building volumes only from the air
     const agl = s.y - world.terrainY(s.x, s.z);
     if (detail === 'far' && agl < 35) { detail = 'full'; city.setDetail('full'); } else if (detail === 'full' && agl > 70) { detail = 'far'; city.setDetail('far'); }
