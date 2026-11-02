@@ -48,7 +48,8 @@ try {
 
 // ---------------------------------------------------------------- helpers
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const fill = (s, v = {}) => String(s).replace(/\{(\w+)\}/g, (m, k) => (v[k] !== undefined ? v[k] : m));
+// a value that already ends with a period (uk «2026 р.») swallows the template's own period: no «р..»
+const fill = (s, v = {}) => String(s).replace(/\{(\w+)\}(\.?)/g, (m, k, dot) => (v[k] !== undefined ? (String(v[k]).endsWith('.') ? String(v[k]) : v[k] + dot) : m));
 const loc = l => S[l].locale.replace('_', '-');
 const nf2 = l => new Intl.NumberFormat(loc(l), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const nf = (l, d = 0) => new Intl.NumberFormat(loc(l), { maximumFractionDigits: d });
@@ -59,6 +60,9 @@ const usd = (l, n) => (l === 'en' || l === 'he' ? '$' + nf(l).format(Math.round(
 const rateTxt = (l, r) => new Intl.NumberFormat(loc(l), { minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(r);
 const dateTxt = (l, iso) => new Intl.DateTimeFormat(loc(l), { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(iso + 'T12:00:00Z'));
 const monthTxt = (l, iso) => new Intl.DateTimeFormat(loc(l), { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(iso.slice(0, 7) + '-15T12:00:00Z'));
+// «з {first}» needs the genitive month in uk («з липня 2023 р.»); other languages use the standalone form
+const UK_GEN = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня', 'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
+const monthFromTxt = (l, iso) => (l === 'uk' ? `${UK_GEN[+iso.slice(5, 7) - 1]} ${iso.slice(0, 4)} р.` : monthTxt(l, iso));
 const T = (l, k, v) => fill(S[l][k] ?? k, v);
 const ui = (l, k, v) => fill(UI[l][k] ?? UI.en[k] ?? k, v);
 const st = (l, k, v) => fill(SITE[l][k] ?? SITE.en[k] ?? k, v);
@@ -290,7 +294,7 @@ function pageHome(l) {
   b += ctas(l) + priceNote(l);
   b += `<h2>${esc(T(l, 'secRooms'))}</h2><ul class="cards">${[1, 2, 3].map(r => `<li><a class="t" href="${rel(l, `apartments/${r}-room/`)}">${esc(S[l].roomsPl[r])}</a><br>${esc(T(l, 'flatsCount', { n: byRooms(r).length }))} · ${esc(N['a' + r])}<br>${esc(T(l, 'priceFrom', { p: N['p' + r] }))}</li>`).join('')}</ul>`;
   b += `<h2>${esc(T(l, 'secBuildings'))}</h2><ul class="cards">${B_IDS.map(x => `<li><a class="t" href="${rel(l, `building-${BLD[x].no}/`)}">${esc(T(l, 'building', { n: BLD[x].no }))}</a><br>${esc(T(l, 'floors'))}: ${BLD[x].floors} · ${esc(T(l, 'flats'))}: ${BLD[x].apartments}<br>${esc(T(l, 'kDelivery'))}: ${esc(qTxt(l, BLD[x].delivery))}</li>`).join('')}</ul>`;
-  b += `<h2>${esc(T(l, 'secLife'))}</h2><p>${esc(st(l, 'life.lead'))}</p><div class="grid2">${['market', 'playland', 'spa', 'parking', 'shelter', 'yard'].map(k => `<div><h3>${esc(st(l, `life.${k}.t`))}</h3><p>${esc(st(l, `life.${k}.d`))}</p></div>`).join('')}</div>`;
+  b += `<h2>${esc(T(l, 'secLife'))}</h2><p>${esc(st(l, 'life.lead'))}</p><div class="grid2">${['market', 'playland', 'spa', 'parking', 'shelter', 'yard'].map(k => `<div><h3>${esc(st(l, `life.${k}.t`))}</h3><p>${esc(st(l, `life.${k}.d`))}${k === 'spa' ? ` <a href="${rel(l, 'faq/')}#pool">${esc(S[l].faq.find(x => x[2] === 'pool')[0])} →</a>` : ''}</p></div>`).join('')}</div>`;
   b += `<h2>${esc(T(l, 'secTerms'))}</h2><p>${esc(st(l, 'terms.lead'))}</p><ul><li>${esc(st(l, 'terms.priceD', { usdM2: D.USD_PER_M2, rateDate: N.date }))}</li><li>${esc(st(l, 'terms.instD'))}</li><li>${esc(st(l, 'terms.discT'))}: ${esc(st(l, 'terms.discD'))}</li><li>${esc(st(l, 'terms.deliveryD'))}</li><li>${esc(st(l, 'terms.programs'))}</li></ul>` + guideLink(l);
   b += `<h2>${esc(T(l, 'secLocation'))}</h2><p>${esc(st(l, 'loc.lead'))}</p><ul>${[1, 2, 3, 4].map(i => `<li>${esc(st(l, `loc.pt${i}`))}</li>`).join('')}</ul><p><a href="${rel(l, 'location/')}">${esc(T(l, 'locGuideLink'))} →</a></p>`;
   b += `<h2>${esc(T(l, 'secFaq'))}</h2><dl class="faq">${S[l].faq.slice(0, 5).map(([q, a]) => `<dt>${esc(fill(q, N))}</dt><dd>${esc(fill(a, N))}</dd>`).join('')}</dl><p><a href="${rel(l, 'faq/')}">${esc(S[l].nav.faq)} →</a> · <a href="${rel(l, 'facts/')}">${esc(S[l].nav.facts)} →</a></p>`;
@@ -442,7 +446,7 @@ function deliveryAnswer(l) {
 function pageProgress(l) {
   const tl = [...D.PROGRESS.timeline].sort((a, c) => c.date.localeCompare(a.date));
   const photos = tl.reduce((m, e) => m + e.photos.length, 0);
-  const v = { m: tl.length, p: photos, first: monthTxt(l, tl[tl.length - 1].date), last: monthTxt(l, tl[0].date) };
+  const v = { m: tl.length, p: photos, first: monthFromTxt(l, tl[tl.length - 1].date), last: monthTxt(l, tl[0].date) };
   const p = { title: T(l, 'progTitle'), desc: T(l, 'progDesc', v), h1: T(l, 'progH1'), og: 'progress', section: 'progress', crumbs: crumb(l, [S[l].nav.progress, rel(l, 'construction/')]) };
   p.canonical = url(l, 'construction/');
   const latest = tl[0].photos.filter(x => x.local).map(x => ({ '@type': 'ImageObject', contentUrl: `${BASE}/${x.local}`, thumbnailUrl: x.thumb ? `${BASE}/${x.thumb}` : undefined, caption: `${T(l, 'building', { n: x.building.slice(1) })} — ${monthTxt(l, tl[0].date)}`, creditText: x.credit, uploadDate: tl[0].date }));
@@ -478,7 +482,7 @@ function pageFaq(l) {
   p.ld = graph(l, p, [], 'FAQPage');
   const wp = p.ld['@graph'].find(n => n['@type'] === 'FAQPage');
   wp.mainEntity = qa.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } }));
-  let b = `<h1>${esc(p.h1)}</h1>` + guideLink(l) + `<p><a href="${rel(l, 'location/')}">${esc(T(l, 'locGuideLink'))} →</a></p><dl class="faq">${qa.map(([q, a], i) => `<dt>${esc(q)}</dt><dd>${esc(a)}${S[l].faq[i][1].includes('{q1}') ? ` <a href="${rel(l, 'construction/')}">${esc(S[l].nav.progress)} →</a>` : ''}</dd>`).join('')}</dl>` + ctas(l) + priceNote(l);
+  let b = `<h1>${esc(p.h1)}</h1>` + guideLink(l) + `<p><a href="${rel(l, 'location/')}">${esc(T(l, 'locGuideLink'))} →</a></p><dl class="faq">${qa.map(([q, a], i) => `<dt${S[l].faq[i][2] ? ` id="${S[l].faq[i][2]}"` : ''}>${esc(q)}</dt><dd>${esc(a)}${S[l].faq[i][1].includes('{q1}') ? ` <a href="${rel(l, 'construction/')}">${esc(S[l].nav.progress)} →</a>` : ''}</dd>`).join('')}</dl>` + ctas(l) + priceNote(l);
   addPage(l, 'faq/', p, b);
 }
 
@@ -643,7 +647,7 @@ for (const o of OUT) {
   if (!old || old.ch !== ch) contentChanged++;
   pages[o.url] = { rel: o.rel, h, ch, lastmod, pinged: old?.pinged || '', pch: old?.pch || '' };
   const fmt = o.lang === 'xx' ? lastmod : dateTxt(o.lang, lastmod);
-  o.final = o.html.replaceAll('__LASTMOD_FMT__', fmt).replaceAll('__LASTMOD__', lastmod);
+  o.final = o.html.replaceAll('__LASTMOD_FMT__.', fmt.endsWith('.') ? fmt : fmt + '.').replaceAll('__LASTMOD_FMT__', fmt).replaceAll('__LASTMOD__', lastmod);
 }
 const removed = Object.keys(state.pages).filter(u => !pages[u]);
 
