@@ -1,5 +1,5 @@
 {
- "generated": "2026-11-02T04:17:58Z",
+ "generated": "2026-11-09T11:47:15Z",
  "base": "https://vilnyi-gt-city.uz.ua",
  "pages": 968,
  "sitemapUrls": 968,
@@ -24,8 +24,8 @@
  },
  "htmlBytes": {
   "min": 14937,
-  "max": 48599,
-  "avg": 22939
+  "max": 48679,
+  "avg": 22954
  },
  "eagerImageBytes": {
   "min": 0,
@@ -48,8 +48,8 @@
   "pinged": 969,
   "neverPinged": 0,
   "lastPing": {
-   "date": "2026-10-26",
-   "urls": 14,
+   "date": "2026-11-02",
+   "urls": 16,
    "mode": "daily"
   }
  },
@@ -57,15 +57,15 @@
   {
    "url": "https://vilnyi-gt-city.uz.ua/",
    "scores": {
-    "performance": 21,
+    "performance": 29,
     "accessibility": 93,
     "best-practices": 100,
     "seo": 100
    },
-   "lcp_ms": 6811,
-   "cls": 0.396,
-   "tbt_ms": 1717,
-   "bytes": 2872780
+   "lcp_ms": 10070,
+   "cls": 0.141,
+   "tbt_ms": 2793,
+   "bytes": 2872638
   },
   {
    "url": "https://vilnyi-gt-city.uz.ua/uk/",
@@ -75,10 +75,10 @@
     "best-practices": 100,
     "seo": 100
    },
-   "lcp_ms": 1584,
+   "lcp_ms": 1503,
    "cls": 0,
-   "tbt_ms": 0,
-   "bytes": 151247
+   "tbt_ms": 16,
+   "bytes": 151462
   },
   {
    "url": "https://vilnyi-gt-city.uz.ua/en/",
@@ -88,10 +88,10 @@
     "best-practices": 100,
     "seo": 100
    },
-   "lcp_ms": 1530,
+   "lcp_ms": 1522,
    "cls": 0,
    "tbt_ms": 0,
-   "bytes": 150506
+   "bytes": 150495
   },
   {
    "url": "https://vilnyi-gt-city.uz.ua/uk/apartments/",
@@ -101,10 +101,10 @@
     "best-practices": 100,
     "seo": 100
    },
-   "lcp_ms": 1243,
+   "lcp_ms": 1218,
    "cls": 0,
    "tbt_ms": 0,
-   "bytes": 97118
+   "bytes": 97151
   },
   {
    "url": "https://vilnyi-gt-city.uz.ua/uk/layout/1b01/",
@@ -114,10 +114,10 @@
     "best-practices": 100,
     "seo": 100
    },
-   "lcp_ms": 877,
+   "lcp_ms": 788,
    "cls": 0,
    "tbt_ms": 0,
-   "bytes": 19296
+   "bytes": 19353
   },
   {
    "url": "https://vilnyi-gt-city.uz.ua/uk/faq/",
@@ -127,10 +127,10 @@
     "best-practices": 100,
     "seo": 100
    },
-   "lcp_ms": 893,
+   "lcp_ms": 909,
    "cls": 0,
-   "tbt_ms": 0,
-   "bytes": 19281
+   "tbt_ms": 20,
+   "bytes": 19598
   }
  ],
  "ok": true
