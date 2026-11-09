@@ -294,7 +294,7 @@ function pageHome(l) {
   b += ctas(l) + priceNote(l);
   b += `<h2>${esc(T(l, 'secRooms'))}</h2><ul class="cards">${[1, 2, 3].map(r => `<li><a class="t" href="${rel(l, `apartments/${r}-room/`)}">${esc(S[l].roomsPl[r])}</a><br>${esc(T(l, 'flatsCount', { n: byRooms(r).length }))} · ${esc(N['a' + r])}<br>${esc(T(l, 'priceFrom', { p: N['p' + r] }))}</li>`).join('')}</ul>`;
   b += `<h2>${esc(T(l, 'secBuildings'))}</h2><ul class="cards">${B_IDS.map(x => `<li><a class="t" href="${rel(l, `building-${BLD[x].no}/`)}">${esc(T(l, 'building', { n: BLD[x].no }))}</a><br>${esc(T(l, 'floors'))}: ${BLD[x].floors} · ${esc(T(l, 'flats'))}: ${BLD[x].apartments}<br>${esc(T(l, 'kDelivery'))}: ${esc(qTxt(l, BLD[x].delivery))}</li>`).join('')}</ul>`;
-  b += `<h2>${esc(T(l, 'secLife'))}</h2><p>${esc(st(l, 'life.lead'))}</p><div class="grid2">${['market', 'playland', 'spa', 'parking', 'shelter', 'yard'].map(k => `<div><h3>${esc(st(l, `life.${k}.t`))}</h3><p>${esc(st(l, `life.${k}.d`))}${k === 'spa' ? ` <a href="${rel(l, 'faq/')}#pool">${esc(S[l].faq.find(x => x[2] === 'pool')[0])} →</a>` : ''}</p></div>`).join('')}</div>`;
+  b += `<h2>${esc(T(l, 'secLife'))}</h2><p>${esc(st(l, 'life.lead'))}</p><div class="grid2">${['market', 'playland', 'spa', 'parking', 'shelter', 'yard'].map(k => `<div><h3>${esc(st(l, `life.${k}.t`))}</h3><p>${esc(st(l, `life.${k}.d`))}${k === 'spa' ? faqA(l, 'pool') : k === 'shelter' ? faqA(l, 'shelter') : ''}</p></div>`).join('')}</div>`;
   b += `<h2>${esc(T(l, 'secTerms'))}</h2><p>${esc(st(l, 'terms.lead'))}</p><ul><li>${esc(st(l, 'terms.priceD', { usdM2: D.USD_PER_M2, rateDate: N.date }))}</li><li>${esc(st(l, 'terms.instD'))}</li><li>${esc(st(l, 'terms.discT'))}: ${esc(st(l, 'terms.discD'))}</li><li>${esc(st(l, 'terms.deliveryD'))}</li><li>${esc(st(l, 'terms.programs'))}</li></ul>` + guideLink(l);
   b += `<h2>${esc(T(l, 'secLocation'))}</h2><p>${esc(st(l, 'loc.lead'))}</p><ul>${[1, 2, 3, 4].map(i => `<li>${esc(st(l, `loc.pt${i}`))}</li>`).join('')}</ul><p><a href="${rel(l, 'location/')}">${esc(T(l, 'locGuideLink'))} →</a></p>`;
   b += `<h2>${esc(T(l, 'secFaq'))}</h2><dl class="faq">${S[l].faq.slice(0, 5).map(([q, a]) => `<dt>${esc(fill(q, N))}</dt><dd>${esc(fill(a, N))}</dd>`).join('')}</dl><p><a href="${rel(l, 'faq/')}">${esc(S[l].nav.faq)} →</a> · <a href="${rel(l, 'facts/')}">${esc(S[l].nav.facts)} →</a></p>`;
@@ -417,7 +417,7 @@ function pageLocation(l) {
       item: { '@type': 'Place', name: poiName(l, x), geo: { '@type': 'GeoCoordinates', latitude: x.ll[0], longitude: x.ll[1] }, additionalProperty: [{ '@type': 'PropertyValue', name: T(l, 'thDist'), value: x.d, unitCode: 'MTR' }] } })) };
   p.ld = graph(l, p, [list, ...B_IDS.map(x => buildingLd(l, x))], 'WebPage', true);
   const osm = `https://www.openstreetmap.org/?mlat=${P.geo.lat}&mlon=${P.geo.lon}#map=17/${P.geo.lat}/${P.geo.lon}`;
-  let b = `<h1>${esc(p.h1)}</h1><p class="lead">${esc(ans)}</p><p>${esc(st(l, 'loc.lead'))}</p><figure class="hero">${picture(l, IMGS.location, { eager: true, sizes: '(max-width: 1100px) 100vw, 1100px' })}</figure>`;
+  let b = `<h1>${esc(p.h1)}</h1><p class="lead">${esc(ans)}</p><p>${esc(st(l, 'loc.lead'))}${faqA(l, 'location')}</p><figure class="hero">${picture(l, IMGS.location, { eager: true, sizes: '(max-width: 1100px) 100vw, 1100px' })}</figure>`;
   b += `<dl class="kv"><div><dt>${esc(T(l, 'kAddress'))}</dt><dd>${esc(st(l, 'loc.addressV'))}</dd></div><div><dt>${esc(T(l, 'fDistrict'))}</dt><dd>${esc(st(l, 'loc.title'))}</dd></div><div><dt>${esc(T(l, 'coords'))}</dt><dd>${P.geo.lat}, ${P.geo.lon} · <a href="${osm}" rel="noopener">OpenStreetMap</a></dd></div></dl>`;
   b += `<ul>${[1, 2, 3, 4].map(i => `<li>${esc(st(l, `loc.pt${i}`))}</li>`).join('')}</ul>`;
   b += `<h2>${esc(T(l, 'hNear'))}</h2><p class="note">${esc(T(l, 'distNote'))} ${esc(T(l, 'walkNote'))}</p>`;
@@ -451,7 +451,7 @@ function pageProgress(l) {
   p.canonical = url(l, 'construction/');
   const latest = tl[0].photos.filter(x => x.local).map(x => ({ '@type': 'ImageObject', contentUrl: `${BASE}/${x.local}`, thumbnailUrl: x.thumb ? `${BASE}/${x.thumb}` : undefined, caption: `${T(l, 'building', { n: x.building.slice(1) })} — ${monthTxt(l, tl[0].date)}`, creditText: x.credit, uploadDate: tl[0].date }));
   p.ld = graph(l, p, [{ '@type': 'ImageGallery', '@id': `${p.canonical}#latest`, name: `${p.h1} — ${v.last}`, image: latest }], 'CollectionPage');
-  let b = `<h1>${esc(p.h1)}</h1><p class="lead"><strong>${esc(deliveryAnswer(l))}</strong> ${esc(T(l, 'progAnsNote', { sd: dateTxt(l, STATUS_DATE) }))}</p><p>${esc(T(l, 'progLead', v))}</p>`;
+  let b = `<h1>${esc(p.h1)}</h1><p class="lead"><strong>${esc(deliveryAnswer(l))}</strong> ${esc(T(l, 'progAnsNote', { sd: dateTxt(l, STATUS_DATE) }))}</p><p>${esc(T(l, 'progLead', v))}${faqA(l, 'delivery')}</p>`;
   b += `<div class="tw"><table><thead><tr><th>${esc(T(l, 'building', { n: '' }).trim())}</th><th>${esc(T(l, 'floors'))}</th><th>${esc(T(l, 'status'))}</th><th>${esc(T(l, 'kDelivery'))}</th></tr></thead><tbody>${B_IDS.map(x => `<tr><td><a href="${rel(l, `building-${BLD[x].no}/`)}">${BLD[x].no}</a></td><td>${BLD[x].floors}</td><td>${esc(statusTxt(l, x))} (${esc(T(l, 'statusOn', { d: dateTxt(l, BLD[x].statusDate) }))})</td><td>${esc(qTxt(l, BLD[x].delivery))}</td></tr>`).join('')}</tbody></table></div>`;
   const fig = (e, x) => `<li><figure><a href="/${x.local}"><img src="/${x.thumb || x.local}" width="360" height="240" alt="${esc(`${T(l, 'building', { n: x.building.slice(1) })} — ${monthTxt(l, e.date)}`)}" loading="lazy" decoding="async"></a><figcaption>${esc(T(l, 'building', { n: x.building.slice(1) }))} · ${esc(T(l, 'photoCredit', { c: x.credit }))}</figcaption></figure></li>`;
   for (const e of tl.slice(0, 4)) b += `<h2>${esc(monthTxt(l, e.date))}</h2><p class="muted">${esc(dateTxt(l, e.date))} · ${esc(T(l, 'photosN', { n: e.photos.length }))}</p><ul class="ph">${e.photos.filter(x => x.local).map(x => fig(e, x)).join('')}</ul>`;
@@ -468,7 +468,7 @@ function pageParking(l) {
     amenityFeature: [{ '@type': 'LocationFeatureSpecification', name: S[l].parkFacts.ev, value: PARK.ev }, { '@type': 'LocationFeatureSpecification', name: S[l].parkFacts.shelter, value: true }],
     additionalProperty: Object.entries({ car: PARK.car, std: PARK.std, tandem: PARK.tandem, moto: PARK.moto, ramps: PARK.ramps }).map(([k, x]) => ({ '@type': 'PropertyValue', name: S[l].parkFacts[k], value: x })) };
   p.ld = graph(l, p, [pk]);
-  let b = `<h1>${esc(p.h1)}</h1><p class="lead">${esc(st(l, 'life.parking.d'))}</p><figure class="hero">${picture(l, IMGS.parking, { eager: true, sizes: '(max-width: 1100px) 100vw, 1100px' })}</figure>`;
+  let b = `<h1>${esc(p.h1)}</h1><p class="lead">${esc(st(l, 'life.parking.d'))}${faqA(l, 'parking')}</p><figure class="hero">${picture(l, IMGS.parking, { eager: true, sizes: '(max-width: 1100px) 100vw, 1100px' })}</figure>`;
   b += `<dl class="kv">${['car', 'std', 'tandem', 'moto', 'ev', 'ramps'].map(k => `<div><dt>${esc(S[l].parkFacts[k])}</dt><dd>${PARK[k]}</dd></div>`).join('')}<div><dt>${esc(S[l].parkFacts.shelter)}</dt><dd>${esc(T(l, 'shelterV'))}</dd></div></dl>`;
   b += `<p>${esc(st(l, 'life.shelter.d'))}</p><p><strong>${esc(T(l, 'parkPrice'))}</strong></p>` + ctas(l, '#finder');
   b += `<h2>${esc(T(l, 'seeAlso'))}</h2><ul><li><a href="${rel(l, 'apartments/')}">${esc(S[l].nav.apartments)}</a></li><li><a href="${rel(l, 'faq/')}">${esc(S[l].nav.faq)}</a></li></ul>`;
@@ -478,11 +478,11 @@ function pageParking(l) {
 function pageFaq(l) {
   const N = nums(l), p = { title: T(l, 'faqTitle'), desc: T(l, 'faqDesc'), h1: T(l, 'faqH1'), og: 'home', section: 'faq', crumbs: crumb(l, [S[l].nav.faq, rel(l, 'faq/')]) };
   p.canonical = url(l, 'faq/');
-  const qa = S[l].faq.map(([q, a]) => [fill(q, N), fill(a, N)]);
+  const qa = S[l].faq.map(([q, a, id]) => [fill(q, N), fill(a, N), id]);
   p.ld = graph(l, p, [], 'FAQPage');
   const wp = p.ld['@graph'].find(n => n['@type'] === 'FAQPage');
-  wp.mainEntity = qa.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } }));
-  let b = `<h1>${esc(p.h1)}</h1>` + guideLink(l) + `<p><a href="${rel(l, 'location/')}">${esc(T(l, 'locGuideLink'))} →</a></p><dl class="faq">${qa.map(([q, a], i) => `<dt${S[l].faq[i][2] ? ` id="${S[l].faq[i][2]}"` : ''}>${esc(q)}</dt><dd>${esc(a)}${S[l].faq[i][1].includes('{q1}') ? ` <a href="${rel(l, 'construction/')}">${esc(S[l].nav.progress)} →</a>` : ''}</dd>`).join('')}</dl>` + ctas(l) + priceNote(l);
+  wp.mainEntity = qa.map(([q, a, id]) => ({ '@type': 'Question', name: q, url: `${p.canonical}#${id}`, acceptedAnswer: { '@type': 'Answer', text: a } }));
+  let b = `<h1>${esc(p.h1)}</h1>` + guideLink(l) + `<p><a href="${rel(l, 'location/')}">${esc(T(l, 'locGuideLink'))} →</a></p><dl class="faq">${qa.map(([q, a, id], i) => `<dt id="${id}">${esc(q)}</dt><dd>${esc(a)}${S[l].faq[i][1].includes('{q1}') ? ` <a href="${rel(l, 'construction/')}">${esc(S[l].nav.progress)} →</a>` : ''}</dd>`).join('')}</dl>` + ctas(l) + priceNote(l);
   addPage(l, 'faq/', p, b);
 }
 
@@ -546,8 +546,8 @@ function pageGuide(l) {
   b += `<h2>${esc(G.hPrice)}</h2><p>${esc(st(l, 'terms.priceD', { usdM2: D.USD_PER_M2, rateDate: N.date }).replace(/\.\.$/, '.'))}</p>`
     + `<ul><li>${esc(T(l, 'fPrice'))}: ${esc(T(l, 'fPriceV', N))}</li><li>${esc(T(l, 'fFrom'))}: ${esc(`${S[l].roomsShort[1]} ${N.p1}; ${S[l].roomsShort[2]} ${N.p2}; ${S[l].roomsShort[3]} ${N.p3}`)}</li><li>${esc(T(l, 'fFinish'))}: ${esc(T(l, 'fFinishV'))}</li></ul>`
     + more('apartments/', S[l].nav.apartments);
-  b += `<h2>${esc(G.hPay)}</h2><p>${esc(st(l, 'terms.instD'))}</p><ul>${['full', 'inst50', 'inst30'].map(k => `<li><strong>${esc(st(l, `terms.plan.${k}.label`))}</strong> — ${esc(st(l, `terms.plan.${k}.desc`))}</li>`).join('')}</ul>`;
-  b += `<h2>${esc(G.hDisc)}</h2><p>${esc(st(l, 'terms.discT'))}: ${esc(st(l, 'terms.discD'))} ${esc(ui(l, 'calc.discountNote'))}</p>`;
+  b += `<h2>${esc(G.hPay)}</h2><p>${esc(st(l, 'terms.instD'))}</p><ul>${['full', 'inst50', 'inst30'].map(k => `<li><strong>${esc(st(l, `terms.plan.${k}.label`))}</strong> — ${esc(st(l, `terms.plan.${k}.desc`))}</li>`).join('')}</ul><p>${faqA(l, 'instalments').trim()}</p>`;
+  b += `<h2>${esc(G.hDisc)}</h2><p>${esc(st(l, 'terms.discT'))}: ${esc(st(l, 'terms.discD'))} ${esc(ui(l, 'calc.discountNote'))}${faqA(l, 'discounts')}</p>`;
   b += `<h2>${esc(G.hProg)}</h2><p>${esc(st(l, 'terms.programs'))}</p>`;
   b += `<h2>${esc(G.hDocs)}</h2><p>${esc(st(l, 'terms.contract.text'))}</p><ul><li>${esc(st(l, 'facts.permit'))}: ${esc(st(l, 'facts.permitV', { n: P.facts.permit.number, d: N.permitDate }))}</li><li>${esc(st(l, 'facts.cadastral'))}: ${esc(N.cad)}</li><li>${esc(st(l, 'facts.customer'))}: ${esc(N.customer)}; ${esc(st(l, 'facts.contractor'))}: ${esc(N.contractor)} — ${esc(st(l, 'facts.perListing'))}</li></ul>`
     + more('facts/', S[l].nav.facts);
@@ -561,6 +561,8 @@ function pageGuide(l) {
   b += `<h2>${esc(T(l, 'seeAlso'))}</h2><ul>${[['apartments/', S[l].nav.apartments], ['faq/', S[l].nav.faq], ['facts/', S[l].nav.facts], ['parking/', S[l].nav.parking], ['construction/', S[l].nav.progress], ['location/', S[l].nav.location], ['contacts/', S[l].nav.contacts]].map(([k, t]) => `<li><a href="${rel(l, k)}">${esc(t)}</a></li>`).join('')}</ul>`;
   addPage(l, key, p, b);
 }
+// E8: link to one FAQ answer (/<lang>/faq/#<id>), the question itself as link text
+const faqA = (l, id) => ` <a href="${rel(l, 'faq/')}#${id}">${esc(S[l].faq.find(x => x[2] === id)[0])} →</a>`;
 const guideLink = l => `<p><a href="${rel(l, 'guide/')}">${esc(S[l].guide.link)} →</a></p>`;
 
 // /facts/ — one plain page, Ukrainian + English, for answer engines to quote
@@ -595,7 +597,7 @@ function llmsFull() {
     const N = nums(l);
     s += `## ${l === 'uk' ? 'Факти' : 'Facts'}\n${factRows(l).map(([k, v]) => `- ${k}: ${v}`).join('\n')}\n\n`;
     s += `## ${l === 'uk' ? 'Будинки' : 'Buildings'}\n${B_IDS.map(b => { const B = BLD[b], us = D.UNITS.filter(u => u.building === b); return `- ${T(l, 'building', { n: B.no })}: ${B.floors} ${T(l, 'floors').toLowerCase()}, ${us.length} (${mixTxt(l, us)}); ${T(l, 'kDelivery')}: ${qTxt(l, B.delivery)}; ${statusTxt(l, b)} (${dateTxt(l, B.statusDate)}) — ${url(l, `building-${B.no}/`)}`; }).join('\n')}\n\n`;
-    s += `## ${l === 'uk' ? 'Питання та відповіді' : 'Questions and answers'}\n${S[l].faq.map(([q, a]) => `### ${fill(q, N)}\n${fill(a, N)}`).join('\n\n')}\n\n`;
+    s += `## ${l === 'uk' ? 'Питання та відповіді' : 'Questions and answers'}\n${S[l].faq.map(([q, a, id]) => `### ${fill(q, N)}\n${fill(a, N)}\n${url(l, 'faq/')}#${id}`).join('\n\n')}\n\n`;
   }
   s += `## Layouts / Планування (key · building · rooms · total m² · floors · apartments · price UAH · price USD · page)\n`;
   for (const t of TYPES) { const us = unitsOf(t.key); s += `- ${t.key} · B${D.BUILDINGS[t.building].no} · ${t.rooms} · ${t.total} · ${ranges(us.map(u => u.floor))} · ${us.length} · ${us[0].price} · ${us[0].usd} · ${url('en', `layout/${slug(t.key)}/`)}\n`; }
