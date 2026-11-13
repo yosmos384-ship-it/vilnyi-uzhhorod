@@ -1,6 +1,6 @@
 # ЖК VILNYI — full facts (Українською + English)
 
-Source: https://vilnyi-gt-city.uz.ua/ · updated 2026-11-12 · prices at the NBU rate of 2026-11-12
+Source: https://vilnyi-gt-city.uz.ua/ · updated 2026-11-13 · prices at the NBU rate of 2026-11-13
 
 ## Факти
 - Назва: ЖК VILNYI (VILNYI, «Вільний»)
@@ -17,8 +17,8 @@ Source: https://vilnyi-gt-city.uz.ua/ · updated 2026-11-12 · prices at the NBU
 - Квартир: 462
 - Квартири за кімнатами: 310 однокімнатних, 130 двокімнатних, 22 трикімнатних
 - Площі: 1-кімн. 24,48–45,97 м²; 2-кімн. 38,89–88,60 м²; 3-кімн. 69,53–122,50 м²
-- Ціна: 1300 $ за м² загальної площі; 58 919 ₴ за м² за курсом НБУ 45,3222 на 12 листопада 2026 р.
-- Ціни від: 1-кімн. 1 442 337 ₴; 2-кімн. 2 291 360 ₴; 3-кімн. 4 096 638 ₴
+- Ціна: 1300 $ за м² загальної площі; 59 000 ₴ за м² за курсом НБУ 45,3849 на 13 листопада 2026 р.
+- Ціни від: 1-кімн. 1 444 320 ₴; 2-кімн. 2 294 510 ₴; 3-кімн. 4 102 270 ₴
 - Оплата: 100% або розтермінування від забудовника до 17 місяців, перший внесок 30–50%
 - Знижки: 5% військовим і медичним працівникам (не сумуються)
 - єОселя / єВідновлення: недоступні
@@ -60,7 +60,7 @@ https://vilnyi-gt-city.uz.ua/uk/faq/#location
 https://vilnyi-gt-city.uz.ua/uk/faq/#developer
 
 ### Які ціни на квартири в ЖК VILNYI?
-Ціна для всіх квартир — 1300 $ за м² загальної площі, у гривні за офіційним курсом НБУ: 58 919 ₴ за м² (курс 45,3222 ₴/$ на 12 листопада 2026 р.). Однокімнатні — від 1 442 337 ₴, двокімнатні — від 2 291 360 ₴, трикімнатні — від 4 096 638 ₴.
+Ціна для всіх квартир — 1300 $ за м² загальної площі, у гривні за офіційним курсом НБУ: 59 000 ₴ за м² (курс 45,3849 ₴/$ на 13 листопада 2026 р.). Однокімнатні — від 1 444 320 ₴, двокімнатні — від 2 294 510 ₴, трикімнатні — від 4 102 270 ₴.
 https://vilnyi-gt-city.uz.ua/uk/faq/#price
 
 ### Чи є розтермінування?
@@ -126,8 +126,8 @@ https://vilnyi-gt-city.uz.ua/uk/faq/#contact
 - Apartments: 462
 - Apartments by rooms: 310 one-room, 130 two-room, 22 three-room
 - Areas: 1-room 24.48–45.97 m²; 2-room 38.89–88.60 m²; 3-room 69.53–122.50 m²
-- Price: 1300 $ per m² of total area; 58,919 ₴ per m² at the NBU rate of 45.3222 on November 12, 2026
-- Prices from: 1-room 1,442,337 ₴; 2-room 2,291,360 ₴; 3-room 4,096,638 ₴
+- Price: 1300 $ per m² of total area; 59,000 ₴ per m² at the NBU rate of 45.3849 on November 13, 2026
+- Prices from: 1-room 1,444,320 ₴; 2-room 2,294,510 ₴; 3-room 4,102,270 ₴
 - Payment: 100% or developer instalments up to 17 months, 30–50% first payment
 - Discounts: 5% for military personnel and for medical workers (not combined)
 - eOselia / eVidnovlennia: not available
@@ -169,7 +169,7 @@ The developer is VILNYI Group (15 years of experience; projects QCC2, Q CITIUM a
 https://vilnyi-gt-city.uz.ua/en/faq/#developer
 
 ### What are apartment prices at VILNYI?
-One price for every apartment: 1300 $ per m² of total area, paid in hryvnia at the official National Bank of Ukraine rate — 58,919 ₴ per m² (rate 45.3222 UAH/$ on November 12, 2026). One-room apartments from 1,442,337 ₴, two-room from 2,291,360 ₴, three-room from 4,096,638 ₴.
+One price for every apartment: 1300 $ per m² of total area, paid in hryvnia at the official National Bank of Ukraine rate — 59,000 ₴ per m² (rate 45.3849 UAH/$ on November 13, 2026). One-room apartments from 1,444,320 ₴, two-room from 2,294,510 ₴, three-room from 4,102,270 ₴.
 https://vilnyi-gt-city.uz.ua/en/faq/#price
 
 ### Are instalments available?
@@ -221,128 +221,128 @@ Phone +38 050 010 07 23, WhatsApp and Viber +38 067 527 98 18, e-mail gvilnyi@gm
 https://vilnyi-gt-city.uz.ua/en/faq/#contact
 
 ## Layouts / Планування (key · building · rooms · total m² · floors · apartments · price UAH · price USD · page)
-- 1B01 · B1 · 2 · 65.16 · 2–12 · 11 · 3839162 · 84708 · https://vilnyi-gt-city.uz.ua/en/layout/1b01/
-- 1B02 · B1 · 3 · 80.76 · 2–12 · 11 · 4758298 · 104988 · https://vilnyi-gt-city.uz.ua/en/layout/1b02/
-- 1B03 · B1 · 1 · 40.58 · 2–12 · 11 · 2390933 · 52754 · https://vilnyi-gt-city.uz.ua/en/layout/1b03/
-- 1B04 · B1 · 1 · 34.16 · 2–12 · 11 · 2012673 · 44408 · https://vilnyi-gt-city.uz.ua/en/layout/1b04/
-- 1B05 · B1 · 2 · 54.82 · 2–12 · 11 · 3229940 · 71266 · https://vilnyi-gt-city.uz.ua/en/layout/1b05/
-- 1B06 · B1 · 1 · 29.18 · 2–12 · 11 · 1719256 · 37934 · https://vilnyi-gt-city.uz.ua/en/layout/1b06/
-- 1B07 · B1 · 1 · 34.27 · 2–12 · 11 · 2019154 · 44551 · https://vilnyi-gt-city.uz.ua/en/layout/1b07/
-- 1B08 · B1 · 1 · 26.31 · 2–12 · 11 · 1550159 · 34203 · https://vilnyi-gt-city.uz.ua/en/layout/1b08/
-- 1B09 · B1 · 1 · 27.86 · 2–12 · 11 · 1641483 · 36218 · https://vilnyi-gt-city.uz.ua/en/layout/1b09/
-- 1B10 · B1 · 1 · 31.24 · 2–12 · 11 · 1840630 · 40612 · https://vilnyi-gt-city.uz.ua/en/layout/1b10/
-- 1B11 · B1 · 1 · 34.5 · 2–12 · 11 · 2032706 · 44850 · https://vilnyi-gt-city.uz.ua/en/layout/1b11/
-- 1C01 · B1 · 2 · 72.73 · 13 · 1 · 4285179 · 94549 · https://vilnyi-gt-city.uz.ua/en/layout/1c01/
-- 1C02 · B1 · 3 · 82.43 · 13 · 1 · 4856693 · 107159 · https://vilnyi-gt-city.uz.ua/en/layout/1c02/
-- 1C03 · B1 · 3 · 122.5 · 13 · 1 · 7217578 · 159250 · https://vilnyi-gt-city.uz.ua/en/layout/1c03/
-- 1C04 · B1 · 2 · 88.6 · 13 · 1 · 5220223 · 115180 · https://vilnyi-gt-city.uz.ua/en/layout/1c04/
-- 1D01 · B1 · 2 · 58.54 · 14–16 · 3 · 3449118 · 76102 · https://vilnyi-gt-city.uz.ua/en/layout/1d01/
-- 1D02 · B1 · 3 · 82.81 · 14–16 · 3 · 4879082 · 107653 · https://vilnyi-gt-city.uz.ua/en/layout/1d02/
-- 1D03 · B1 · 3 · 101.25 · 14–16 · 3 · 5965549 · 131625 · https://vilnyi-gt-city.uz.ua/en/layout/1d03/
-- 1D04 · B1 · 2 · 69.28 · 14–16 · 3 · 4081908 · 90064 · https://vilnyi-gt-city.uz.ua/en/layout/1d04/
-- 2A01 · B2 · 2 · 67.94 · 1 · 1 · 4002957 · 88322 · https://vilnyi-gt-city.uz.ua/en/layout/2a01/
-- 2A02 · B2 · 1 · 28.2 · 1 · 1 · 1661516 · 36660 · https://vilnyi-gt-city.uz.ua/en/layout/2a02/
-- 2B01 · B2 · 2 · 58.91 · 2 · 1 · 3470918 · 76583 · https://vilnyi-gt-city.uz.ua/en/layout/2b01/
-- 2B02 · B2 · 1 · 29.12 · 2 · 1 · 1715721 · 37856 · https://vilnyi-gt-city.uz.ua/en/layout/2b02/
-- 2B03 · B2 · 1 · 27.36 · 2 · 1 · 1612024 · 35568 · https://vilnyi-gt-city.uz.ua/en/layout/2b03/
-- 2B04 · B2 · 1 · 27.45 · 2 · 1 · 1617327 · 35685 · https://vilnyi-gt-city.uz.ua/en/layout/2b04/
-- 2C01 · B2 · 2 · 58.91 · 3 · 1 · 3470918 · 76583 · https://vilnyi-gt-city.uz.ua/en/layout/2c01/
-- 2C02 · B2 · 2 · 68.41 · 3 · 1 · 4030649 · 88933 · https://vilnyi-gt-city.uz.ua/en/layout/2c02/
-- 2C03 · B2 · 1 · 29.12 · 3 · 1 · 1715721 · 37856 · https://vilnyi-gt-city.uz.ua/en/layout/2c03/
-- 2C04 · B2 · 1 · 27.36 · 3 · 1 · 1612024 · 35568 · https://vilnyi-gt-city.uz.ua/en/layout/2c04/
-- 2C05 · B2 · 1 · 27.45 · 3 · 1 · 1617327 · 35685 · https://vilnyi-gt-city.uz.ua/en/layout/2c05/
-- 2D01 · B2 · 2 · 61.84 · 4 · 1 · 3643551 · 80392 · https://vilnyi-gt-city.uz.ua/en/layout/2d01/
-- 2D02 · B2 · 3 · 80.74 · 4 · 1 · 4757120 · 104962 · https://vilnyi-gt-city.uz.ua/en/layout/2d02/
-- 2D03 · B2 · 1 · 24.48 · 4 · 1 · 1442337 · 31824 · https://vilnyi-gt-city.uz.ua/en/layout/2d03/
-- 2D04 · B2 · 1 · 30.79 · 4 · 1 · 1814116 · 40027 · https://vilnyi-gt-city.uz.ua/en/layout/2d04/
-- 2D05 · B2 · 1 · 34.11 · 4 · 1 · 2009727 · 44343 · https://vilnyi-gt-city.uz.ua/en/layout/2d05/
-- 2D06 · B2 · 2 · 60.62 · 4 · 1 · 3571670 · 78806 · https://vilnyi-gt-city.uz.ua/en/layout/2d06/
-- 2D07 · B2 · 1 · 27.82 · 4 · 1 · 1639127 · 36166 · https://vilnyi-gt-city.uz.ua/en/layout/2d07/
-- 2D08 · B2 · 1 · 27.29 · 4 · 1 · 1607900 · 35477 · https://vilnyi-gt-city.uz.ua/en/layout/2d08/
-- 2D09 · B2 · 1 · 26.96 · 4 · 1 · 1588456 · 35048 · https://vilnyi-gt-city.uz.ua/en/layout/2d09/
-- 2D10 · B2 · 1 · 26.32 · 4 · 1 · 1550748 · 34216 · https://vilnyi-gt-city.uz.ua/en/layout/2d10/
-- 2D11 · B2 · 1 · 40.39 · 4 · 1 · 2379738 · 52507 · https://vilnyi-gt-city.uz.ua/en/layout/2d11/
-- 2D12 · B2 · 1 · 29.12 · 4 · 1 · 1715721 · 37856 · https://vilnyi-gt-city.uz.ua/en/layout/2d12/
-- 2D13 · B2 · 1 · 27.36 · 4 · 1 · 1612024 · 35568 · https://vilnyi-gt-city.uz.ua/en/layout/2d13/
-- 2D14 · B2 · 1 · 27.45 · 4 · 1 · 1617327 · 35685 · https://vilnyi-gt-city.uz.ua/en/layout/2d14/
-- 2E01 · B2 · 2 · 58.91 · 5–6 · 2 · 3470918 · 76583 · https://vilnyi-gt-city.uz.ua/en/layout/2e01/
-- 2E02 · B2 · 3 · 69.53 · 5–6 · 2 · 4096638 · 90389 · https://vilnyi-gt-city.uz.ua/en/layout/2e02/
-- 2E03 · B2 · 1 · 25.32 · 5–6 · 2 · 1491829 · 32916 · https://vilnyi-gt-city.uz.ua/en/layout/2e03/
-- 2E04 · B2 · 1 · 31.91 · 5–6 · 2 · 1880105 · 41483 · https://vilnyi-gt-city.uz.ua/en/layout/2e04/
-- 2E05 · B2 · 1 · 35.22 · 5–6 · 2 · 2075127 · 45786 · https://vilnyi-gt-city.uz.ua/en/layout/2e05/
-- 2E06 · B2 · 2 · 47.6 · 5–6 · 2 · 2804544 · 61880 · https://vilnyi-gt-city.uz.ua/en/layout/2e06/
-- 2E07 · B2 · 1 · 28.6 · 5–6 · 2 · 1685083 · 37180 · https://vilnyi-gt-city.uz.ua/en/layout/2e07/
-- 2E08 · B2 · 1 · 28.07 · 5–6 · 2 · 1653856 · 36491 · https://vilnyi-gt-city.uz.ua/en/layout/2e08/
-- 2E09 · B2 · 1 · 27.72 · 5–6 · 2 · 1633235 · 36036 · https://vilnyi-gt-city.uz.ua/en/layout/2e09/
-- 2E10 · B2 · 1 · 27.13 · 5–6 · 2 · 1598472 · 35269 · https://vilnyi-gt-city.uz.ua/en/layout/2e10/
-- 2E11 · B2 · 1 · 36.23 · 5–6 · 2 · 2134635 · 47099 · https://vilnyi-gt-city.uz.ua/en/layout/2e11/
-- 2E12 · B2 · 1 · 29.12 · 5–6 · 2 · 1715721 · 37856 · https://vilnyi-gt-city.uz.ua/en/layout/2e12/
-- 2E13 · B2 · 1 · 27.36 · 5–6 · 2 · 1612024 · 35568 · https://vilnyi-gt-city.uz.ua/en/layout/2e13/
-- 2E14 · B2 · 1 · 27.45 · 5–6 · 2 · 1617327 · 35685 · https://vilnyi-gt-city.uz.ua/en/layout/2e14/
-- 3A01 · B3 · 2 · 38.89 · 1 · 1 · 2291360 · 50557 · https://vilnyi-gt-city.uz.ua/en/layout/3a01/
-- 3A02 · B3 · 1 · 29.71 · 1 · 1 · 1750483 · 38623 · https://vilnyi-gt-city.uz.ua/en/layout/3a02/
-- 3A03 · B3 · 2 · 54.99 · 1 · 1 · 3239956 · 71487 · https://vilnyi-gt-city.uz.ua/en/layout/3a03/
-- 3A04 · B3 · 1 · 44.69 · 1 · 1 · 2633090 · 58097 · https://vilnyi-gt-city.uz.ua/en/layout/3a04/
-- 3B01 · B3 · 1 · 35.81 · 2 · 1 · 2109889 · 46553 · https://vilnyi-gt-city.uz.ua/en/layout/3b01/
-- 3B02 · B3 · 2 · 43.1 · 2 · 1 · 2539409 · 56030 · https://vilnyi-gt-city.uz.ua/en/layout/3b02/
-- 3B03 · B3 · 1 · 33.86 · 2 · 1 · 1994997 · 44018 · https://vilnyi-gt-city.uz.ua/en/layout/3b03/
-- 3B04 · B3 · 2 · 49.95 · 2 · 1 · 2943004 · 64935 · https://vilnyi-gt-city.uz.ua/en/layout/3b04/
-- 3B05 · B3 · 1 · 42.56 · 2 · 1 · 2507593 · 55328 · https://vilnyi-gt-city.uz.ua/en/layout/3b05/
-- 3C01 · B3 · 2 · 50.38 · 3 · 1 · 2968339 · 65494 · https://vilnyi-gt-city.uz.ua/en/layout/3c01/
-- 3C02 · B3 · 2 · 53.06 · 3 · 1 · 3126242 · 68978 · https://vilnyi-gt-city.uz.ua/en/layout/3c02/
-- 3C03 · B3 · 1 · 27.17 · 3 · 1 · 1600829 · 35321 · https://vilnyi-gt-city.uz.ua/en/layout/3c03/
-- 3C04 · B3 · 1 · 42.51 · 3 · 1 · 2504647 · 55263 · https://vilnyi-gt-city.uz.ua/en/layout/3c04/
-- 3C05 · B3 · 1 · 35.81 · 3 · 1 · 2109889 · 46553 · https://vilnyi-gt-city.uz.ua/en/layout/3c05/
-- 3C06 · B3 · 2 · 43.1 · 3 · 1 · 2539409 · 56030 · https://vilnyi-gt-city.uz.ua/en/layout/3c06/
-- 3C07 · B3 · 1 · 33.86 · 3 · 1 · 1994997 · 44018 · https://vilnyi-gt-city.uz.ua/en/layout/3c07/
-- 3C08 · B3 · 2 · 49.95 · 3 · 1 · 2943004 · 64935 · https://vilnyi-gt-city.uz.ua/en/layout/3c08/
-- 3C09 · B3 · 1 · 42.61 · 3 · 1 · 2510539 · 55393 · https://vilnyi-gt-city.uz.ua/en/layout/3c09/
-- 3C10 · B3 · 2 · 58.19 · 3 · 1 · 3428497 · 75647 · https://vilnyi-gt-city.uz.ua/en/layout/3c10/
-- 3C11 · B3 · 1 · 40.28 · 3 · 1 · 2373257 · 52364 · https://vilnyi-gt-city.uz.ua/en/layout/3c11/
-- 3D01 · B3 · 2 · 50.38 · 4–12 · 9 · 2968339 · 65494 · https://vilnyi-gt-city.uz.ua/en/layout/3d01/
-- 3D02 · B3 · 2 · 46.47 · 4–12 · 9 · 2737966 · 60411 · https://vilnyi-gt-city.uz.ua/en/layout/3d02/
-- 3D03 · B3 · 1 · 27.48 · 4–12 · 9 · 1619094 · 35724 · https://vilnyi-gt-city.uz.ua/en/layout/3d03/
-- 3D04 · B3 · 1 · 40.11 · 4–12 · 9 · 2363241 · 52143 · https://vilnyi-gt-city.uz.ua/en/layout/3d04/
-- 3D05 · B3 · 1 · 35.81 · 4–12 · 9 · 2109889 · 46553 · https://vilnyi-gt-city.uz.ua/en/layout/3d05/
-- 3D06 · B3 · 2 · 43.1 · 4–12 · 9 · 2539409 · 56030 · https://vilnyi-gt-city.uz.ua/en/layout/3d06/
-- 3D07 · B3 · 1 · 33.86 · 4–12 · 9 · 1994997 · 44018 · https://vilnyi-gt-city.uz.ua/en/layout/3d07/
-- 3D08 · B3 · 2 · 49.95 · 4–12 · 9 · 2943004 · 64935 · https://vilnyi-gt-city.uz.ua/en/layout/3d08/
-- 3D09 · B3 · 1 · 41.66 · 4–12 · 9 · 2454566 · 54158 · https://vilnyi-gt-city.uz.ua/en/layout/3d09/
-- 3D10 · B3 · 2 · 56.9 · 4–12 · 9 · 3352491 · 73970 · https://vilnyi-gt-city.uz.ua/en/layout/3d10/
-- 3D11 · B3 · 1 · 40.28 · 4–12 · 9 · 2373257 · 52364 · https://vilnyi-gt-city.uz.ua/en/layout/3d11/
-- 3E01 · B3 · 2 · 50.38 · 13 · 1 · 2968339 · 65494 · https://vilnyi-gt-city.uz.ua/en/layout/3e01/
-- 3E02 · B3 · 2 · 46.94 · 13 · 1 · 2765658 · 61022 · https://vilnyi-gt-city.uz.ua/en/layout/3e02/
-- 3E03 · B3 · 1 · 27.46 · 13 · 1 · 1617916 · 35698 · https://vilnyi-gt-city.uz.ua/en/layout/3e03/
-- 3E04 · B3 · 1 · 40.11 · 13 · 1 · 2363241 · 52143 · https://vilnyi-gt-city.uz.ua/en/layout/3e04/
-- 3E05 · B3 · 2 · 76.19 · 13 · 1 · 4489039 · 99047 · https://vilnyi-gt-city.uz.ua/en/layout/3e05/
-- 3E06 · B3 · 2 · 76.89 · 13 · 1 · 4530282 · 99957 · https://vilnyi-gt-city.uz.ua/en/layout/3e06/
-- 3E07 · B3 · 2 · 56.62 · 13 · 1 · 3335994 · 73606 · https://vilnyi-gt-city.uz.ua/en/layout/3e07/
-- 3E08 · B3 · 1 · 40.28 · 13 · 1 · 2373257 · 52364 · https://vilnyi-gt-city.uz.ua/en/layout/3e08/
-- 3F01 · B3 · 2 · 50.38 · 14–17 · 4 · 2968339 · 65494 · https://vilnyi-gt-city.uz.ua/en/layout/3f01/
-- 3F02 · B3 · 2 · 46.47 · 14–17 · 4 · 2737966 · 60411 · https://vilnyi-gt-city.uz.ua/en/layout/3f02/
-- 3F03 · B3 · 1 · 27.46 · 14–17 · 4 · 1617916 · 35698 · https://vilnyi-gt-city.uz.ua/en/layout/3f03/
-- 3F04 · B3 · 1 · 40.11 · 14–17 · 4 · 2363241 · 52143 · https://vilnyi-gt-city.uz.ua/en/layout/3f04/
-- 3F05 · B3 · 2 · 66.65 · 14–17 · 4 · 3926951 · 86645 · https://vilnyi-gt-city.uz.ua/en/layout/3f05/
-- 3F06 · B3 · 2 · 65.07 · 14–17 · 4 · 3833859 · 84591 · https://vilnyi-gt-city.uz.ua/en/layout/3f06/
-- 3F07 · B3 · 2 · 56.62 · 14–17 · 4 · 3335994 · 73606 · https://vilnyi-gt-city.uz.ua/en/layout/3f07/
-- 3F08 · B3 · 1 · 40.28 · 14–17 · 4 · 2373257 · 52364 · https://vilnyi-gt-city.uz.ua/en/layout/3f08/
-- 4A01 · B4 · 1 · 39.62 · 1 · 1 · 2334371 · 51506 · https://vilnyi-gt-city.uz.ua/en/layout/4a01/
-- 4A02 · B4 · 2 · 52.94 · 1 · 1 · 3119172 · 68822 · https://vilnyi-gt-city.uz.ua/en/layout/4a02/
-- 4A03 · B4 · 1 · 27.01 · 1 · 1 · 1591402 · 35113 · https://vilnyi-gt-city.uz.ua/en/layout/4a03/
-- 4A04 · B4 · 2 · 73.21 · 1 · 1 · 4313460 · 95173 · https://vilnyi-gt-city.uz.ua/en/layout/4a04/
-- 4A05 · B4 · 1 · 27.38 · 1 · 1 · 1613202 · 35594 · https://vilnyi-gt-city.uz.ua/en/layout/4a05/
-- 4B01 · B4 · 1 · 40.08 · 2–10 · 9 · 2361474 · 52104 · https://vilnyi-gt-city.uz.ua/en/layout/4b01/
-- 4B02 · B4 · 2 · 52.69 · 2–10 · 9 · 3104442 · 68497 · https://vilnyi-gt-city.uz.ua/en/layout/4b02/
-- 4B03 · B4 · 1 · 27.84 · 2–10 · 9 · 1640305 · 36192 · https://vilnyi-gt-city.uz.ua/en/layout/4b03/
-- 4B04 · B4 · 1 · 29.64 · 2–10 · 9 · 1746359 · 38532 · https://vilnyi-gt-city.uz.ua/en/layout/4b04/
-- 4B05 · B4 · 1 · 43.75 · 2–10 · 9 · 2577706 · 56875 · https://vilnyi-gt-city.uz.ua/en/layout/4b05/
-- 4B06 · B4 · 1 · 37.18 · 2–10 · 9 · 2190608 · 48334 · https://vilnyi-gt-city.uz.ua/en/layout/4b06/
-- 4B07 · B4 · 1 · 39.13 · 2–10 · 9 · 2305500 · 50869 · https://vilnyi-gt-city.uz.ua/en/layout/4b07/
-- 4B08 · B4 · 1 · 38.6 · 2–10 · 9 · 2274273 · 50180 · https://vilnyi-gt-city.uz.ua/en/layout/4b08/
-- 4B09 · B4 · 1 · 45.97 · 2–10 · 9 · 2708506 · 59761 · https://vilnyi-gt-city.uz.ua/en/layout/4b09/
-- 4B10 · B4 · 1 · 39.38 · 2–10 · 9 · 2320230 · 51194 · https://vilnyi-gt-city.uz.ua/en/layout/4b10/
-- 4B11 · B4 · 1 · 36.95 · 2–10 · 9 · 2177057 · 48035 · https://vilnyi-gt-city.uz.ua/en/layout/4b11/
-- 4B12 · B4 · 1 · 26.86 · 2–10 · 9 · 1582564 · 34918 · https://vilnyi-gt-city.uz.ua/en/layout/4b12/
+- 1B01 · B1 · 2 · 65.16 · 2–12 · 11 · 3844440 · 84708 · https://vilnyi-gt-city.uz.ua/en/layout/1b01/
+- 1B02 · B1 · 3 · 80.76 · 2–12 · 11 · 4764840 · 104988 · https://vilnyi-gt-city.uz.ua/en/layout/1b02/
+- 1B03 · B1 · 1 · 40.58 · 2–12 · 11 · 2394220 · 52754 · https://vilnyi-gt-city.uz.ua/en/layout/1b03/
+- 1B04 · B1 · 1 · 34.16 · 2–12 · 11 · 2015440 · 44408 · https://vilnyi-gt-city.uz.ua/en/layout/1b04/
+- 1B05 · B1 · 2 · 54.82 · 2–12 · 11 · 3234380 · 71266 · https://vilnyi-gt-city.uz.ua/en/layout/1b05/
+- 1B06 · B1 · 1 · 29.18 · 2–12 · 11 · 1721620 · 37934 · https://vilnyi-gt-city.uz.ua/en/layout/1b06/
+- 1B07 · B1 · 1 · 34.27 · 2–12 · 11 · 2021930 · 44551 · https://vilnyi-gt-city.uz.ua/en/layout/1b07/
+- 1B08 · B1 · 1 · 26.31 · 2–12 · 11 · 1552290 · 34203 · https://vilnyi-gt-city.uz.ua/en/layout/1b08/
+- 1B09 · B1 · 1 · 27.86 · 2–12 · 11 · 1643740 · 36218 · https://vilnyi-gt-city.uz.ua/en/layout/1b09/
+- 1B10 · B1 · 1 · 31.24 · 2–12 · 11 · 1843160 · 40612 · https://vilnyi-gt-city.uz.ua/en/layout/1b10/
+- 1B11 · B1 · 1 · 34.5 · 2–12 · 11 · 2035500 · 44850 · https://vilnyi-gt-city.uz.ua/en/layout/1b11/
+- 1C01 · B1 · 2 · 72.73 · 13 · 1 · 4291070 · 94549 · https://vilnyi-gt-city.uz.ua/en/layout/1c01/
+- 1C02 · B1 · 3 · 82.43 · 13 · 1 · 4863370 · 107159 · https://vilnyi-gt-city.uz.ua/en/layout/1c02/
+- 1C03 · B1 · 3 · 122.5 · 13 · 1 · 7227500 · 159250 · https://vilnyi-gt-city.uz.ua/en/layout/1c03/
+- 1C04 · B1 · 2 · 88.6 · 13 · 1 · 5227400 · 115180 · https://vilnyi-gt-city.uz.ua/en/layout/1c04/
+- 1D01 · B1 · 2 · 58.54 · 14–16 · 3 · 3453860 · 76102 · https://vilnyi-gt-city.uz.ua/en/layout/1d01/
+- 1D02 · B1 · 3 · 82.81 · 14–16 · 3 · 4885790 · 107653 · https://vilnyi-gt-city.uz.ua/en/layout/1d02/
+- 1D03 · B1 · 3 · 101.25 · 14–16 · 3 · 5973750 · 131625 · https://vilnyi-gt-city.uz.ua/en/layout/1d03/
+- 1D04 · B1 · 2 · 69.28 · 14–16 · 3 · 4087520 · 90064 · https://vilnyi-gt-city.uz.ua/en/layout/1d04/
+- 2A01 · B2 · 2 · 67.94 · 1 · 1 · 4008460 · 88322 · https://vilnyi-gt-city.uz.ua/en/layout/2a01/
+- 2A02 · B2 · 1 · 28.2 · 1 · 1 · 1663800 · 36660 · https://vilnyi-gt-city.uz.ua/en/layout/2a02/
+- 2B01 · B2 · 2 · 58.91 · 2 · 1 · 3475690 · 76583 · https://vilnyi-gt-city.uz.ua/en/layout/2b01/
+- 2B02 · B2 · 1 · 29.12 · 2 · 1 · 1718080 · 37856 · https://vilnyi-gt-city.uz.ua/en/layout/2b02/
+- 2B03 · B2 · 1 · 27.36 · 2 · 1 · 1614240 · 35568 · https://vilnyi-gt-city.uz.ua/en/layout/2b03/
+- 2B04 · B2 · 1 · 27.45 · 2 · 1 · 1619550 · 35685 · https://vilnyi-gt-city.uz.ua/en/layout/2b04/
+- 2C01 · B2 · 2 · 58.91 · 3 · 1 · 3475690 · 76583 · https://vilnyi-gt-city.uz.ua/en/layout/2c01/
+- 2C02 · B2 · 2 · 68.41 · 3 · 1 · 4036190 · 88933 · https://vilnyi-gt-city.uz.ua/en/layout/2c02/
+- 2C03 · B2 · 1 · 29.12 · 3 · 1 · 1718080 · 37856 · https://vilnyi-gt-city.uz.ua/en/layout/2c03/
+- 2C04 · B2 · 1 · 27.36 · 3 · 1 · 1614240 · 35568 · https://vilnyi-gt-city.uz.ua/en/layout/2c04/
+- 2C05 · B2 · 1 · 27.45 · 3 · 1 · 1619550 · 35685 · https://vilnyi-gt-city.uz.ua/en/layout/2c05/
+- 2D01 · B2 · 2 · 61.84 · 4 · 1 · 3648560 · 80392 · https://vilnyi-gt-city.uz.ua/en/layout/2d01/
+- 2D02 · B2 · 3 · 80.74 · 4 · 1 · 4763660 · 104962 · https://vilnyi-gt-city.uz.ua/en/layout/2d02/
+- 2D03 · B2 · 1 · 24.48 · 4 · 1 · 1444320 · 31824 · https://vilnyi-gt-city.uz.ua/en/layout/2d03/
+- 2D04 · B2 · 1 · 30.79 · 4 · 1 · 1816610 · 40027 · https://vilnyi-gt-city.uz.ua/en/layout/2d04/
+- 2D05 · B2 · 1 · 34.11 · 4 · 1 · 2012490 · 44343 · https://vilnyi-gt-city.uz.ua/en/layout/2d05/
+- 2D06 · B2 · 2 · 60.62 · 4 · 1 · 3576580 · 78806 · https://vilnyi-gt-city.uz.ua/en/layout/2d06/
+- 2D07 · B2 · 1 · 27.82 · 4 · 1 · 1641380 · 36166 · https://vilnyi-gt-city.uz.ua/en/layout/2d07/
+- 2D08 · B2 · 1 · 27.29 · 4 · 1 · 1610110 · 35477 · https://vilnyi-gt-city.uz.ua/en/layout/2d08/
+- 2D09 · B2 · 1 · 26.96 · 4 · 1 · 1590640 · 35048 · https://vilnyi-gt-city.uz.ua/en/layout/2d09/
+- 2D10 · B2 · 1 · 26.32 · 4 · 1 · 1552880 · 34216 · https://vilnyi-gt-city.uz.ua/en/layout/2d10/
+- 2D11 · B2 · 1 · 40.39 · 4 · 1 · 2383010 · 52507 · https://vilnyi-gt-city.uz.ua/en/layout/2d11/
+- 2D12 · B2 · 1 · 29.12 · 4 · 1 · 1718080 · 37856 · https://vilnyi-gt-city.uz.ua/en/layout/2d12/
+- 2D13 · B2 · 1 · 27.36 · 4 · 1 · 1614240 · 35568 · https://vilnyi-gt-city.uz.ua/en/layout/2d13/
+- 2D14 · B2 · 1 · 27.45 · 4 · 1 · 1619550 · 35685 · https://vilnyi-gt-city.uz.ua/en/layout/2d14/
+- 2E01 · B2 · 2 · 58.91 · 5–6 · 2 · 3475690 · 76583 · https://vilnyi-gt-city.uz.ua/en/layout/2e01/
+- 2E02 · B2 · 3 · 69.53 · 5–6 · 2 · 4102270 · 90389 · https://vilnyi-gt-city.uz.ua/en/layout/2e02/
+- 2E03 · B2 · 1 · 25.32 · 5–6 · 2 · 1493880 · 32916 · https://vilnyi-gt-city.uz.ua/en/layout/2e03/
+- 2E04 · B2 · 1 · 31.91 · 5–6 · 2 · 1882690 · 41483 · https://vilnyi-gt-city.uz.ua/en/layout/2e04/
+- 2E05 · B2 · 1 · 35.22 · 5–6 · 2 · 2077980 · 45786 · https://vilnyi-gt-city.uz.ua/en/layout/2e05/
+- 2E06 · B2 · 2 · 47.6 · 5–6 · 2 · 2808400 · 61880 · https://vilnyi-gt-city.uz.ua/en/layout/2e06/
+- 2E07 · B2 · 1 · 28.6 · 5–6 · 2 · 1687400 · 37180 · https://vilnyi-gt-city.uz.ua/en/layout/2e07/
+- 2E08 · B2 · 1 · 28.07 · 5–6 · 2 · 1656130 · 36491 · https://vilnyi-gt-city.uz.ua/en/layout/2e08/
+- 2E09 · B2 · 1 · 27.72 · 5–6 · 2 · 1635480 · 36036 · https://vilnyi-gt-city.uz.ua/en/layout/2e09/
+- 2E10 · B2 · 1 · 27.13 · 5–6 · 2 · 1600670 · 35269 · https://vilnyi-gt-city.uz.ua/en/layout/2e10/
+- 2E11 · B2 · 1 · 36.23 · 5–6 · 2 · 2137570 · 47099 · https://vilnyi-gt-city.uz.ua/en/layout/2e11/
+- 2E12 · B2 · 1 · 29.12 · 5–6 · 2 · 1718080 · 37856 · https://vilnyi-gt-city.uz.ua/en/layout/2e12/
+- 2E13 · B2 · 1 · 27.36 · 5–6 · 2 · 1614240 · 35568 · https://vilnyi-gt-city.uz.ua/en/layout/2e13/
+- 2E14 · B2 · 1 · 27.45 · 5–6 · 2 · 1619550 · 35685 · https://vilnyi-gt-city.uz.ua/en/layout/2e14/
+- 3A01 · B3 · 2 · 38.89 · 1 · 1 · 2294510 · 50557 · https://vilnyi-gt-city.uz.ua/en/layout/3a01/
+- 3A02 · B3 · 1 · 29.71 · 1 · 1 · 1752890 · 38623 · https://vilnyi-gt-city.uz.ua/en/layout/3a02/
+- 3A03 · B3 · 2 · 54.99 · 1 · 1 · 3244410 · 71487 · https://vilnyi-gt-city.uz.ua/en/layout/3a03/
+- 3A04 · B3 · 1 · 44.69 · 1 · 1 · 2636710 · 58097 · https://vilnyi-gt-city.uz.ua/en/layout/3a04/
+- 3B01 · B3 · 1 · 35.81 · 2 · 1 · 2112790 · 46553 · https://vilnyi-gt-city.uz.ua/en/layout/3b01/
+- 3B02 · B3 · 2 · 43.1 · 2 · 1 · 2542900 · 56030 · https://vilnyi-gt-city.uz.ua/en/layout/3b02/
+- 3B03 · B3 · 1 · 33.86 · 2 · 1 · 1997740 · 44018 · https://vilnyi-gt-city.uz.ua/en/layout/3b03/
+- 3B04 · B3 · 2 · 49.95 · 2 · 1 · 2947050 · 64935 · https://vilnyi-gt-city.uz.ua/en/layout/3b04/
+- 3B05 · B3 · 1 · 42.56 · 2 · 1 · 2511040 · 55328 · https://vilnyi-gt-city.uz.ua/en/layout/3b05/
+- 3C01 · B3 · 2 · 50.38 · 3 · 1 · 2972420 · 65494 · https://vilnyi-gt-city.uz.ua/en/layout/3c01/
+- 3C02 · B3 · 2 · 53.06 · 3 · 1 · 3130540 · 68978 · https://vilnyi-gt-city.uz.ua/en/layout/3c02/
+- 3C03 · B3 · 1 · 27.17 · 3 · 1 · 1603030 · 35321 · https://vilnyi-gt-city.uz.ua/en/layout/3c03/
+- 3C04 · B3 · 1 · 42.51 · 3 · 1 · 2508090 · 55263 · https://vilnyi-gt-city.uz.ua/en/layout/3c04/
+- 3C05 · B3 · 1 · 35.81 · 3 · 1 · 2112790 · 46553 · https://vilnyi-gt-city.uz.ua/en/layout/3c05/
+- 3C06 · B3 · 2 · 43.1 · 3 · 1 · 2542900 · 56030 · https://vilnyi-gt-city.uz.ua/en/layout/3c06/
+- 3C07 · B3 · 1 · 33.86 · 3 · 1 · 1997740 · 44018 · https://vilnyi-gt-city.uz.ua/en/layout/3c07/
+- 3C08 · B3 · 2 · 49.95 · 3 · 1 · 2947050 · 64935 · https://vilnyi-gt-city.uz.ua/en/layout/3c08/
+- 3C09 · B3 · 1 · 42.61 · 3 · 1 · 2513990 · 55393 · https://vilnyi-gt-city.uz.ua/en/layout/3c09/
+- 3C10 · B3 · 2 · 58.19 · 3 · 1 · 3433210 · 75647 · https://vilnyi-gt-city.uz.ua/en/layout/3c10/
+- 3C11 · B3 · 1 · 40.28 · 3 · 1 · 2376520 · 52364 · https://vilnyi-gt-city.uz.ua/en/layout/3c11/
+- 3D01 · B3 · 2 · 50.38 · 4–12 · 9 · 2972420 · 65494 · https://vilnyi-gt-city.uz.ua/en/layout/3d01/
+- 3D02 · B3 · 2 · 46.47 · 4–12 · 9 · 2741730 · 60411 · https://vilnyi-gt-city.uz.ua/en/layout/3d02/
+- 3D03 · B3 · 1 · 27.48 · 4–12 · 9 · 1621320 · 35724 · https://vilnyi-gt-city.uz.ua/en/layout/3d03/
+- 3D04 · B3 · 1 · 40.11 · 4–12 · 9 · 2366490 · 52143 · https://vilnyi-gt-city.uz.ua/en/layout/3d04/
+- 3D05 · B3 · 1 · 35.81 · 4–12 · 9 · 2112790 · 46553 · https://vilnyi-gt-city.uz.ua/en/layout/3d05/
+- 3D06 · B3 · 2 · 43.1 · 4–12 · 9 · 2542900 · 56030 · https://vilnyi-gt-city.uz.ua/en/layout/3d06/
+- 3D07 · B3 · 1 · 33.86 · 4–12 · 9 · 1997740 · 44018 · https://vilnyi-gt-city.uz.ua/en/layout/3d07/
+- 3D08 · B3 · 2 · 49.95 · 4–12 · 9 · 2947050 · 64935 · https://vilnyi-gt-city.uz.ua/en/layout/3d08/
+- 3D09 · B3 · 1 · 41.66 · 4–12 · 9 · 2457940 · 54158 · https://vilnyi-gt-city.uz.ua/en/layout/3d09/
+- 3D10 · B3 · 2 · 56.9 · 4–12 · 9 · 3357100 · 73970 · https://vilnyi-gt-city.uz.ua/en/layout/3d10/
+- 3D11 · B3 · 1 · 40.28 · 4–12 · 9 · 2376520 · 52364 · https://vilnyi-gt-city.uz.ua/en/layout/3d11/
+- 3E01 · B3 · 2 · 50.38 · 13 · 1 · 2972420 · 65494 · https://vilnyi-gt-city.uz.ua/en/layout/3e01/
+- 3E02 · B3 · 2 · 46.94 · 13 · 1 · 2769460 · 61022 · https://vilnyi-gt-city.uz.ua/en/layout/3e02/
+- 3E03 · B3 · 1 · 27.46 · 13 · 1 · 1620140 · 35698 · https://vilnyi-gt-city.uz.ua/en/layout/3e03/
+- 3E04 · B3 · 1 · 40.11 · 13 · 1 · 2366490 · 52143 · https://vilnyi-gt-city.uz.ua/en/layout/3e04/
+- 3E05 · B3 · 2 · 76.19 · 13 · 1 · 4495210 · 99047 · https://vilnyi-gt-city.uz.ua/en/layout/3e05/
+- 3E06 · B3 · 2 · 76.89 · 13 · 1 · 4536510 · 99957 · https://vilnyi-gt-city.uz.ua/en/layout/3e06/
+- 3E07 · B3 · 2 · 56.62 · 13 · 1 · 3340580 · 73606 · https://vilnyi-gt-city.uz.ua/en/layout/3e07/
+- 3E08 · B3 · 1 · 40.28 · 13 · 1 · 2376520 · 52364 · https://vilnyi-gt-city.uz.ua/en/layout/3e08/
+- 3F01 · B3 · 2 · 50.38 · 14–17 · 4 · 2972420 · 65494 · https://vilnyi-gt-city.uz.ua/en/layout/3f01/
+- 3F02 · B3 · 2 · 46.47 · 14–17 · 4 · 2741730 · 60411 · https://vilnyi-gt-city.uz.ua/en/layout/3f02/
+- 3F03 · B3 · 1 · 27.46 · 14–17 · 4 · 1620140 · 35698 · https://vilnyi-gt-city.uz.ua/en/layout/3f03/
+- 3F04 · B3 · 1 · 40.11 · 14–17 · 4 · 2366490 · 52143 · https://vilnyi-gt-city.uz.ua/en/layout/3f04/
+- 3F05 · B3 · 2 · 66.65 · 14–17 · 4 · 3932350 · 86645 · https://vilnyi-gt-city.uz.ua/en/layout/3f05/
+- 3F06 · B3 · 2 · 65.07 · 14–17 · 4 · 3839130 · 84591 · https://vilnyi-gt-city.uz.ua/en/layout/3f06/
+- 3F07 · B3 · 2 · 56.62 · 14–17 · 4 · 3340580 · 73606 · https://vilnyi-gt-city.uz.ua/en/layout/3f07/
+- 3F08 · B3 · 1 · 40.28 · 14–17 · 4 · 2376520 · 52364 · https://vilnyi-gt-city.uz.ua/en/layout/3f08/
+- 4A01 · B4 · 1 · 39.62 · 1 · 1 · 2337580 · 51506 · https://vilnyi-gt-city.uz.ua/en/layout/4a01/
+- 4A02 · B4 · 2 · 52.94 · 1 · 1 · 3123460 · 68822 · https://vilnyi-gt-city.uz.ua/en/layout/4a02/
+- 4A03 · B4 · 1 · 27.01 · 1 · 1 · 1593590 · 35113 · https://vilnyi-gt-city.uz.ua/en/layout/4a03/
+- 4A04 · B4 · 2 · 73.21 · 1 · 1 · 4319390 · 95173 · https://vilnyi-gt-city.uz.ua/en/layout/4a04/
+- 4A05 · B4 · 1 · 27.38 · 1 · 1 · 1615420 · 35594 · https://vilnyi-gt-city.uz.ua/en/layout/4a05/
+- 4B01 · B4 · 1 · 40.08 · 2–10 · 9 · 2364720 · 52104 · https://vilnyi-gt-city.uz.ua/en/layout/4b01/
+- 4B02 · B4 · 2 · 52.69 · 2–10 · 9 · 3108710 · 68497 · https://vilnyi-gt-city.uz.ua/en/layout/4b02/
+- 4B03 · B4 · 1 · 27.84 · 2–10 · 9 · 1642560 · 36192 · https://vilnyi-gt-city.uz.ua/en/layout/4b03/
+- 4B04 · B4 · 1 · 29.64 · 2–10 · 9 · 1748760 · 38532 · https://vilnyi-gt-city.uz.ua/en/layout/4b04/
+- 4B05 · B4 · 1 · 43.75 · 2–10 · 9 · 2581250 · 56875 · https://vilnyi-gt-city.uz.ua/en/layout/4b05/
+- 4B06 · B4 · 1 · 37.18 · 2–10 · 9 · 2193620 · 48334 · https://vilnyi-gt-city.uz.ua/en/layout/4b06/
+- 4B07 · B4 · 1 · 39.13 · 2–10 · 9 · 2308670 · 50869 · https://vilnyi-gt-city.uz.ua/en/layout/4b07/
+- 4B08 · B4 · 1 · 38.6 · 2–10 · 9 · 2277400 · 50180 · https://vilnyi-gt-city.uz.ua/en/layout/4b08/
+- 4B09 · B4 · 1 · 45.97 · 2–10 · 9 · 2712230 · 59761 · https://vilnyi-gt-city.uz.ua/en/layout/4b09/
+- 4B10 · B4 · 1 · 39.38 · 2–10 · 9 · 2323420 · 51194 · https://vilnyi-gt-city.uz.ua/en/layout/4b10/
+- 4B11 · B4 · 1 · 36.95 · 2–10 · 9 · 2180050 · 48035 · https://vilnyi-gt-city.uz.ua/en/layout/4b11/
+- 4B12 · B4 · 1 · 26.86 · 2–10 · 9 · 1584740 · 34918 · https://vilnyi-gt-city.uz.ua/en/layout/4b12/
 
 ## Nearby / Поруч (straight-line distance from the plot)
 - Bus stop · Hrushevskoho St / Зупинка «вул. Грушевського»: ≈72 m
