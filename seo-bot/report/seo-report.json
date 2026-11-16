@@ -1,5 +1,5 @@
 {
- "generated": "2026-11-09T11:47:15Z",
+ "generated": "2026-11-16T11:40:12Z",
  "base": "https://vilnyi-gt-city.uz.ua",
  "pages": 968,
  "sitemapUrls": 968,
@@ -23,9 +23,9 @@
   "WebSite": 968
  },
  "htmlBytes": {
-  "min": 14937,
+  "min": 14939,
   "max": 48679,
-  "avg": 22954
+  "avg": 22956
  },
  "eagerImageBytes": {
   "min": 0,
@@ -48,24 +48,24 @@
   "pinged": 969,
   "neverPinged": 0,
   "lastPing": {
-   "date": "2026-11-02",
-   "urls": 16,
-   "mode": "daily"
+   "date": "2026-11-09",
+   "urls": 962,
+   "mode": "weekly"
   }
  },
  "lighthouse": [
   {
    "url": "https://vilnyi-gt-city.uz.ua/",
    "scores": {
-    "performance": 29,
+    "performance": 33,
     "accessibility": 93,
     "best-practices": 100,
     "seo": 100
    },
-   "lcp_ms": 10070,
-   "cls": 0.141,
-   "tbt_ms": 2793,
-   "bytes": 2872638
+   "lcp_ms": 10415,
+   "cls": 0.134,
+   "tbt_ms": 1770,
+   "bytes": 2872769
   },
   {
    "url": "https://vilnyi-gt-city.uz.ua/uk/",
@@ -75,10 +75,10 @@
     "best-practices": 100,
     "seo": 100
    },
-   "lcp_ms": 1503,
+   "lcp_ms": 1507,
    "cls": 0,
-   "tbt_ms": 16,
-   "bytes": 151462
+   "tbt_ms": 20,
+   "bytes": 151454
   },
   {
    "url": "https://vilnyi-gt-city.uz.ua/en/",
@@ -88,10 +88,10 @@
     "best-practices": 100,
     "seo": 100
    },
-   "lcp_ms": 1522,
+   "lcp_ms": 1503,
    "cls": 0,
    "tbt_ms": 0,
-   "bytes": 150495
+   "bytes": 150526
   },
   {
    "url": "https://vilnyi-gt-city.uz.ua/uk/apartments/",
@@ -101,10 +101,10 @@
     "best-practices": 100,
     "seo": 100
    },
-   "lcp_ms": 1218,
+   "lcp_ms": 1289,
    "cls": 0,
-   "tbt_ms": 0,
-   "bytes": 97151
+   "tbt_ms": 2,
+   "bytes": 97126
   },
   {
    "url": "https://vilnyi-gt-city.uz.ua/uk/layout/1b01/",
@@ -114,10 +114,10 @@
     "best-practices": 100,
     "seo": 100
    },
-   "lcp_ms": 788,
+   "lcp_ms": 782,
    "cls": 0,
-   "tbt_ms": 0,
-   "bytes": 19353
+   "tbt_ms": 10,
+   "bytes": 19364
   },
   {
    "url": "https://vilnyi-gt-city.uz.ua/uk/faq/",
@@ -127,10 +127,10 @@
     "best-practices": 100,
     "seo": 100
    },
-   "lcp_ms": 909,
+   "lcp_ms": 773,
    "cls": 0,
-   "tbt_ms": 20,
-   "bytes": 19598
+   "tbt_ms": 49,
+   "bytes": 19645
   }
  ],
  "ok": true
