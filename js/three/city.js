@@ -130,15 +130,23 @@ if (uGTex > .5 && vUpY > .7) { float mx = max(vc.r, max(vc.g, vc.b)), mn = min(v
   };
   decal.customProgramCacheKey = () => 'city-decal-v28';
   // buildings: procedural facades. aA = (u from wall centre, v above ground, style, seed)   aB = (wall length, floor height, floors, eave height)
-  const bld = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  // V30: real CC0 facades — wall materials (ambientCG Plaster003 / Concrete034 / PaintedPlaster015 / Bricks085: albedo detail +
+  // normals) under the procedural windows, photo facades with windows (ambientCG Facade018A / 019A / 020A / 006) on apartment,
+  // office and civic blocks (aligned to the building's floors), glass reflections (PBR on desktops), lit windows at night.
+  const bld = st.pbr ? new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.88, metalness: 0 }) : new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   bld.onBeforeCompile = sh => {
     sh.uniforms.uNight = SHARED.uNight; sh.uniforms.uLitK = U.uLitK; sh.uniforms.uShop = U.uShop;
+    for (const k of ['tWD', 'tWB', 'tWN', 'tFC', 'tFM', 'uFTex']) sh.uniforms[k] = U[k];
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 aA; attribute vec4 aB; varying vec4 vA; varying vec4 vB;').replace('#include <fog_vertex>', '#include <fog_vertex>\nvA = aA; vB = aB;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec4 vA; varying vec4 vB; uniform float uNight; uniform float uLitK; uniform float uShop;\nvec3 cEmis;\n' + GLSL_FACADE)
-      .replace('#include <color_fragment>', '#include <color_fragment>\ncEmis = vec3(0.); if (vA.z > .5) diffuseColor.rgb = facade(diffuseColor.rgb);')
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec4 vA; varying vec4 vB; uniform float uNight; uniform float uLitK; uniform float uShop; uniform sampler2D tWD, tWB, tWN, tFC, tFM; uniform float uFTex;\nvec3 cEmis; float gGlass = 0.; vec3 gWN = vec3(0., 0., 1.); float gWNk = 0.; vec2 gDx = vec2(0.), gDy = vec2(0.);\n' + GLSL_FACADE)
+      .replace('#include <color_fragment>', '#include <color_fragment>\ncEmis = vec3(0.); gDx = dFdx(vA.xy); gDy = dFdy(vA.xy); if (vA.z > .5) diffuseColor.rgb = facade(diffuseColor.rgb);')
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+if (gWNk > .01) { vec3 upV = normalize((viewMatrix * vec4(0., 1., 0., 0.)).xyz); vec3 tV = normalize(cross(normal, upV)); vec3 bV = cross(tV, normal);
+  normal = normalize(mix(normal, normalize(tV * gWN.x + bV * gWN.y + normal * gWN.z), gWNk * (1. - smoothstep(30., 120., length(vViewPosition))))); }`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += cEmis;');
+    if (st.pbr) sh.fragmentShader = sh.fragmentShader.replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, .22, gGlass);');
   };
-  bld.customProgramCacheKey = () => 'city-bld';
+  bld.customProgramCacheKey = () => 'city-bld-v30' + (st.pbr ? 'p' : 'l');
   // props: aA = (glow, signal code, day-only, 0)
   const props = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   props.onBeforeCompile = sh => {
@@ -171,9 +179,39 @@ if (uGTex > .5 && vUpY > .7) { float mx = max(vc.r, max(vc.g, vc.b)), mn = min(v
 }
 const GLSL_FACADE = `
 float fH(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+vec3 photoFacade(float cell, float u, float v, float fh, float seed, float bH){
+  float big = step(2.5, cell), cols = mix(6., 12., big), rows = mix(6., 8., big), bw = mix(3.1, 1.6, big);
+  vec2 t = vec2(u / (cols * bw) + bH * 3., v / (rows * fh)), f = fract(t);
+  vec2 o = vec2(mod(cell, 2.), 1. - floor(cell / 2.)) * .5, cuv = o + clamp(f, .003, .997) * .5;
+  vec2 sc = 1. / vec2(cols * bw, rows * fh), gx = gDx * sc * .5, gy = gDy * sc * .5;   // derivatives taken in uniform control flow (main)
+  vec3 c = textureGrad(tFC, cuv, gx, gy).rgb; vec2 m = textureLod(tFM, cuv, max(4.5, log2(max(length(gx), length(gy)) * 2048.) + 1.)).rg; m.x = smoothstep(.2, .5, m.x);   // a coarse mip: whole panes, not the mullions / blinds   // blurred mask: whole panes, not the blinds
+  gGlass = m.x * .55;
+  vec2 wc = floor(t * vec2(cols, rows) + .5); float r = fH(wc * vec2(1.31, 2.17) + vec2(floor(seed * 8. + .37) * .7, floor(bH * 64.)));
+  float lit = step(r, .45 * uLitK) * smoothstep(.3, .7, m.x);
+  if (lit > .5) { vec3 warm = mix(vec3(1., .66, .34), vec3(.95, .85, .66), fH(wc.yx + 3.)); cEmis = warm * uNight * (.2 + .32 * fH(wc + 9.)) * m.x; c = mix(c, warm * .35, .3 * uNight * m.x); }
+  return c * (.88 + .24 * bH);
+}
 vec3 facade(vec3 wall){
   float u = vA.x, v = vA.y, st = floor(vA.z + .5), seed = vA.w, len = vB.x, fh = vB.y, floors = vB.z, H = vB.w;
+  // per-building hash from QUANTISED inputs: interpolated 'constant' varyings differ by rounding noise, and fH amplifies it
+  // (H * 4 is never near a .5 boundary for heights in 0.1 m / 0.25 m steps; fh would be: (H - .7) / floors hits x.5 exactly)
+  float bH = fH(vec2(floor(H * 4. + .5) * .37 + 1.3, floor(floors + .5) * .71));
   vec3 c = wall; float fi = floor(v / fh), fv = v - fi * fh;
+  if (uFTex > .5) {
+    // photo facades with windows on the bigger modern blocks (aligned to the building's own floors)
+    float cell = -1.;
+    if (st == 4. && floors >= 3.) cell = floor(bH * 3.);
+    else if (st == 5. && fi > .5 && floors >= 2.) cell = floors >= 5. && bH < .5 ? 3. : bH < .75 ? 0. : 1.;
+    else if (st == 7. && floors >= 3. && bH < .45) cell = 0.;
+    if (cell >= 0. && len > 4.) return photoFacade(cell, u, v, fh, seed, bH);
+    // real wall materials under the procedural windows
+    vec2 wuv = vec2(u, v) / 2.6; vec4 wd = textureGrad(tWD, wuv, gDx / 2.6, gDy / 2.6); vec4 wn = textureGrad(tWN, wuv, gDx / 2.6, gDy / 2.6);
+    bool brick = (st == 1. && bH < .2) || (st == 6. && bH < .45) || st == 9.;
+    if (brick) { vec2 buv = vec2(u / 2., v), bx = gDx * vec2(.5, 1.), by = gDy * vec2(.5, 1.); vec3 bc = textureGrad(tWB, buv, bx, by).rgb; float bl = textureGrad(tWD, buv, bx, by).a * 2.; vec4 bn = textureGrad(tWN, buv, bx, by);
+      c = st == 9. ? c * mix(1., bl, .75) : mix(c * bl, bc * (.85 + .3 * bH), .85); gWN = vec3(bn.zw * 2. - 1., 1.); gWNk = .8; }
+    else if (st == 3. || st == 10. || st == 11.) { c *= mix(1., wd.g * 2., .55); gWN = vec3(wn.xy * 2. - 1., 1.4); gWNk = .45; }
+    else { float k = st == 2. ? .75 : .65; c *= mix(1., mix(wd.r, wd.b, st == 2. ? .45 : .25) * 2., k); gWN = vec3(wn.xy * 2. - 1., .9); gWNk = .9; }
+  }
   float bw = 3.2, ww = 1.3, wh = 1.4, sill = 0.9; vec3 frame = vec3(.86, .85, .8); float litP = .32;
   if (st == 1.) { bw = 3.5; ww = 1.25; wh = 1.3; sill = .95; frame = fH(vec2(seed, 3.)) > .5 ? vec3(.9, .9, .88) : vec3(.3, .2, .14); litP = .4; }
   else if (st == 2.) { bw = 2.7; ww = 1.05; wh = fh * .52; sill = fh * .24; frame = vec3(.93, .91, .84); litP = .34; }
@@ -210,8 +248,9 @@ vec3 facade(vec3 wall){
   if (!inW) return c;
   if (st == 10.) { return vec3(.36, .38, .4) * (.8 + .25 * fH(vec2(bi, seed))) * (.94 + .06 * step(.5, fract(y0 * 5.))); }
   float fr = .07; bool isFrame = ax > ww * .5 - fr || y0 < fr || y0 > wh - fr || abs(fu) < .028 || (st != 5. && abs(y0 - wh * .68) < .025) || (st == 5. && fi < .5 && abs(fract(fu / 1.8 + .5) - .5) * 1.8 < .03);
-  if (isFrame) return frame;
+  if (isFrame) { gWNk = 0.; return frame; }
   vec3 glass = mix(vec3(.13, .17, .22), vec3(.32, .4, .48), .35 + .4 * y0 / wh) * (.8 + .4 * rnd);
+  gGlass = .85; gWNk = 0.;
   float lit = step(rnd, litP * uLitK);
   if (st == 5. && fi < .5) lit = uShop;
   if (lit > .5) { vec3 warm = mix(vec3(1., .78, .45), vec3(.95, .9, .75), fH(vec2(rnd, 4.))); float k = uNight * (.3 + .4 * fH(vec2(bi, fi + seed))); cEmis = warm * k * (.75 + .25 * step(.3, fract(fu * 1.3 + y0)));
@@ -312,12 +351,18 @@ export async function createCity(scene, opts = {}) {
   let R0 = opts.detail === 'far' ? -1 : R0_FULL;      // 'far' = buildings + the far ground texture only (balcony views of the walkthrough)
   const GROUND_PX = LOW ? 256 : 512, FRAME_MS = opts.frameMs || (LOW ? 5 : 6), ATLAS_K = LOW ? 0.5 : 1, MAX_FRONTS = LOW ? 40 : 110;
   const group = new THREE.Group(); group.name = 'vrc-city';
-  const st = { U: { uLitK: { value: 1 }, uShop: { value: 0 }, uTerrace: { value: 1 }, tGD: { value: null }, tGN1: { value: null }, tGN2: { value: null }, uGTex: { value: 0 } }, radial: null, pbr: !LOW };
+  const st = { U: { uLitK: { value: 1 }, uShop: { value: 0 }, uTerrace: { value: 1 }, tGD: { value: null }, tGN1: { value: null }, tGN2: { value: null }, uGTex: { value: 0 }, tWD: { value: null }, tWB: { value: null }, tWN: { value: null }, tFC: { value: null }, tFM: { value: null }, uFTex: { value: 0 } }, radial: null, pbr: !LOW };
   {                                                   // V28: CC0 ground material detail (assets/v28/ground, 512 px on touch / low, 1024 otherwise)
     const tl = new THREE.TextureLoader(), px = LOW ? 512 : 1024, base = new URL('../../assets/v28/ground/', import.meta.url).href;
     let n = 0; const done = () => { if (++n === 3 && !disposed) st.U.uGTex.value = 1; };
     const ld = (k, f, srgb) => { const t = tl.load(base + f + '-' + px + '.webp', done, undefined, e => console.info('[city] ground detail not used', e && e.message)); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; st.U[k].value = t; };
     ld('tGD', 'detail', false); ld('tGN1', 'nrm1', false); ld('tGN2', 'nrm2', false);
+  }
+  {                                                   // V30: CC0 wall materials + photo facades (assets/v30/facade; 512 / 1024-atlas on touch / low)
+    const tl = new THREE.TextureLoader(), px = LOW ? 512 : 1024, base = new URL('../../assets/v30/facade/', import.meta.url).href;
+    let n = 0; const done = () => { if (++n === 5 && !disposed) st.U.uFTex.value = 1; };
+    const ld = (k, f, srgb, mip = true) => { const t = tl.load(base + f + '-' + px + '.webp', done, undefined, e => console.info('[city] facade materials not used', e && e.message)); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; st.U[k].value = t; };
+    ld('tWD', 'wall-d', false); ld('tWB', 'wall-b', true); ld('tWN', 'wall-n', false); ld('tFC', 'fac-c', true); ld('tFM', 'fac-m', false);
   }
   { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.4, 'rgba(255,255,255,.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); st.radial = new THREE.CanvasTexture(c); }
   const M = makeMaterials(st);
@@ -329,6 +374,11 @@ export async function createCity(scene, opts = {}) {
         for (const T of tilesLive.values()) if (T.done0 && !T.kit) { dropDetail(T); T.steps0 = null; T.want = 0; if (!queue.includes(T)) queue.push(T); }
         return k; })
       .catch(e => { console.info('[city] street kit not used', e && e.message); return null; });
+  // V30: CC0-textured street trees (tree-kit.js: hi / lo meshes + impostors, wind) over every live tile; blobs stay the fallback
+  let trees = null, treesDirty = false, treesFx = 1e9, treesFz = 1e9;
+  if (opts.trees !== false && opts.detail !== 'far') import('./tree-kit.js').then(m => m.loadTreeKit({ low: LOW, uTime: SHARED.uTime })).then(k => { if (!k || !k.ready) return; if (disposed) { k.dispose(); return; } trees = k; group.add(k.group); k.setMode(mode); treesDirty = true;
+      for (const T of tilesLive.values()) if (T.done0 && !T.treesK) { dropDetail(T); T.steps0 = null; T.want = 0; if (!queue.includes(T)) queue.push(T); } })
+    .catch(e => console.info('[city] trees not used', e && e.message));
   if (SHARED.envMap) { M.water.envMap = SHARED.envMap; } SHARED.mats.add(M.water);
   let mode = opts.mode || SHARED.mode || 'day', disposed = false;
   const tilesLive = new Map(), readyCbs = [], waiters = [];
@@ -522,7 +572,8 @@ export async function createCity(scene, opts = {}) {
   function buildProps(T) {
     const D = T.data, buf = new Buf(1), pools = [], ox = T.x0, oz = T.z0, pr = tileProps(T.ix, T.iz);
     const trunk = col('#4a3b2e'), pole = col('#3d4144'), head = col('#ffd9a0');
-    for (const [x, z, h, kind] of pr.trees) { const hh = hash2(x * 10 | 0, z * 10 | 0), yaw = hh * 6.28;
+    T.treesK = !!trees;
+    for (const [x, z, h, kind] of trees ? [] : pr.trees) { const hh = hash2(x * 10 | 0, z * 10 | 0), yaw = hh * 6.28;
       if (kind === 1) { addT(buf, T_CYL, x - ox, h * 0.12, z - oz, 0.18, h * 0.24, 0.18, 0, trunk); addT(buf, T_CONE, x - ox, h * 0.6, z - oz, h * 0.22, h * 0.8, h * 0.22, yaw, col(hh < 0.5 ? '#3d5f38' : '#45683c'), null, 0.35, 0.9); }
       else { const cr = kind === 2 ? h * 0.36 : h * 0.33, g = col(['#4f6b2f', '#587436', '#466328', '#5e7a3a', '#6a8040'][Math.floor(hh * 5)]); addT(buf, T_CYL, x - ox, h * 0.25, z - oz, 0.16 + h * 0.012, h * 0.5, 0.16 + h * 0.012, 0, trunk);
         addT(buf, T_ICO, x - ox, h * 0.66, z - oz, cr, h * 0.36, cr, yaw, g, null, 0.3, 1.1);
@@ -648,7 +699,7 @@ export async function createCity(scene, opts = {}) {
   function* stepsL1(T) { const n = T.data.bld.length, CH = LOW ? 10 : 16; for (let i = 0; i < Math.max(1, n); i += CH) { buildBuildings(T, i, i + CH >= n ? Infinity : i + CH); yield; } T.done1 = true; T.detailOwnFrom = T.own.length; }
   function* stepsL0(T) { T.step = 'ground'; buildGround(T); yield; T.step = 'roads'; buildRoads(T); yield; T.step = 'fronts'; buildFronts(T); yield; T.step = 'propsData'; tileProps(T.ix, T.iz); yield; T.step = 'props'; buildProps(T); yield; T.step = 'bld'; T.done0 = true; }
   function dropDetail(T) { if (T.kit) { T.kit = null; kitDirty = true; } for (let i = T.detailOwnFrom; i < T.own.length; i++) T.own[i].dispose && T.own[i].dispose(); T.own.length = T.detailOwnFrom; T.detail.clear(); T.done0 = false; T.fronts = null; T.frontMesh = null; T.frontMat = null; T.pools = null; T.signPoles = null; }
-  function dropTile(T) { if (T.kit) { T.kit = null; kitDirty = true; } for (const o of T.own) o.dispose && o.dispose(); group.remove(T.group); tilesLive.delete(T.ix + ':' + T.iz); counters.dropped++; }
+  function dropTile(T) { treesDirty = true; if (T.kit) { T.kit = null; kitDirty = true; } for (const o of T.own) o.dispose && o.dispose(); group.remove(T.group); tilesLive.delete(T.ix + ':' + T.iz); counters.dropped++; }
   const queue = [];
   let lastFx = 1e9, lastFz = 1e9, fx = 0, fz = 0;
   function plan(x, z, force) {
@@ -669,7 +720,7 @@ export async function createCity(scene, opts = {}) {
       let bi = 0, bs = 1e18; for (let i = 0; i < queue.length; i++) { const T = queue[i]; const dx = T.x0 + TILE / 2 - fx, dz = T.z0 + TILE / 2 - fz, s = hyp(dx, dz) + (!T.done1 ? 0 : 120); if (s < bs) { bs = s; bi = i; } }
       const T = queue[bi]; if (!tilesLive.has(T.ix + ':' + T.iz)) { queue.splice(bi, 1); continue; }
       const ts = performance.now();
-      if (!T.done1) { if (!T.steps1) T.steps1 = stepsL1(T); T.steps1.next(); if (T.done1) { counters.built++; if (T.want !== 0) fire(T); } }
+      if (!T.done1) { if (!T.steps1) T.steps1 = stepsL1(T); T.steps1.next(); if (T.done1) { counters.built++; treesDirty = true; if (T.want !== 0) fire(T); } }
       else if (T.want === 0 && !T.done0) { if (!T.steps0) T.steps0 = stepsL0(T); T.steps0.next(); if (T.done0) { T.steps0 = null; fire(T); } }
       if (T.done1 && (T.want !== 0 || T.done0)) queue.splice(bi, 1);
       const dt = performance.now() - ts; counters.buildMs += dt; counters.steps++; if (dt > counters.maxStepMs) counters.maxStepMs = dt; { const k = T.step || 'bld'; if (!(counters.byStep[k] >= dt)) counters.byStep[k] = Math.round(dt); } did++;
@@ -690,11 +741,14 @@ export async function createCity(scene, opts = {}) {
       const la = velocity ? 1.6 : 0; fx = p.x + (velocity ? velocity.x * la : 0); fz = p.z + (velocity ? velocity.z * la : 0);
       plan(fx, fz, false); if (queue.length) work(FRAME_MS);
       // street kit: only the furniture within KIT_R of the focus is drawn (rebuilt when the focus moved 40 m or tiles changed)
+      if (trees && (treesDirty || hyp(fx - treesFx, fz - treesFz) > 12)) { treesDirty = false; treesFx = fx; treesFz = fz; const all = [], RR = trees.R.imp + TILE;
+        for (const T of tilesLive.values()) { if (!T.done1 || hyp(T.x0 + TILE / 2 - fx, T.z0 + TILE / 2 - fz) > RR) continue; for (const t of tileProps(T.ix, T.iz).trees) all.push(t); }
+        trees.rebuild(all, fx, fz); }
       if (kit && (kitDirty || hyp(fx - kitFx, fz - kitFz) > 40)) { kitDirty = false; kitFx = fx; kitFz = fz; const all = [], R2 = KIT_R * KIT_R;
         for (const T of tilesLive.values()) if (T.kit) for (const it of T.kit) { const dx = it.x - fx, dz = it.z - fz; if (dx * dx + dz * dz < R2 * (it.k === 'manhole' ? 0.35 : 1)) all.push(it); }
         kit.rebuild(all); }
     },
-    setMode(m) { mode = m; setCityClock({ mode: m }); if (kit) kit.setNight(m === 'day' ? 0 : m === 'dusk' ? 0.8 : 1); st.U.uLitK.value = m === 'day' ? 0 : m === 'dusk' ? 1.25 : 0.55; st.U.uShop.value = m === 'night' ? 0.15 : 1; st.U.uTerrace.value = m === 'night' ? 0 : 1;
+    setMode(m) { mode = m; setCityClock({ mode: m }); if (trees) trees.setMode(m); if (kit) kit.setNight(m === 'day' ? 0 : m === 'dusk' ? 0.8 : 1); st.U.uLitK.value = m === 'day' ? 0 : m === 'dusk' ? 1.25 : 0.55; st.U.uShop.value = m === 'night' ? 0.15 : 1; st.U.uTerrace.value = m === 'night' ? 0 : 1;
       M.pool.opacity = m === 'night' ? 0.62 : m === 'dusk' ? 0.4 : 0; for (const T of tilesLive.values()) { applyOpen(T); if (T.pools) T.pools.visible = m !== 'day'; } },
     /** Builds every tile touching the circle to full detail; resolves when done (work continues in update(); pass sync = true to finish now). */
     ensureTiles(x, z, r = 250, sync = false) {
@@ -707,8 +761,8 @@ export async function createCity(scene, opts = {}) {
     onTileReady(cb) { readyCbs.push(cb); return () => { const i = readyCbs.indexOf(cb); if (i >= 0) readyCbs.splice(i, 1); }; },
     tileReady(x, z) { const T = tilesLive.get(Math.floor(x / TILE) + ':' + Math.floor(z / TILE)); return !!(T && T.done0); },
     stats() { let l0 = 0, l1 = 0, tris = 0, calls = 3; for (const T of tilesLive.values()) { if (T.done0) l0++; else if (T.done1) l1++; tris += T.tris; calls += T.group.children.length - 1 + T.detail.children.length; } return { tiles: tilesLive.size, l0, l1, calls, buildingTris: tris, queue: queue.length, ...counters, r0: R0, r1: R1 }; },
-    get kit() { return kit; },
-    dispose() { disposed = true; if (kit) { kit.dispose(); kit = null; } for (const T of [...tilesLive.values()]) dropTile(T); far.tex.dispose(); far.mesh.geometry.dispose(); far.mesh.material.dispose(); far.sm.geometry.dispose(); far.sm.material.dispose(); group.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    get kit() { return kit; }, get trees() { return trees; },
+    dispose() { disposed = true; if (trees) { trees.dispose(); trees = null; } if (kit) { kit.dispose(); kit = null; } for (const T of [...tilesLive.values()]) dropTile(T); far.tex.dispose(); far.mesh.geometry.dispose(); far.mesh.material.dispose(); far.sm.geometry.dispose(); far.sm.material.dispose(); group.traverse(o => { if (o.geometry) o.geometry.dispose(); });
       for (const k of Object.keys(M)) M[k].dispose(); SHARED.mats.delete(M.water); st.radial.dispose(); if (group.parent) group.parent.remove(group); },
   };
   api.setMode(mode);

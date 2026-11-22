@@ -25,6 +25,7 @@ const CSS = `
 .vw[dir=rtl] .vrc-police-stars{right:auto;left:calc(10px + var(--sl))}
 .vw.phone .vrc-police-stars{top:calc(150px + var(--st))}.vw.phone .vrc-police-stars{top:calc(110px + var(--st) + var(--vw-toph,40px))}
 .vw .vrc-police-stars span{font-size:18px}
+@media (orientation:landscape){.vw.phone .vrc-police-stars{top:calc(80px + var(--st) + var(--vw-toph,40px))}}
 .vw-gtake{position:absolute;left:50%;bottom:calc(150px + var(--sb));transform:translateX(-50%);z-index:2}
 `;
 

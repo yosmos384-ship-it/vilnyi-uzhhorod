@@ -1,0 +1,20 @@
+ЖК VILNYI — GT VILNYI drive world, v0.15 (V30 realism): third-party material in this folder. Only CC0 assets are used.
+
+people/ — 11 pedestrian characters (m1–m6, f1–f5; *-hi.glb desktop, *-lo.glb phones), built for this site with
+  MakeHuman / MPFB2 (http://www.makehumancommunity.org, github.com/makehumancommunity/mpfb2 v2.0.18). All MakeHuman assets used
+  are CC0 1.0 ("explicitly released as CC0 in september 2020", Data Collection AB / Joel Palmius / Jonas Hauquier):
+  base mesh + shape targets + game_engine rig weights (MPFB2 data, LICENSE.ASSETS.md), and from the MakeHuman system asset pack
+  makehuman_system_assets_cc0.zip: skins (young/middleage/old caucasian, young african, young asian), eyes (low-poly + iris
+  materials), eyebrows, eyelashes, hair (short01–04, ponytail01, long01, bob01, bob02), clothes (male_casualsuit01/03/04/05,
+  male_elegantsuit01, male_worksuit01, female_casualsuit01, female_elegantsuit01, shoes01–06). Changed here: posed to the
+  site's rest pose, hidden skin removed, decimated, weights merged into the site's 17 bones, textures packed into one atlas per
+  character; small prints / emblems on the t-shirts painted out (plain clothes, no logos). MPFB code (GPL-3) is only the build
+  tool and is not shipped. Bodies are invented (no real person).
+trees/ — linden, maple, hornbeam, ornamental, spruce: tree geometry generated for this site (own script); textures from
+  ambientCG (https://ambientcg.com, CC0 1.0, https://docs.ambientcg.com/license/): leaf scans LeafSet004, LeafSet010,
+  LeafSet014, LeafSet001, LeafSet019 (composed here into twig cards), bark Bark014, Bark012; Poly Haven
+  (https://polyhaven.com, CC0 1.0, https://polyhaven.com/license): bark_platanus. Impostors rendered here from the trees.
+facade/ — ambientCG (CC0 1.0): Plaster003, Concrete034, PaintedPlaster015, Bricks085 (wall-d / wall-b / wall-n: repacked
+  albedo detail, colour, normals); Facade018A, Facade019A, Facade020A, Facade006 (fac-c colour atlas; fac-m = glass mask
+  from their roughness maps + their emission maps).
+Code: three.js r187 (MIT, vendor/). Everything else in the drive world is made for this site.

@@ -9,6 +9,7 @@ import { makeTraits, makeFigure, skeleton, paletteOf, variantsOf, templateGeomet
 import { cityAdapter, driveAdapter, carState } from './people-adapters.js';
 import { createPeopleAudio } from './people-audio.js';
 import { createProps } from './people-props.js';
+import { loadRealPeople } from './people-real.js';
 export { makePerson, makeTraits };
 
 const TAU = Math.PI * 2, hyp = Math.hypot, clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v, lerp = (a, b, t) => a + (b - a) * t;
@@ -39,6 +40,10 @@ export function createPeople(scene, opts = {}) {
   const seed0 = (opts.seed ?? 20261008) >>> 0, rnd = rng(seed0 ^ 0xBEEF), audio = opts.audio || createPeopleAudio();
   const L = {}, emit = (evt, d) => { (L[evt] || []).forEach(cb => { try { cb(d); } catch (e) { console.error(e); } }); if (opts.domEvents && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(evt, { detail: d })); };
   const root = new THREE.Group(); root.name = 'vrc-people'; scene.add(root);
+  // V30: realistic rigged MakeHuman CC0 characters for the near tier (people-real.js); procedural bodies until loaded / as fallback
+  const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  let realKit = null;
+  if (opts.realPeople !== false && typeof document !== 'undefined') loadRealPeople({ low: opts.lowPeople ?? coarse, pbr: !(opts.lowPeople ?? coarse) }).then(k => { if (!disposed && k && k.ready) realKit = k; });
   const people = [], cars = [], anchors = new Map(), stat = { ms: 0, spawned: 0, entered: 0, hits: 0, built: 0, calls: 0, tris: 0, near: 0, mid: 0, far: 0 };
 
   // ---- palette rows + instanced tiers ----------------------------------------------------------------------------------------------------
@@ -493,8 +498,9 @@ export function createPeople(scene, opts = {}) {
     for (const p of order) {
       const lying = p.state === 'rag' || p.state === 'down' || p.state === 'dead' || p.state === 'getup';
       let tier = 2; if (p.vis) { if (p.d2 < (p.fig ? nr2 * 1.25 : nr2) * (lying ? 4 : 1) && nearN < B.near) tier = 0; else if (p.d2 < mr2 && mi < B.mid) tier = 1; }
-      if (tier === 0 && !p.fig) { if (built < 1 || warmFigs) { p.fig = makeFigure(p.T, { faceSize: B.faceSize }); p.fig.mesh.matrixAutoUpdate = false; root.add(p.fig.mesh); built++; stat.built++; p.P.set(nearPoseInit(p)); } else tier = 1; }
+      if (tier === 0 && !p.fig) { if (built < 1 || warmFigs) { p.fig = (realKit && realKit.figure(p.T)) || makeFigure(p.T, { faceSize: B.faceSize }); p.fig.mesh.matrixAutoUpdate = false; root.add(p.fig.mesh); built++; stat.built++; p.P.set(nearPoseInit(p)); } else tier = 1; }
       if (tier !== 0 && p.fig && (p.d2 > nr2 * 2.2 || !p.vis && p.d2 > nr2 * 0.6 || figCount() > B.near + 8)) { p.fig.dispose(); p.fig = null; }
+      if (tier === 0 && p.fig && realKit && !p.fig.real && !p.fig.noReal) { const rf = realKit.figure(p.T); if (rf) { p.fig.dispose(); p.fig = rf; rf.mesh.matrixAutoUpdate = false; root.add(rf.mesh); } else p.fig.noReal = true; }
       p.tier = tier;
       const moving = p.speed > 0.12;
       if (moving) { const stride = 4 * p.K.legLen * Math.sin(0.46 * Math.min(1.25, p.amp || 1)); p.amp = clamp(p.speed / (p.limp ? 0.9 : 1.32) * (1.75 / p.T.height) ** 0.5, 0.35, 1.75); p.phase = (p.phase + TAU * p.speed * dt / Math.max(0.5, stride * (p.amp > 1.1 ? 1.5 : 1))) % TAU; } else p.amp = 0;
@@ -503,7 +509,7 @@ export function createPeople(scene, opts = {}) {
         nearN++; nearPose(p, dt); const f = p.fig; f.pose.set(p.P); f.apply(); f.mesh.visible = true;
         if (lying && p.rd) { EU.set(p.pitch, p.yaw, p.roll); Q.setFromEuler(EU); const hy = p.state === 'rag' ? p.rd.y : lerp(0.14, p.K.J[0][1], p.state === 'getup' ? clamp(p.st / 2.1) ** 2 : 0); V3.set(0, -p.K.J[0][1], 0).applyQuaternion(Q); V3.x += p.x; V3.y += hy; V3.z += p.z; }
         else { EU.set(0, p.yaw, 0); Q.setFromEuler(EU); V3.set(p.x, p.y + (drop ? 0 : 0), p.z); if (drop) { /* hips already lowered by the pose */ } }
-        f.mesh.matrix.compose(V3, Q, SC.set(1, 1, 1)); f.mesh.matrixWorldNeedsUpdate = true;
+        f.mesh.matrix.compose(V3, Q, SC.setScalar(f.scale || 1)); f.mesh.matrixWorldNeedsUpdate = true;
       } else {
         if (p.fig) p.fig.mesh.visible = false;
         const Tn = tier === 1 ? mid : far, i = tier === 1 ? mi++ : fi++; if (i >= Tn.cap) continue;
@@ -534,7 +540,7 @@ export function createPeople(scene, opts = {}) {
     for (const d of decList) { const age = time - d.born, a = clamp(age / 0.25) * clamp((d.life - age) / 14); EU.set(0, d.rot, 0); Q.setFromEuler(EU); M4.compose(V3.set(d.x, d.y, d.z), Q, SC.set(d.size, 1, d.size)); decals.setMatrixAt(di, M4); decD.array[di * 4] = a; decD.array[di * 4 + 1] = d.v; di++; }
     decals.count = di; decals.instanceMatrix.needsUpdate = true; decD.needsUpdate = true; decMat.uniforms.uLight.value = light === 'night' ? 0.3 : light === 'dusk' ? 0.6 : 1;
     for (let k = carDecals.length - 1; k >= 0; k--) { const d = carDecals[k], age = time - d.born; d.m.material.opacity = clamp((d.life - age) / 12); if (age > d.life || !gore) { d.m.parent?.remove(d.m); d.m.geometry.dispose(); d.m.material.dispose(); d.t.dispose(); carDecals.splice(k, 1); } }
-    stat.near = nearN; stat.mid = mi; stat.far = fi; stat.calls = nearN + (mi ? 1 : 0) + (fi ? 1 : 0) + (si ? 1 : 0) + (di ? 1 : 0) + pst.calls; stat.props = pst.tris;
+    stat.real = realKit ? order.filter(p => p.tier === 0 && p.fig && p.fig.real).length : 0; stat.near = nearN; stat.mid = mi; stat.far = fi; stat.calls = nearN + (mi ? 1 : 0) + (fi ? 1 : 0) + (si ? 1 : 0) + (di ? 1 : 0) + pst.calls; stat.props = pst.tris;
     let tr = mi * mid.tris + fi * far.tris + si * 2 + di * 2 + pst.tris; for (const p of order) if (p.tier === 0 && p.fig) tr += p.fig.tris; stat.tris = tr;
   }
   let warmFigs = false;
