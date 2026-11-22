@@ -1,0 +1,10 @@
+ЖК VILNYI — GT VILNYI drive world, v0.14 (V28 graphics): third-party assets in this folder
+
+street/ — Poly Haven (https://polyhaven.com), licence CC0 1.0 (https://polyhaven.com/license), no attribution required:
+  street_lamp_01, metal_trash_can, painted_wooden_bench, fire_hydrant, utility_box_01,
+  utility_box_02, water_manhole_cover — glTF 1k downloads, simplified and compressed here with glTF-Transform
+  (meshopt geometry, WebP textures <= 512 px).
+ground/ — ambientCG (https://ambientcg.com), licence CC0 1.0 (https://docs.ambientcg.com/license/), no attribution required:
+  Asphalt031, PavingStones130, Grass004 (1K-JPG) — repacked here: detail-*.webp = albedo luminance (R asphalt, G paving,
+  B grass), nrm1-*.webp = normals (RG asphalt, BA paving), nrm2-*.webp = normals grass (RG) + roughness asphalt (B) / paving (A).
+Code: three.js r187 (MIT, vendor/). Everything else in the drive world is made for this site.

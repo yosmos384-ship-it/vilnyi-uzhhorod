@@ -90,6 +90,28 @@ const GLSL_SKY = /* glsl */`
 uniform vec3 uSunDir; uniform vec3 uZenith; uniform vec3 uHorizon; uniform vec3 uHorizonSun; uniform vec3 uGroundCol;
 uniform vec3 uSunCol; uniform float uSunGlow; uniform float uSunDisc; uniform vec3 uCityGlow;
 uniform vec3 uBand; uniform vec3 uFogCol; uniform float uHaze;
+uniform float uPhys; uniform float uTurb; uniform float uPhysK;
+// V28: Preetham analytic daylight (as three.js examples/jsm/objects/Sky.js, per pixel) — used by the drive / heli worlds (uPhys > 0)
+vec3 vr_phys(vec3 d){
+  const float PI = 3.14159265, e = 2.718281828;
+  const vec3 totalRayleigh = vec3(5.804542996261093E-6, 1.3562911419845635E-5, 3.0265902468824876E-5);
+  const vec3 MieConst = vec3(1.8399918514433978E14, 2.7798023919660528E14, 4.0790479543861094E14);
+  vec3 sd = normalize(uSunDir);
+  float sunE = 1000. * max(0., 1. - pow(e, -((1.6110731556870734 - acos(clamp(sd.y, -1., 1.))) / 1.5)));
+  float sunfade = min(1., exp(sd.y * .8889));
+  vec3 bR = totalRayleigh * (1.3 - (1. - sunfade));
+  vec3 bM = 0.434 * (0.2 * uTurb) * 10E-18 * MieConst * 0.005;
+  float za = acos(max(0., d.y));
+  float inv = 1. / (cos(za) + 0.15 * pow(93.885 - za * 180. / PI, -1.253));
+  vec3 Fex = exp(-(bR * 8.4E3 * inv + bM * 1.25E3 * inv));
+  float ct = dot(d, sd);
+  float rP = 0.05968310365946075 * (1. + pow(ct * .5 + .5, 2.));
+  float g = 0.8, g2 = g * g, mP = 0.07957747154594767 * (1. - g2) / pow(1. - 2. * g * ct + g2, 1.5);
+  vec3 bT = (bR * rP + bM * mP) / (bR + bM);
+  vec3 Lin = pow(sunE * bT * (1. - Fex), vec3(1.5));
+  Lin *= mix(vec3(1.), pow(sunE * bT * Fex, vec3(.5)), clamp(pow(1. - sd.y, 5.), 0., 1.));
+  return (Lin + vec3(.1) * Fex) * 0.04 * uPhysK + vec3(0., .0003, .00075);
+}
 vec3 vr_sky(vec3 d){
   float y = d.y;
   vec2 dh = normalize(d.xz + vec2(1e-5)); vec2 sh = normalize(uSunDir.xz + vec2(1e-5));
@@ -102,6 +124,7 @@ vec3 vr_sky(vec3 d){
   // blue-hour band: a warm glow around the whole horizon, strongest towards the sun
   c += uBand * (.28 + .72 * pow(az, 2.)) * exp(-yy * 15.) * .55;
   c += uCityGlow * exp(-yy * 14.);
+  if (uPhys > 0.) c = mix(c, vr_phys(vec3(d.x, max(d.y, 0.002), d.z)) + uBand * (.28 + .72 * pow(az, 2.)) * exp(-yy * 15.) * .3, uPhys);
   // aerial haze: the sky meets the fogged far ground in exactly the fog colour — no seam, no dark stripe on the horizon
   c = mix(c, uFogCol, uHaze * exp(-yy * 110.));
   float cs = max(dot(d, uSunDir), 0.);
@@ -973,6 +996,7 @@ export function createEnvironment(scene, renderer, opts = {}) {
     uHorizonSun: { value: C('#000') }, uGroundCol: { value: C('#000') }, uSunCol: { value: C('#fff') },
     uSunGlow: { value: 1 }, uSunDisc: { value: 0.9998 }, uCityGlow: { value: C('#000') },
     uBand: { value: C('#000') }, uFogCol: { value: C('#000') }, uHaze: { value: 0 },
+    uPhys: { value: 0 }, uTurb: { value: 5.0 }, uPhysK: { value: 0.55 },   // V28: physical sky share (drive / heli worlds), turbidity, gain
   };
   const skyDetailU = { ...SKYU, uClouds: { value: 0.3 }, uCloudLit: { value: C('#fff') }, uCloudShade: { value: C('#888') }, uStars: { value: 0 }, uTime: SHARED.uTime,
     uStreaks: { value: 0 }, uStreakLit: { value: C('#fff') }, uStreakShade: { value: C('#888') } };
@@ -1031,6 +1055,9 @@ export function createEnvironment(scene, renderer, opts = {}) {
   if (ext.context) group.remove(ctxG);
 
   // ---------------- mode
+  let physOn = 0;
+  const PHYS_SHARE = { day: 1, dusk: 0.4, night: 0 };
+  function setPhysical(on) { const v = on ? 1 : 0; if (v === physOn) return; physOn = v; if (mode) setMode(mode); }
   function setMode(m) {
     m = MODES[m] ? m : 'dusk'; mode = m; SHARED.mode = m;
     const P = MODES[m];
@@ -1046,12 +1073,19 @@ export function createEnvironment(scene, renderer, opts = {}) {
     sun.position.copy(sun.target.position).addScaledVector(ld, 700);
     sun.color.set(P.sunCol); sun.intensity = P.sunI;
     hemi.color.set(P.hemiSky); hemi.groundColor.set(P.hemiGnd); hemi.intensity = P.hemiI;
+    // V28: with the physical sky (drive / heli + gfx.js sun shadows) the sun carries the light and the sky fill is lower, so
+    // shadows read as in a real street photograph (the art-directed site views keep their soft balance)
+    const ph = physOn * (PHYS_SHARE[m] || 0);
+    if (ph) { sun.intensity = P.sunI * (1 + 0.35 * ph); hemi.intensity = P.hemiI * (1 - 0.55 * ph); }
+    scene.environmentIntensity = 1 - 0.45 * ph;
     scene.fog = new THREE.FogExp2(C(P.fog), P.fogD);
     scene.background = C(P.fog);
     SHARED.uGlow.value = P.glow; SHARED.uLit.value = P.lit; SHARED.uNight.value = P.night;
-    if (!envCache[m]) envCache[m] = pmrem.fromScene(envScene, 0.02).texture;
-    scene.environment = envCache[m];
-    SHARED.envMap = envCache[m]; SHARED.envIntensity = P.env;
+    SKYU.uPhys.value = physOn * (PHYS_SHARE[m] || 0);                 // V28: physical daylight in the drive / heli worlds
+    const ek = m + (SKYU.uPhys.value ? '|p' : '');
+    if (!envCache[ek]) envCache[ek] = pmrem.fromScene(envScene, 0.02).texture;
+    scene.environment = envCache[ek];
+    SHARED.envMap = envCache[ek]; SHARED.envIntensity = P.env * (1 - 0.3 * SKYU.uPhys.value);
     for (const mm of SHARED.mats) applyEnv(mm);
     for (const o of nightOnly) o.visible = P.night > 0;
     lampHeadMat.emissiveIntensity = P.night * 3.5;
@@ -1206,7 +1240,7 @@ export function createEnvironment(scene, renderer, opts = {}) {
 
   // ready: resolves once context.js has been tried (stills wait for it); modules: the live instances;
   // layout: 'site-layout' | 'inline' (which layout data the environment was built from)
-  return { group, sun, hemi, setMode, update, dispose, ready, modules: ext, layout: LAYOUT_SRC, get mode() { return mode; }, city: cityCtl };
+  return { group, sun, hemi, setMode, setPhysical, update, dispose, ready, modules: ext, layout: LAYOUT_SRC, get mode() { return mode; }, city: cityCtl };
 
   // ================================================================ painting helpers (world units on a canvas)
   function polyPath(g, pts, close = true) { g.beginPath(); pts.forEach(([x, z], i) => i ? g.lineTo(x, z) : g.moveTo(x, z)); if (close) g.closePath(); }

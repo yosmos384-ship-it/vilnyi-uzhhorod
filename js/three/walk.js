@@ -1144,6 +1144,7 @@ export class Walkthrough {
     this.envMode = mode;
     if (save) lsSet(TIME_KEY, mode);
     if (!this._culled) try { this.env && this.env.setMode(mode); } catch (e) { console.warn(e); }   // culled (deep in the car park): applied on the way out
+    if (this._gfx) try { this._gfx.setMode(mode); } catch (e) { console.warn(e); }   // V28: colour grade / bloom / wet roads of the drive world
     if (this.scene.environment && !this._isRoomEnv(this.scene.environment)) this.skyEnv = this.scene.environment;
     this.roomEnv = this._roomEnvOf(mode);
     this._syncEnvMap();
@@ -3474,7 +3475,7 @@ export class Walkthrough {
     if (this.apt && this.apt.game) this.apt.game.frame(this, dt);   // snooker table (snooker.js): "Play" prompt; in play mode it owns the camera (walking is held by this.busy)
     try { this.env && this.env.update && this.env.update(dt, this.camera); } catch (e) { if (!this._envErr) { console.warn(e); this._envErr = true; } }
     if (this._game) this._gameTick(dt);                              // V9: people + police, after the cars moved (drive-game.js)
-    this.renderer.render(this.scene, this.camera);
+    if (this._renderFrame) this._renderFrame(dt); else this.renderer.render(this.scene, this.camera);   // V28: the drive world goes through gfx.js (plain render elsewhere)
     if (this._dyn) this._dyn.frame(performance.now());
   }
 

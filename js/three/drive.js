@@ -674,6 +674,7 @@ export const driveMixin = {
       this.fleet.setFocus(null); this.fleet.moved(rec);
       for (const e of this.solids) if (e.o === rec.collider) e.box = null;
       this.drive = null;
+      this._gfxOff();                                                     // V28: sun shadows off again, motion history reset
       this._driveViewport(0); this._paniniSet(null);
       this.root.classList.remove('driving', 'tilt', 'drive-fp', 'dmenu-open');
       this._tiltStop();
@@ -978,12 +979,79 @@ export const driveMixin = {
     }).catch(e => { console.warn('[drive] cabin', e); D.cabinP = null; D.cabinFail = (D.cabinFail || 0) + 1; if (D.cabinFail > 2) this._cabinOff = true; });   // off for this visit only
     return null;
   },
+  // V28: one «Graphics quality» setting (⋯ menu): auto → ultra → high → medium → low. It sets the gfx.js tier (vrc.gfx.q) and the
+  // cabin quality with it (ultra / high → high cabin, medium → medium, low → low; vrc.walk.carQuality, still read by the cabin).
   _cabinCycle() {
-    const order = ['auto', 'high', 'medium', 'low'], cur = lsGet('vrc.walk.carQuality') || 'auto', next = order[(order.indexOf(cur) + 1) % order.length];
-    lsSet('vrc.walk.carQuality', next); this._cabQc = null;
-    const q = this._cabinQuality(), lbl = { high: 'walk.car.qHigh', medium: 'walk.car.qMedium', low: 'walk.car.qLow' }[q];
+    const order = ['auto', 'ultra', 'high', 'medium', 'low'];
+    let cur = lsGet('vrc.gfx.q'); if (!order.includes(cur)) cur = lsGet('vrc.walk.carQuality') || 'auto';
+    const next = order[(order.indexOf(cur) + 1) % order.length];
+    lsSet('vrc.gfx.q', next); lsSet('vrc.walk.carQuality', next === 'ultra' ? 'high' : next); this._cabQc = null;
+    let tier = next;
+    if (this._gfx) tier = this._gfx.setQuality(next);
+    else if (next === 'auto') tier = this._isTouch ? 'medium' : 'high';
+    const lbl = { ultra: 'walk.car.qUltra', high: 'walk.car.qHigh', medium: 'walk.car.qMedium', low: 'walk.car.qLow' }[tier] || 'walk.car.qHigh';
     this._toast(this.t('walk.car.quality') + ': ' + (next === 'auto' ? this.t('walk.car.qAuto') + ' · ' : '') + this.t(lbl), 2200);
     if (this.drive) this._renderDriveHud(true);
+  },
+  // ======================= V28 (v0.14): graphics pipeline of the drive world (gfx.js) =======================
+  // The walk loop calls _renderFrame(dt). Outside a car: the plain render, exactly as before. In a car: gfx.js (HDR scene target +
+  // AO / reflections / bloom / motion blur / tone mapping + grade; tier 'low' = the plain render). The Panini band of the driver's
+  // view keeps working: gfx draws into its target, then the projection quad goes to the screen.
+  _renderFrame(dt = 1 / 60) {
+    const D = this.drive, g = D ? this._gfxGet() : null;
+    if (!g) { this.renderer.render(this.scene, this.camera); return; }
+    const now = performance.now();
+    if (!this._gfxCastT || now - this._gfxCastT > 2500) { this._gfxCastT = now; this._gfxCasters(); }
+    const c = this.camera.position, ctl = D.ctl;
+    const dist = Math.hypot(c.x - ctl.x, c.y - (ctl.y + 0.8), c.z - ctl.z);
+    const P = this._pan;
+    g.render(this.scene, this.camera, dt, { near: D.view === 'fp' ? 2.6 : Math.max(1.5, dist - 3.2), groundY: ctl.y, out: P ? P.rt : null, noBlur: !!this.busy });
+    if (P) (this.__draw || this.renderer.render.bind(this.renderer))(P.qs, P.qc);
+  },
+  _gfxGet() {
+    if (this._gfxErr) return null;
+    if (this._gfx) { if (!this._gfxSun && this.env && this.env.sun) this._gfxAttach(); return this._gfx; }
+    if (!this._gfxP) this._gfxP = Promise.all([import('./gfx.js'), import('./car-models.js').catch(() => null)]).then(([m, cm]) => {
+      if (this.disposed) return;
+      this._gfxCarMats = cm && cm.carMaterials ? cm.carMaterials : null;
+      const s = lsGet('vrc.gfx.q');
+      this._gfx = m.createGfx(this.renderer, { world: 'drive', touch: this._isTouch });
+      if (s) this._gfx.setQuality(s);
+      this._gfx.setMode(this.envMode);
+    }).catch(e => { console.warn('[drive] gfx.js unavailable — plain rendering', e); this._gfxErr = true; });
+    return null;
+  },
+  _gfxAttach() {
+    const g = this._gfx, sun = this.env && this.env.sun; if (!g || !sun) return;
+    this._gfxSun = sun;
+    try { if (this.env.setPhysical) this.env.setPhysical(true); } catch (e) { console.warn(e); }
+    if (this._gfxCarMats) g.attachProbe({                                  // the cars reflect the street around the visitor's car
+      mats: () => this._gfxCarMats().filter(m => m && m.name !== 'interior'),
+      pos: out => { const D = this.drive; if (!D) return false; out.set(D.ctl.x, D.ctl.y + 1.25, D.ctl.z); return true; },
+      hide: () => { const D = this.drive; return D && D.car && D.car.group ? [D.car.group] : []; } });
+    g.attachSun(sun, out => { const D = this.drive; if (!D) return null; const k = D.ctl.v > 3 ? 12 : 4;   // a little ahead of the car
+      return out.set(D.ctl.x - Math.sin(D.ctl.yaw) * k, D.ctl.y, D.ctl.z - Math.cos(D.ctl.yaw) * k); });
+  },
+  _gfxOff() {
+    if (this._gfx) { try { this._gfx.detachSun(); this._gfx.detachProbe(); this._gfx.reset(); } catch (e) { console.warn(e); } }
+    if (this._gfxSun) { try { if (this.env && this.env.setPhysical) this.env.setPhysical(false); } catch (e) { console.warn(e); } }
+    this._gfxSun = null;
+  },
+  // shadow flags for everything that streams into the scene (city chunks, traffic, people): receive on all lit opaque meshes,
+  // cast on the ones taller than 0.35 m (kerbs, road decals and markings do not cast)
+  _gfxCasters() {
+    const sz = new THREE.Vector3();
+    this.scene.traverse(o => {
+      if (!o.isMesh || o.userData._gfxC) return;
+      o.userData._gfxC = 1;
+      const m = Array.isArray(o.material) ? o.material[0] : o.material;
+      if (!m || m.isShaderMaterial || m.isMeshBasicMaterial || m.transparent || !o.visible && o.name === 'sky') return;
+      o.receiveShadow = true;
+      const gm = o.geometry; if (!gm) return;
+      if (!gm.boundingBox) gm.computeBoundingBox();
+      gm.boundingBox.getSize(sz);
+      if (sz.y > 0.35 || o.isSkinnedMesh || o.isInstancedMesh) o.castShadow = true;
+    });
   },
   // ======================= V25 (v0.11): the car never gets stuck =======================
   // Watchdog, every frame while driving: (1) the driver asks to go but its moves are refused and it has not got 0.5 m further for 1 s, or the controller

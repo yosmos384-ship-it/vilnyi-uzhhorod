@@ -46,7 +46,8 @@ function addT(buf, T, x, y, z, sx, sy, sz, yaw, cl, fx, grad = 0, nup = 0) {
 }
 const box = (buf, x, y, z, sx, sy, sz, yaw, cl, fx) => addT(buf, T_BOX, x, y + sy / 2, z, sx, sy, sz, yaw, cl, fx);
 
-function triangulate(poly) { try { return THREE.ShapeUtils.triangulateShape(poly.map(p => ({ x: p[0], y: p[1] })), []); } catch (e) { return []; } }
+// V28 fix: ShapeUtils needs Vector2 points (it calls .equals on them) — plain {x, y} threw and every water polygon came out empty
+function triangulate(poly) { try { return THREE.ShapeUtils.triangulateShape(poly.map(p => new THREE.Vector2(p[0], p[1])), []); } catch (e) { return []; } }
 function polyAreaS(p) { let a = 0; for (let i = 0; i < p.length; i++) { const q = p[(i + 1) % p.length]; a += p[i][0] * q[1] - q[0] * p[i][1]; } return a / 2; }
 /** Inward offset of a CCW (area > 0) ring by d (mitred, clamped); null when it collapses. */
 function insetRing(poly, d) {
@@ -85,14 +86,49 @@ const FASCIA = { pharmacy: '#2f7d4f', cafe: '#6b4a34', restaurant: '#7a2f2a', fa
 // ------------------------------------------------------------------ materials
 function makeMaterials(st) {
   const U = st.U;
-  const flat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 });
+  // V28: ground surfaces get real CC0 material detail (ambientCG Asphalt031 / PavingStones130 / Grass004: albedo detail, normal,
+  // roughness — packed in assets/v28/ground/*), chosen per pixel from the vertex colour class (grey dark = asphalt, grey light =
+  // paving, green = grass); PBR (MeshStandard) on desktops, Lambert + normal detail on touch devices. U.uGTex = 0 until loaded.
+  const flat = st.pbr ? new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.92, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 })
+    : new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 });
   flat.onBeforeCompile = sh => {
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP;').replace('#include <fog_vertex>', '#include <fog_vertex>\nvWP = (modelMatrix * vec4(position, 1.)).xyz;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP;\nfloat cH(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\nfloat cN(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mix(mix(cH(i), cH(i+vec2(1,0)), f.x), mix(cH(i+vec2(0,1)), cH(i+vec2(1,1)), f.x), f.y); }')
-      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= .86 + .2 * cN(vWP.xz * 1.9) + .1 * cN(vWP.xz * .21) - .05 * cH(floor(vWP.xz * 14.));');
+    sh.uniforms.tGD = U.tGD; sh.uniforms.tGN1 = U.tGN1; sh.uniforms.tGN2 = U.tGN2; sh.uniforms.uGTex = U.uGTex;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying float vUpY;').replace('#include <fog_vertex>', '#include <fog_vertex>\nvWP = (modelMatrix * vec4(position, 1.)).xyz; vUpY = abs(normalize(mat3(modelMatrix) * normal).y);');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying float vUpY; uniform sampler2D tGD, tGN1, tGN2; uniform float uGTex; vec3 gW = vec3(0.);\nfloat cH(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\nfloat cN(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mix(mix(cH(i), cH(i+vec2(1,0)), f.x), mix(cH(i+vec2(0,1)), cH(i+vec2(1,1)), f.x), f.y); }')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+vec3 vc = diffuseColor.rgb;
+diffuseColor.rgb *= .86 + .2 * cN(vWP.xz * 1.9) + .1 * cN(vWP.xz * .21) - .05 * cH(floor(vWP.xz * 14.));
+if (uGTex > .5 && vUpY > .7) { float mx = max(vc.r, max(vc.g, vc.b)), mn = min(vc.r, min(vc.g, vc.b)), lum = dot(vc, vec3(.2126, .7152, .0722));
+  float grey = 1. - smoothstep(.18, .4, (mx - mn) / max(mx, 1e-3));
+  float gr = smoothstep(1.08, 1.35, vc.g / max(vc.r, 1e-3)) * (1. - grey);
+  gW = vec3(grey * (1. - smoothstep(.06, .11, lum)), grey * smoothstep(.06, .11, lum), gr);
+  vec2 guv = vWP.xz / 2.5;
+  vec3 dt = mix(texture2D(tGD, guv).rgb, texture2D(tGD, guv * .21 + .37).rgb, .3) * 2.;
+  float ws = gW.x + gW.y + gW.z;
+  diffuseColor.rgb *= mix(1., dot(gW, dt) + 1. - ws, .9);
+  // asphalt and paving: neutral greys with a hint of warmth (the vertex colours lean blue under the sky light)
+  float gl = dot(diffuseColor.rgb, vec3(.2126, .7152, .0722));
+  diffuseColor.rgb = mix(diffuseColor.rgb, gl * vec3(1.04, 1., .93), clamp(gW.x * .7 + gW.y * .5, 0., 1.));
+}`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+{ float ws = gW.x + gW.y + gW.z; if (ws > .01) {
+  vec2 guv = vWP.xz / 2.5; vec4 na = texture2D(tGN1, guv), nb = texture2D(tGN2, guv);
+  vec2 nxy = ((na.xy * gW.x + na.zw * gW.y + nb.xy * gW.z) / ws * 2. - 1.) * vec2(1., -1.);
+  vec3 nV = normalize((viewMatrix * vec4(normalize(vec3(nxy.x, 1., nxy.y)), 0.)).xyz);
+  normal = normalize(mix(normal, nV, clamp(ws, 0., 1.) * (1. - smoothstep(40., 140., length(vViewPosition)))));
+} }`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+{ float ws = gW.x + gW.y + gW.z; if (ws > .01) { vec4 nb = texture2D(tGN2, vWP.xz / 2.5); roughnessFactor = mix(roughnessFactor, clamp((nb.z * gW.x + nb.w * gW.y + .95 * gW.z) / ws, .4, 1.), clamp(ws, 0., 1.)); } }`);
   };
-  flat.customProgramCacheKey = () => 'city-flat';
+  flat.customProgramCacheKey = () => 'city-flat-v28' + (st.pbr ? 'p' : 'l');
   const decal = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -20 });
+  // V28: worn road markings (tyre tracks along the lanes, patchy paint) — world-space noise, no texture
+  decal.onBeforeCompile = sh => {
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP;').replace('#include <fog_vertex>', '#include <fog_vertex>\nvWP = (modelMatrix * vec4(position, 1.)).xyz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP;\nfloat dH(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\nfloat dN(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mix(mix(dH(i), dH(i+vec2(1,0)), f.x), mix(dH(i+vec2(0,1)), dH(i+vec2(1,1)), f.x), f.y); }')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n{ float w = dN(vWP.xz * 1.3) * .55 + dN(vWP.xz * 6.) * .3 + dH(floor(vWP.xz * 40.)) * .15; float lit = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b)); if (lit > .3) diffuseColor.rgb = mix(diffuseColor.rgb * .32 + vec3(.012), diffuseColor.rgb, smoothstep(.22, .62, w)); }');
+  };
+  decal.customProgramCacheKey = () => 'city-decal-v28';
   // buildings: procedural facades. aA = (u from wall centre, v above ground, style, seed)   aB = (wall length, floor height, floors, eave height)
   const bld = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   bld.onBeforeCompile = sh => {
@@ -276,9 +312,23 @@ export async function createCity(scene, opts = {}) {
   let R0 = opts.detail === 'far' ? -1 : R0_FULL;      // 'far' = buildings + the far ground texture only (balcony views of the walkthrough)
   const GROUND_PX = LOW ? 256 : 512, FRAME_MS = opts.frameMs || (LOW ? 5 : 6), ATLAS_K = LOW ? 0.5 : 1, MAX_FRONTS = LOW ? 40 : 110;
   const group = new THREE.Group(); group.name = 'vrc-city';
-  const st = { U: { uLitK: { value: 1 }, uShop: { value: 0 }, uTerrace: { value: 1 } }, radial: null };
+  const st = { U: { uLitK: { value: 1 }, uShop: { value: 0 }, uTerrace: { value: 1 }, tGD: { value: null }, tGN1: { value: null }, tGN2: { value: null }, uGTex: { value: 0 } }, radial: null, pbr: !LOW };
+  {                                                   // V28: CC0 ground material detail (assets/v28/ground, 512 px on touch / low, 1024 otherwise)
+    const tl = new THREE.TextureLoader(), px = LOW ? 512 : 1024, base = new URL('../../assets/v28/ground/', import.meta.url).href;
+    let n = 0; const done = () => { if (++n === 3 && !disposed) st.U.uGTex.value = 1; };
+    const ld = (k, f, srgb) => { const t = tl.load(base + f + '-' + px + '.webp', done, undefined, e => console.info('[city] ground detail not used', e && e.message)); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; st.U[k].value = t; };
+    ld('tGD', 'detail', false); ld('tGN1', 'nrm1', false); ld('tGN2', 'nrm2', false);
+  }
   { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.4, 'rgba(255,255,255,.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); st.radial = new THREE.CanvasTexture(c); }
   const M = makeMaterials(st);
+  // V28: real CC0 street furniture (street-kit.js) instanced over the streamed tiles; boxes stay the fallback
+  let kit = null, kitDirty = false, kitFx = 1e9, kitFz = 1e9; const KIT_R = LOW ? 120 : 190;
+  const kitP = opts.kit === false || opts.detail === 'far' ? Promise.resolve(null)
+    : import('./street-kit.js').then(m => m.loadStreetKit({ low: LOW })).then(k => { if (!k || !k.ready) return null; if (disposed) { k.dispose(); return null; } kit = k; group.add(k.group); kitDirty = true;
+        // tiles built before the kit arrived still have the box lamps: rebuild their detail once (nearest first, in the normal work budget)
+        for (const T of tilesLive.values()) if (T.done0 && !T.kit) { dropDetail(T); T.steps0 = null; T.want = 0; if (!queue.includes(T)) queue.push(T); }
+        return k; })
+      .catch(e => { console.info('[city] street kit not used', e && e.message); return null; });
   if (SHARED.envMap) { M.water.envMap = SHARED.envMap; } SHARED.mats.add(M.water);
   let mode = opts.mode || SHARED.mode || 'day', disposed = false;
   const tilesLive = new Map(), readyCbs = [], waiters = [];
@@ -481,9 +531,31 @@ export async function createCity(scene, opts = {}) {
     const FC = [col('#5d6f4f'), col('#7a5a3c'), col('#a9a69c'), col('#6f5647')];
     for (const [x1, z1, x2, z2, h, style] of pr.fences) { const dx = x2 - x1, dz = z2 - z1, l = hyp(dx, dz) || 1, yaw = Math.atan2(dx, dz), c = FC[style] || FC[0];
       box(buf, (x1 + x2) / 2 - ox, 0.08, (z1 + z2) / 2 - oz, 0.06, h - 0.08, l, yaw, c); if (!LOW) { box(buf, x1 - ox, 0, z1 - oz, 0.14, h + 0.1, 0.14, yaw, shade(c, 0.7)); box(buf, (x1 + x2) / 2 - ox, 0, (z1 + z2) / 2 - oz, 0.12, h + 0.06, 0.12, yaw, shade(c, 0.7)); } }
+    const K = kit && kit.ready ? [] : null, kh = K ? kit.heightOf('lamp') : 1;
+    let li = 0;
     for (const [x, z, hd, h] of pr.lamps) { const dx = Math.sin(hd), dz = Math.cos(hd), arm = h > 6 ? 1.6 : 0.5;
+      if (K) {                                          // V28: Poly Haven street lamp + bins / hydrants / utility boxes along the pavement
+        const hh = hash2(x * 10 | 0, z * 10 | 0), ax = dz, az = -dx;      // along the street
+        K.push({ k: 'lamp', x, y: 0.12, z, yaw: hd + Math.PI, s: Math.max(1, Math.min(1.75, h / kh)) });
+        if (hh < 0.34) K.push({ k: 'bin', x: x + ax * 1.5 - dx * 0.25, y: 0.14, z: z + az * 1.5 - dz * 0.25, yaw: hd, s: 0.92 });
+        else if (hh < 0.46) K.push({ k: 'hydrant', x: x - ax * 2.4 + dx * 0.1, y: 0.14, z: z - az * 2.4 + dz * 0.1, yaw: hd + hh * 9, s: 1 });
+        else if (hh > 0.9 && li % 3 === 0) K.push({ k: hh > 0.95 ? 'box1' : 'box2', x: x + ax * 3.2 - dx * 0.6, y: 0.14, z: z + az * 3.2 - dz * 0.6, yaw: hd + Math.PI, s: 1 });
+        li++;
+        pools.push([x, z, h > 6 ? 9 : 6]);
+        continue;
+      }
       box(buf, x - ox, 0, z - oz, 0.14, h, 0.14, 0, pole); box(buf, x - ox + dx * arm / 2, h - 0.1, z - oz + dz * arm / 2, 0.08, 0.08, arm, hd, pole); box(buf, x - ox + dx * arm, h - 0.22, z - oz + dz * arm, 0.3, 0.14, 0.55, hd, head, [3.2, 0, 0, 0]);
       pools.push([x + dx * arm, z + dz * arm, h > 6 ? 11 : 7]); }
+    if (K) {
+      // benches at the bus stops (inside the shelter) and on the squares by the cafés; manhole covers in the carriageways
+      for (const id of D.stops) { const s2 = CITY.busStops[id], hd = s2.heading, bx = -Math.cos(hd), bz = Math.sin(hd); K.push({ k: 'bench', x: s2.x + bx * 1.25, y: 0.14, z: s2.z + bz * 1.25, yaw: hd - Math.PI / 2, s: 1.05 }); }
+      for (const id of D.roads) { const r = CITY.roads[id]; if (r.near || !r.car || r.surface !== 'asphalt' || r.len < 30) continue;
+        const y = 0.03 + (r.cls === 'secondary' ? 4 : r.cls === 'tertiary' ? 3 : r.cls === 'residential' ? 2 : 1) * 0.003 + 0.004;
+        for (let sp = 18 + hash2(r.id, 21) * 20; sp < r.len - 10; sp += 38 + hash2(r.id, sp | 0) * 30) { const q = pointAt(r, sp), off = (hash2(r.id, sp * 3 | 0) - 0.5) * r.w * 0.5;
+          const mx = q.x - q.dz * off, mz = q.z + q.dx * off; if (Math.floor(mx / TILE) !== T.ix || Math.floor(mz / TILE) !== T.iz) continue;
+          K.push({ k: 'manhole', x: mx, y, z: mz, yaw: hash2(r.id, sp | 0) * 6.28, s: 1 }); } }
+      T.kit = K; kitDirty = true;
+    }
     // traffic lights
     const lampC = [null, col('#ff2a1a'), col('#ffb000'), col('#19e06a')], dark = col('#17191b');
     for (const id of D.signals) { const s = CITY.signals[id];
@@ -575,8 +647,8 @@ export async function createCity(scene, opts = {}) {
   }
   function* stepsL1(T) { const n = T.data.bld.length, CH = LOW ? 10 : 16; for (let i = 0; i < Math.max(1, n); i += CH) { buildBuildings(T, i, i + CH >= n ? Infinity : i + CH); yield; } T.done1 = true; T.detailOwnFrom = T.own.length; }
   function* stepsL0(T) { T.step = 'ground'; buildGround(T); yield; T.step = 'roads'; buildRoads(T); yield; T.step = 'fronts'; buildFronts(T); yield; T.step = 'propsData'; tileProps(T.ix, T.iz); yield; T.step = 'props'; buildProps(T); yield; T.step = 'bld'; T.done0 = true; }
-  function dropDetail(T) { for (let i = T.detailOwnFrom; i < T.own.length; i++) T.own[i].dispose && T.own[i].dispose(); T.own.length = T.detailOwnFrom; T.detail.clear(); T.done0 = false; T.fronts = null; T.frontMesh = null; T.frontMat = null; T.pools = null; T.signPoles = null; }
-  function dropTile(T) { for (const o of T.own) o.dispose && o.dispose(); group.remove(T.group); tilesLive.delete(T.ix + ':' + T.iz); counters.dropped++; }
+  function dropDetail(T) { if (T.kit) { T.kit = null; kitDirty = true; } for (let i = T.detailOwnFrom; i < T.own.length; i++) T.own[i].dispose && T.own[i].dispose(); T.own.length = T.detailOwnFrom; T.detail.clear(); T.done0 = false; T.fronts = null; T.frontMesh = null; T.frontMat = null; T.pools = null; T.signPoles = null; }
+  function dropTile(T) { if (T.kit) { T.kit = null; kitDirty = true; } for (const o of T.own) o.dispose && o.dispose(); group.remove(T.group); tilesLive.delete(T.ix + ':' + T.iz); counters.dropped++; }
   const queue = [];
   let lastFx = 1e9, lastFz = 1e9, fx = 0, fz = 0;
   function plan(x, z, force) {
@@ -617,8 +689,12 @@ export async function createCity(scene, opts = {}) {
       if (disposed) return; const p = focus && focus.position ? focus.position : focus; if (!p) return;
       const la = velocity ? 1.6 : 0; fx = p.x + (velocity ? velocity.x * la : 0); fz = p.z + (velocity ? velocity.z * la : 0);
       plan(fx, fz, false); if (queue.length) work(FRAME_MS);
+      // street kit: only the furniture within KIT_R of the focus is drawn (rebuilt when the focus moved 40 m or tiles changed)
+      if (kit && (kitDirty || hyp(fx - kitFx, fz - kitFz) > 40)) { kitDirty = false; kitFx = fx; kitFz = fz; const all = [], R2 = KIT_R * KIT_R;
+        for (const T of tilesLive.values()) if (T.kit) for (const it of T.kit) { const dx = it.x - fx, dz = it.z - fz; if (dx * dx + dz * dz < R2 * (it.k === 'manhole' ? 0.35 : 1)) all.push(it); }
+        kit.rebuild(all); }
     },
-    setMode(m) { mode = m; setCityClock({ mode: m }); st.U.uLitK.value = m === 'day' ? 0 : m === 'dusk' ? 1.25 : 0.55; st.U.uShop.value = m === 'night' ? 0.15 : 1; st.U.uTerrace.value = m === 'night' ? 0 : 1;
+    setMode(m) { mode = m; setCityClock({ mode: m }); if (kit) kit.setNight(m === 'day' ? 0 : m === 'dusk' ? 0.8 : 1); st.U.uLitK.value = m === 'day' ? 0 : m === 'dusk' ? 1.25 : 0.55; st.U.uShop.value = m === 'night' ? 0.15 : 1; st.U.uTerrace.value = m === 'night' ? 0 : 1;
       M.pool.opacity = m === 'night' ? 0.62 : m === 'dusk' ? 0.4 : 0; for (const T of tilesLive.values()) { applyOpen(T); if (T.pools) T.pools.visible = m !== 'day'; } },
     /** Builds every tile touching the circle to full detail; resolves when done (work continues in update(); pass sync = true to finish now). */
     ensureTiles(x, z, r = 250, sync = false) {
@@ -631,7 +707,8 @@ export async function createCity(scene, opts = {}) {
     onTileReady(cb) { readyCbs.push(cb); return () => { const i = readyCbs.indexOf(cb); if (i >= 0) readyCbs.splice(i, 1); }; },
     tileReady(x, z) { const T = tilesLive.get(Math.floor(x / TILE) + ':' + Math.floor(z / TILE)); return !!(T && T.done0); },
     stats() { let l0 = 0, l1 = 0, tris = 0, calls = 3; for (const T of tilesLive.values()) { if (T.done0) l0++; else if (T.done1) l1++; tris += T.tris; calls += T.group.children.length - 1 + T.detail.children.length; } return { tiles: tilesLive.size, l0, l1, calls, buildingTris: tris, queue: queue.length, ...counters, r0: R0, r1: R1 }; },
-    dispose() { disposed = true; for (const T of [...tilesLive.values()]) dropTile(T); far.tex.dispose(); far.mesh.geometry.dispose(); far.mesh.material.dispose(); far.sm.geometry.dispose(); far.sm.material.dispose(); group.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    get kit() { return kit; },
+    dispose() { disposed = true; if (kit) { kit.dispose(); kit = null; } for (const T of [...tilesLive.values()]) dropTile(T); far.tex.dispose(); far.mesh.geometry.dispose(); far.mesh.material.dispose(); far.sm.geometry.dispose(); far.sm.material.dispose(); group.traverse(o => { if (o.geometry) o.geometry.dispose(); });
       for (const k of Object.keys(M)) M[k].dispose(); SHARED.mats.delete(M.water); st.radial.dispose(); if (group.parent) group.parent.remove(group); },
   };
   api.setMode(mode);

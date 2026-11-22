@@ -141,7 +141,7 @@ export async function openHeli(opts = {}) {
   try { const A = await import('./heli-audio.js'); audio = A.createHeliAudio(); audio.resume(); } catch (e) { console.warn('[heli] audio', e); }
 
   const S = { cam: q.get('heliCam') || LS.get('vrc-heli-cam', 'cockpit'), mode: 'day', intro: true, introT: 0, look: { yaw: 0, pitch: 0, dist: 1 }, last: performance.now(), fps: { n: 0, t0: performance.now(), v: 0, hist: [] }, panelT: 0, bannerT: 0, flashT: 0, frames: 0, skip: false };
-  let renderer, scene, camera, env, city, world, lmk, heli, pilot, flight, complex, dyn, raf = 0, CD, D, g3d = null, classicHidden = false;
+  let gfx = null, renderer, scene, camera, env, city, world, lmk, heli, pilot, flight, complex, dyn, raf = 0, CD, D, g3d = null, classicHidden = false;
   try {
     progress(0.05);
     const [ENV, EXT, CDm, Dm, W, LM, HM, PL, FL, DR] = await Promise.all([
@@ -161,6 +161,12 @@ export async function openHeli(opts = {}) {
     const mode0 = ['day', 'dusk', 'night'].includes(q.get('heliMode')) ? q.get('heliMode') : LS.get('vrc-heli-light', 'day');
     env = ENV.createEnvironment(scene, renderer, { mode: mode0 });
     await Promise.race([env.ready, new Promise(r => setTimeout(r, 4000))]);
+    // V28: the graphics pipeline of the outdoor worlds (js/three/gfx.js): physical sky, sun shadows, AO, bloom, grade, DOF in the cut-scene
+    try {
+      const GX = await import('../three/gfx.js');
+      gfx = GX.createGfx(renderer, { world: 'heli', touch: phone, extentK: 3.5 });
+      gfx.setMode(mode0); if (env.setPhysical) env.setPhysical(true);
+    } catch (e) { console.warn('[heli] gfx.js not used — plain rendering', e); gfx = null; }
     progress(0.3);
     try { complex = EXT.createComplex({}); scene.add(complex.group); } catch (e) { console.warn('[heli] complex', e); }
     await CD.loadCity(); progress(0.45);
@@ -266,6 +272,7 @@ export async function openHeli(opts = {}) {
     // aerial haze: lighter than at street level, so the city reads to the horizon
     if (scene.fog && scene.fog.isFogExp2) scene.fog.density *= m === 'day' ? 0.42 : 0.6;
     renderer.toneMappingExposure = m === 'day' ? 1.0 : m === 'dusk' ? 1.08 : 1.15;
+    if (gfx) gfx.setMode(m);
     LS.set('vrc-heli-light', m);
   }
   root.addEventListener('click', (e) => {
@@ -483,7 +490,16 @@ export async function openHeli(opts = {}) {
       if (btn('skip').hidden === S.intro) updateModeUI();
     }
     if (S.noRender) return;                                     // tests: simulation only
-    const tB = performance.now(); renderer.render(scene, camera); const tC = performance.now();
+    const tB = performance.now();
+    if (gfx) {
+      if (!S.gfxSun && env.sun && heli) { S.gfxSun = true; gfx.attachSun(env.sun, out => out.copy(heli.root.position)); }
+      const cock = S.cam === 'cockpit' || S.intro;
+      if (S.intro && pilot && pilot.group) { const pd = camera.position.distanceTo(pilot.group.getWorldPosition(S._pv || (S._pv = new THREE.Vector3()))); gfx.setCinema({ dof: { focus: Math.max(0.6, pd), range: 1.4, amount: phone ? 5 : 8 }, bars: 1 }); }
+      else if (S.gfxCine !== false) { gfx.setCinema({ dof: null, bars: 0 }); }
+      S.gfxCine = S.intro;
+      gfx.render(scene, camera, dt, { near: cock ? 2.4 : Math.max(2, camera.position.distanceTo(heli.root.position) - 6), groundY: -1e4, noBlur: S.intro && S.introT < 0.2 });
+    } else renderer.render(scene, camera);
+    const tC = performance.now();
     S.tUpd = S.tUpd == null ? tB - tA : S.tUpd * 0.8 + (tB - tA) * 0.2; S.tRen = S.tRen == null ? tC - tB : S.tRen * 0.8 + (tC - tB) * 0.2;
     dyn.frame(now);
     // fps meter (exposed for the tests)
@@ -500,6 +516,7 @@ export async function openHeli(opts = {}) {
     try { g3d && g3d.dispose(); } catch (e) { /* gone */ }
     for (const o of [pilot, heli, lmk, world, city, env]) { try { o && o.dispose && o.dispose(); } catch (e) { console.warn('[heli] dispose', e); } }
     try { if (complex) { scene.remove(complex.group); complex.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); } } catch (e) { /* gone */ }
+    try { gfx && gfx.dispose(); } catch (e) { /* gone */ }
     try { renderer && renderer.dispose(); renderer && renderer.forceContextLoss && renderer.forceContextLoss(); } catch (e) { /* gone */ }
     try { ctl._ro && ctl._ro.disconnect(); } catch (e) { /* gone */ }
     root.remove(); document.documentElement.style.overflow = prevOverflow;
