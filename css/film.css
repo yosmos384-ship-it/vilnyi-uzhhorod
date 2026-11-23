@@ -1,0 +1,58 @@
+/* v0.15.1 — GT film section on the home page (js/film.js). Uses the tokens of site.css. */
+.film { padding-block: 56px 72px; background: linear-gradient(180deg, var(--bg) 0%, #100e0b 55%, var(--bg) 100%); }
+@media (min-width: 900px) { .film { padding-block: 88px 104px; } }
+.film .sec-head { margin-bottom: 28px; max-width: 760px; }
+@media (min-width: 900px) { .film .sec-head { margin-bottom: 40px; } }
+.film .lead { margin-bottom: 0; }
+
+.film-frame {
+  position: relative; margin: 0; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: #050403;
+  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.film-frame video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; background: #050403; cursor: pointer; }
+/* portrait phones: the 1080x1920 cut, full bleed, never taller than the screen below the header.
+   Symmetric margins computed from the width (width + 2 × margin = 100 %), so it centres the same way in LTR and RTL. */
+.film-vertical .film-frame {
+  --fw: min(calc(100% + 2 * var(--gutter)), calc((100svh - var(--head-h) - 24px) * 9 / 16));
+  aspect-ratio: 9 / 16; border-inline: 0; border-radius: 0; max-width: none;
+  width: var(--fw); margin-inline: calc((100% - var(--fw)) / 2);
+}
+@supports not (height: 100svh) { .film-vertical .film-frame { --fw: min(calc(100% + 2 * var(--gutter)), calc((100vh - var(--head-h) - 24px) * 9 / 16)); } }
+
+.film-play {
+  position: absolute; inset: 50% auto auto 50%; transform: translate(-50%, -50%); z-index: 2;
+  width: 76px; height: 76px; border-radius: 50%; display: grid; place-items: center;
+  background: rgba(11, 10, 8, .5); border: 1px solid rgba(230, 204, 146, .7); color: var(--gold-hi);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); transition: transform .3s var(--ease), background .3s;
+}
+.film-play:hover { transform: translate(-50%, -50%) scale(1.06); background: rgba(11, 10, 8, .7); }
+.film-play svg { width: 30px; height: 30px; fill: currentColor; margin-inline-start: 4px; }
+[dir="rtl"] .film-play svg { margin-inline-start: 0; margin-inline-end: 4px; transform: none; }
+.film-play[hidden] { display: none; }
+
+.film-sound {
+  position: absolute; top: 12px; inset-inline-end: 12px; z-index: 2; width: 44px; height: 44px; border-radius: 50%;
+  display: grid; place-items: center; color: var(--ivory); background: rgba(11, 10, 8, .55);
+  border: 1px solid rgba(243, 237, 225, .28); transition: border-color .25s, color .25s;
+}
+.film-sound:hover, .film-sound.on { border-color: var(--gold); color: var(--gold-hi); }
+.film-sound svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.film-sound .i-on, .film-sound.on .i-off { display: none; }
+.film-sound.on .i-on { display: block; }
+
+.film-fig { margin: 0; }
+.film-cap {            /* credit under the picture (never under the floating WhatsApp / Instagram buttons over the video) */
+  margin-top: 10px; font: 400 11.5px/1.45 var(--f-body); letter-spacing: .04em; color: var(--muted); text-align: start;
+}
+:lang(he) .film-cap { font-size: 12px; letter-spacing: 0; }
+
+.film-ctas { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 14px; margin-top: 22px; }
+.film-ctas .btn svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.film-ctas .btn[hidden] { display: none; }
+.film-fine { margin: 0; font-size: 13px; color: var(--muted); }
+.film-fine a { color: var(--text); border-bottom: 1px solid var(--line); }
+@media (max-width: 600px) {
+  .film-ctas .btn { flex: 1 1 100%; white-space: normal; text-align: center; line-height: 1.25; padding-block: 12px; }
+  .film-fine { flex: 1 1 100%; text-align: center; }
+}
+@media (prefers-reduced-motion: reduce) { .film-play, .film-sound { transition: none; } }

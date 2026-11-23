@@ -16,7 +16,7 @@ THING = {'@id', '@type', '@context', 'name', 'alternateName', 'description', 'ur
 PLACE = THING | {'address', 'geo', 'hasMap', 'containsPlace', 'containedInPlace', 'amenityFeature', 'additionalProperty', 'telephone', 'photo', 'publicAccess', 'latitude', 'longitude', 'openingHoursSpecification', 'logo', 'isAccessibleForFree', 'maximumAttendeeCapacity', 'smokingAllowed', 'tourBookingPage', 'keywords', 'slogan', 'faxNumber', 'globalLocationNumber', 'branchCode', 'specialOpeningHoursSpecification'}
 ACCOM = PLACE | {'floorSize', 'numberOfRooms', 'numberOfBathroomsTotal', 'numberOfBedrooms', 'numberOfFullBathrooms', 'numberOfPartialBathrooms', 'accommodationFloorPlan', 'floorLevel', 'occupancy', 'petsAllowed', 'yearBuilt', 'leaseLength', 'permittedUsage', 'accommodationCategory', 'bed'}
 ORG = THING | {'logo', 'email', 'contactPoint', 'telephone', 'address', 'founder', 'foundingDate', 'parentOrganization', 'subOrganization', 'brand', 'legalName', 'areaServed', 'location', 'member', 'numberOfEmployees', 'vatID', 'taxID', 'department', 'knowsLanguage'}
-CREATIVE = THING | {'inLanguage', 'publisher', 'author', 'about', 'isPartOf', 'dateModified', 'datePublished', 'headline', 'keywords', 'mainEntity', 'creditText', 'copyrightHolder', 'thumbnailUrl', 'text', 'hasPart', 'license', 'audience', 'contentLocation', 'genre'}
+CREATIVE = THING | {'inLanguage', 'publisher', 'author', 'about', 'isPartOf', 'dateModified', 'datePublished', 'headline', 'keywords', 'mainEntity', 'creditText', 'copyrightHolder', 'thumbnailUrl', 'text', 'hasPart', 'license', 'audience', 'contentLocation', 'genre', 'video', 'isFamilyFriendly'}
 WEBPAGE = CREATIVE | {'breadcrumb', 'primaryImageOfPage', 'lastReviewed', 'significantLink', 'speakable', 'relatedLink', 'reviewedBy', 'mainContentOfPage'}
 MEDIA = CREATIVE | {'contentUrl', 'width', 'height', 'uploadDate', 'encodingFormat', 'caption', 'embedUrl', 'contentSize', 'representativeOfPage'}
 PRICESPEC = THING | {'price', 'priceCurrency', 'validFrom', 'validThrough', 'minPrice', 'maxPrice', 'eligibleQuantity', 'valueAddedTaxIncluded'}
@@ -29,6 +29,7 @@ VOCAB = {
     'ContactPoint': THING | {'telephone', 'contactType', 'areaServed', 'availableLanguage', 'email', 'hoursAvailable', 'contactOption', 'productSupported'},
     'WebSite': CREATIVE | {'issn'}, 'WebPage': WEBPAGE, 'CollectionPage': WEBPAGE, 'AboutPage': WEBPAGE, 'ContactPage': WEBPAGE, 'FAQPage': WEBPAGE,
     'ImageGallery': WEBPAGE | {'image'}, 'ImageObject': MEDIA | {'exifData', 'embeddedTextCaption'},
+    'VideoObject': MEDIA | {'duration', 'transcript', 'videoQuality', 'videoFrameSize', 'actor', 'director', 'musicBy', 'regionsAllowed', 'expires', 'hasPart', 'interactionStatistic'},   # v0.15.1: the GT film
     'Question': CREATIVE | {'acceptedAnswer', 'suggestedAnswer', 'answerCount'}, 'Answer': CREATIVE | {'upvoteCount', 'parentItem'},
     'BreadcrumbList': LIST, 'ItemList': LIST, 'ListItem': THING | {'position', 'item', 'nextItem', 'previousItem'},
     'Offer': OFFER, 'AggregateOffer': OFFER | {'lowPrice', 'highPrice', 'offerCount', 'offers'},
@@ -55,6 +56,7 @@ GOOGLE = {   # rich-result requirements (developers.google.com/search/docs/appea
     'Apartment': {'type': 'object', 'required': ['name', 'floorSize', 'numberOfRooms'], 'properties': {'floorSize': {'type': 'object', 'required': ['unitCode'], 'anyOf': [{'required': ['value']}, {'required': ['minValue', 'maxValue']}], 'properties': {'value': {'type': 'number', 'exclusiveMinimum': 0}, 'minValue': {'type': 'number'}, 'maxValue': {'type': 'number'}, 'unitCode': {'const': 'MTK'}}}}},
     'LocalBusiness': {'type': 'object', 'required': ['name', 'address'], 'properties': {'address': {'type': 'object', 'required': ['streetAddress', 'addressLocality', 'addressCountry']}}},
     'WebPage': {'type': 'object', 'required': ['url', 'name', 'inLanguage']},
+    'VideoObject': {'type': 'object', 'required': ['name', 'description', 'thumbnailUrl', 'uploadDate'], 'anyOf': [{'required': ['contentUrl']}, {'required': ['embedUrl']}], 'properties': {'duration': {'type': 'string', 'pattern': '^PT(\\d+H)?(\\d+M)?(\\d+S)?$'}, 'contentUrl': {'type': 'string', 'pattern': '^https://'}}},
 }
 VALIDATORS = {k: Draft202012Validator(v) for k, v in GOOGLE.items()}
 for k in ('CollectionPage', 'AboutPage', 'ContactPage', 'FAQPage'):

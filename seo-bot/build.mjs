@@ -91,6 +91,35 @@ const galleryItem = src => GALLERY.find(g => g.src === src);
 const IMGS = { home: 'assets/gallery/aerial-southeast.jpg', apartments: 'assets/gallery/night-corner-view.jpg', B1: 'assets/gallery/street-east-buildings-2-1.jpg', B2: 'assets/gallery/commercial-podium-corner.jpg', B3: 'assets/gallery/tower-and-spa.jpg', B4: 'assets/gallery/street-south-buildings-4-2.jpg', location: 'assets/gallery/day-corner-view.jpg', parking: 'assets/gallery/aerial-south.jpg', life: 'assets/web/lun-06.jpg' };
 const OG = { home: 'home', apartments: 'apartments', B1: 'b1', B2: 'b2', B3: 'b3', B4: 'b4', location: 'location', parking: 'parking', progress: 'progress' };
 
+// ---------------------------------------------------------------- v0.15.1: the GT film v2 (home page video)
+// Files in assets/film/ (web encodes; the originals stay in the private repo). End card: en → English, he → Hebrew,
+// the other languages → Ukrainian. Name / description describe only what the film shows (city drive, the complex).
+const FILM = {
+  upload: '2026-11-23T12:00:00+02:00', duration: 'PT51S', secs: 51, w: 1920, h: 1080,
+  thumb: `${BASE}/assets/film/poster-16x9.jpg`,
+  file: l => (l === 'en' || l === 'he' ? `/assets/film/film-v2-720-${l}.mp4` : '/assets/film/film-v2-1080-uk.mp4'),
+  size: l => (l === 'en' || l === 'he' ? [1280, 720] : [1920, 1080]),
+  t: {
+    uk: ['GT VILNYI — проїзд Ужгородом до ЖК VILNYI (фільм, 51 с)', '3D-анімація: GT-купе проїжджає Ужгородом — вулиця Собранецька, набережна Ужа, площа Петефі, вулиця Заньковецької — до чотирьох будинків ЖК VILNYI на вул. Грушевського, 4А. Дані міста © OpenStreetMap contributors.'],
+    en: ['GT VILNYI — a drive through Uzhhorod to VILNYI (film, 51 s)', '3D animation: a GT coupé drives through Uzhhorod — Sobranetska St, the Uzh embankment, Petőfi Square, Zankovetskoi St — to the four buildings of VILNYI at 4A Mykhaila Hrushevskoho St. City data © OpenStreetMap contributors.'],
+    he: ['GT VILNYI — נסיעה באוז׳הורוד אל מתחם VILNYI (סרט, 51 שניות)', 'הנפשת תלת־ממד: מכונית GT נוסעת באוז׳הורוד — רחוב סוברנצקה, טיילת נהר האוז׳, כיכר פטפי, רחוב זנקובצקה — אל ארבעת הבניינים של מתחם VILNYI ברחוב גרושבסקי 4A. נתוני העיר © OpenStreetMap contributors.'],
+    ro: ['GT VILNYI — un drum prin Ujhorod până la VILNYI (film, 51 s)', 'Animație 3D: un coupé GT traversează Ujhorodul — str. Sobranețka, cheiul râului Uj, piața Petőfi, str. Zankovețka — până la cele patru clădiri VILNYI, str. Hrușevski nr. 4A. Date despre oraș © OpenStreetMap contributors.'],
+    de: ['GT VILNYI — eine Fahrt durch Uschhorod zu VILNYI (Film, 51 s)', '3D-Animation: Ein GT-Coupé fährt durch Uschhorod — Sobranezka-Straße, Usch-Ufer, Petőfi-Platz, Sankowezka-Straße — zu den vier Häusern von VILNYI, Hruschewskyj-Straße 4A. Stadtdaten © OpenStreetMap contributors.'],
+    fr: ['GT VILNYI — une traversée d’Oujhorod jusqu’à VILNYI (film, 51 s)', 'Animation 3D : un coupé GT traverse Oujhorod — rue Sobranetska, quais de l’Ouj, place Petőfi, rue Zankovetska — jusqu’aux quatre immeubles de VILNYI, 4A rue Hrouchevskoho. Données de la ville © OpenStreetMap contributors.'],
+    it: ['GT VILNYI — un viaggio per Užhorod fino a VILNYI (film, 51 s)', 'Animazione 3D: una coupé GT attraversa Užhorod — via Sobranec’ka, lungofiume dell’Už, piazza Petőfi, via Zan’kovec’ka — fino ai quattro edifici di VILNYI, via Hruševs’koho 4A. Dati della città © OpenStreetMap contributors.'],
+  },
+};
+function filmLd(l) {
+  const [w, h] = FILM.size(l);
+  return { '@type': 'VideoObject', '@id': `${url(l)}#film`, name: FILM.t[l][0], description: FILM.t[l][1], thumbnailUrl: [FILM.thumb],
+    uploadDate: FILM.upload, duration: FILM.duration, contentUrl: BASE + FILM.file(l), encodingFormat: 'video/mp4', width: w, height: h,
+    inLanguage: l, isFamilyFriendly: true, about: { '@id': `${BASE}/#complex` }, publisher: { '@id': `${BASE}/#org` }, creditText: '© OpenStreetMap contributors' };
+}
+const filmOg = l => { const [w, h] = FILM.size(l), u = BASE + FILM.file(l);
+  return `<meta property="og:video" content="${u}"><meta property="og:video:secure_url" content="${u}"><meta property="og:video:type" content="video/mp4"><meta property="og:video:width" content="${w}"><meta property="og:video:height" content="${h}">`; };
+const filmFig = l => `<figure class="hero"><video controls muted playsinline preload="none" poster="/assets/film/poster-16x9.jpg" width="1920" height="1080" style="width:100%;height:auto;display:block;background:#050403" aria-label="${esc(FILM.t[l][0])}"><source src="${FILM.file(l)}" type="video/mp4"></video><figcaption>${esc(FILM.t[l][0])} · <span dir="ltr">© OpenStreetMap contributors</span></figcaption></figure>`;
+const filmSitemap = l => `<video:video><video:thumbnail_loc>${FILM.thumb}</video:thumbnail_loc><video:title>${esc(FILM.t[l][0])}</video:title><video:description>${esc(FILM.t[l][1])}</video:description><video:content_loc>${BASE + FILM.file(l)}</video:content_loc><video:duration>${FILM.secs}</video:duration><video:publication_date>${FILM.upload}</video:publication_date><video:family_friendly>yes</video:family_friendly></video:video>`;
+
 // responsive <img> from the gallery's own WebP variants (640 / 1200 px); never the 2400 px original
 function picture(l, src, { eager = false, sizes = '(max-width: 820px) 100vw, 820px', cls = '' } = {}) {
   const g = galleryItem(src); if (!g) return '';
@@ -175,7 +204,7 @@ function head(l, p) {
     + `<meta property="og:type" content="website"><meta property="og:site_name" content="${esc(l === 'uk' ? 'ЖК VILNYI' : 'VILNYI Uzhhorod')}"><meta property="og:title" content="${esc(p.title)}"><meta property="og:description" content="${esc(p.desc)}"><meta property="og:url" content="${p.canonical}"><meta property="og:image" content="${og}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${esc(p.ogAlt || p.h1)}"><meta property="og:locale" content="${S[l].locale}">`
     + LANGS.filter(x => x !== l).map(x => `<meta property="og:locale:alternate" content="${S[x].locale}">`).join('')
     + `<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(p.title)}"><meta name="twitter:description" content="${esc(p.desc)}"><meta name="twitter:image" content="${og}">`
-    + verif
+    + (p.home ? filmOg(l) : '') + verif
     + `<link rel="icon" type="image/png" href="/assets/brand/group-apple-touch-icon.png"><link rel="apple-touch-icon" href="/assets/brand/group-apple-touch-icon.png"><link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">`
     + `<style>${CSS}</style><script type="application/ld+json">${JSON.stringify(p.ld).replace(/</g, '\\u003c')}</script></head>`;
 }
@@ -283,9 +312,11 @@ const crumb = (l, ...xs) => [[S[l].nav.home, rel(l)], ...xs];
 
 function pageHome(l) {
   const N = nums(l), p = { title: T(l, 'homeTitle'), desc: T(l, 'homeDesc', N), h1: T(l, 'homeH1'), og: 'home', section: 'home', crumbs: [] };
-  p.canonical = url(l); p.ld = graph(l, p, B_IDS.map(b => buildingLd(l, b)), 'WebPage', true);
+  p.canonical = url(l); p.ld = graph(l, p, [...B_IDS.map(b => buildingLd(l, b)), filmLd(l)], 'WebPage', true);
+  p.ld['@graph'].find(n => n['@type'] === 'WebPage').video = { '@id': `${url(l)}#film` };
   let b = `<h1>${esc(p.h1)}</h1><p class="lead">${esc(st(l, 'hero.lead'))}</p>`;
   b += `<figure class="hero">${picture(l, IMGS.home, { eager: true, sizes: '(max-width: 1100px) 100vw, 1100px' })}</figure>`;
+  b += filmFig(l);
   b += `<dl class="kv"><div><dt>${esc(T(l, 'kAddress'))}</dt><dd>${esc(st(l, 'loc.addressV'))}</dd></div><div><dt>${esc(T(l, 'kDeveloper'))}</dt><dd>VILNYI Group</dd></div>`
     + `<div><dt>${esc(T(l, 'kApartments'))}</dt><dd>${N.n} (${esc(T(l, 'fMixV', N))})</dd></div><div><dt>${esc(T(l, 'kBuildings'))}</dt><dd>${esc(st(l, 'facts.buildingsV'))}</dd></div>`
     + `<div><dt>${esc(T(l, 'kPrice'))}</dt><dd>${D.USD_PER_M2} $ · ${esc(N.uah)}</dd></div><div><dt>${esc(T(l, 'kInstalment'))}</dt><dd>${esc(T(l, 'instalmentV'))}</dd></div>`
@@ -656,12 +687,12 @@ const removed = Object.keys(state.pages).filter(u => !pages[u]);
 function sitemap(lang) {
   const rows = OUT.filter(o => o.lang === lang).map(o => {
     const alts = LANGS.map(x => `<xhtml:link rel="alternate" hreflang="${x}" href="${url(x, o.key)}"/>`).join('') + `<xhtml:link rel="alternate" hreflang="x-default" href="${o.key === '' ? BASE + '/' : url('uk', o.key)}"/>`;
-    return `<url><loc>${o.url}</loc><lastmod>${pages[o.url].lastmod}</lastmod>${alts}</url>`;
+    return `<url><loc>${o.url}</loc><lastmod>${pages[o.url].lastmod}</lastmod>${alts}${o.key === '' ? filmSitemap(lang) : ''}</url>`;
   });
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${rows.join('\n')}\n</urlset>\n`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">\n${rows.join('\n')}\n</urlset>\n`;
 }
 const rootLast = [...Object.values(pages)].map(p => p.lastmod).sort().pop();
-const rootMap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n<url><loc>${BASE}/</loc><lastmod>${state.root?.lastmod || TODAY}</lastmod>${LANGS.map(x => `<xhtml:link rel="alternate" hreflang="${x}" href="${url(x)}"/>`).join('')}<xhtml:link rel="alternate" hreflang="x-default" href="${BASE}/"/></url>\n<url><loc>${BASE}/facts/</loc><lastmod>${pages[`${BASE}/facts/`].lastmod}</lastmod></url>\n</urlset>\n`;
+const rootMap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">\n<url><loc>${BASE}/</loc><lastmod>${state.root?.lastmod || TODAY}</lastmod>${LANGS.map(x => `<xhtml:link rel="alternate" hreflang="${x}" href="${url(x)}"/>`).join('')}<xhtml:link rel="alternate" hreflang="x-default" href="${BASE}/"/>${filmSitemap('uk')}</url>\n<url><loc>${BASE}/facts/</loc><lastmod>${pages[`${BASE}/facts/`].lastmod}</lastmod></url>\n</urlset>\n`;
 const maps = { 'sitemap-root.xml': rootMap };
 for (const l of LANGS) maps[`sitemap-${l}.xml`] = sitemap(l);
 const index = `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${Object.keys(maps).map(f => { const lm = f === 'sitemap-root.xml' ? rootLast : OUT.filter(o => `sitemap-${o.lang}.xml` === f).map(o => pages[o.url].lastmod).sort().pop(); return `<sitemap><loc>${BASE}/${f}</loc><lastmod>${lm}</lastmod></sitemap>`; }).join('\n')}\n</sitemapindex>\n`;
