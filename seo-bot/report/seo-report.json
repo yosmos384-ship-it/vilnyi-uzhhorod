@@ -1,5 +1,5 @@
 {
- "generated": "2026-11-16T11:40:12Z",
+ "generated": "2026-11-23T13:07:26Z",
  "base": "https://vilnyi-gt-city.uz.ua",
  "pages": 968,
  "sitemapUrls": 968,
@@ -19,13 +19,14 @@
   "Organization": 968,
   "ParkingFacility": 7,
   "Residence": 970,
+  "VideoObject": 8,
   "WebPage": 911,
   "WebSite": 968
  },
  "htmlBytes": {
   "min": 14939,
   "max": 48679,
-  "avg": 22956
+  "avg": 22974
  },
  "eagerImageBytes": {
   "min": 0,
@@ -48,8 +49,8 @@
   "pinged": 969,
   "neverPinged": 0,
   "lastPing": {
-   "date": "2026-11-09",
-   "urls": 962,
+   "date": "2026-11-16",
+   "urls": 941,
    "mode": "weekly"
   }
  },
@@ -57,28 +58,28 @@
   {
    "url": "https://vilnyi-gt-city.uz.ua/",
    "scores": {
-    "performance": 33,
+    "performance": 30,
     "accessibility": 93,
     "best-practices": 100,
     "seo": 100
    },
-   "lcp_ms": 10415,
-   "cls": 0.134,
-   "tbt_ms": 1770,
-   "bytes": 2872769
+   "lcp_ms": 11735,
+   "cls": 0.143,
+   "tbt_ms": 2416,
+   "bytes": 3225406
   },
   {
    "url": "https://vilnyi-gt-city.uz.ua/uk/",
    "scores": {
-    "performance": 100,
+    "performance": 96,
     "accessibility": 100,
     "best-practices": 100,
     "seo": 100
    },
-   "lcp_ms": 1507,
+   "lcp_ms": 2778,
    "cls": 0,
-   "tbt_ms": 20,
-   "bytes": 151454
+   "tbt_ms": 0,
+   "bytes": 376224
   },
   {
    "url": "https://vilnyi-gt-city.uz.ua/en/",
@@ -88,10 +89,10 @@
     "best-practices": 100,
     "seo": 100
    },
-   "lcp_ms": 1503,
+   "lcp_ms": 1702,
    "cls": 0,
    "tbt_ms": 0,
-   "bytes": 150526
+   "bytes": 375240
   },
   {
    "url": "https://vilnyi-gt-city.uz.ua/uk/apartments/",
@@ -101,10 +102,10 @@
     "best-practices": 100,
     "seo": 100
    },
-   "lcp_ms": 1289,
+   "lcp_ms": 1228,
    "cls": 0,
-   "tbt_ms": 2,
-   "bytes": 97126
+   "tbt_ms": 17,
+   "bytes": 97105
   },
   {
    "url": "https://vilnyi-gt-city.uz.ua/uk/layout/1b01/",
@@ -114,10 +115,10 @@
     "best-practices": 100,
     "seo": 100
    },
-   "lcp_ms": 782,
+   "lcp_ms": 787,
    "cls": 0,
-   "tbt_ms": 10,
-   "bytes": 19364
+   "tbt_ms": 0,
+   "bytes": 19342
   },
   {
    "url": "https://vilnyi-gt-city.uz.ua/uk/faq/",
@@ -127,10 +128,10 @@
     "best-practices": 100,
     "seo": 100
    },
-   "lcp_ms": 773,
+   "lcp_ms": 903,
    "cls": 0,
-   "tbt_ms": 49,
-   "bytes": 19645
+   "tbt_ms": 2,
+   "bytes": 19581
   }
  ],
  "ok": true
