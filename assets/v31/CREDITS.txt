@@ -1,0 +1,50 @@
+ЖК VILNYI — GT VILNYI drive world, v0.16 (V32 real city): third-party material in assets/v31/. Only CC0 / ODbL data / free-licence
+reference is used; nothing here is a copy of a photo or of Google content.
+
+landmarks/*.glb — models made for this site with our own Blender code (src/landmarks31/build.py in the private project):
+  castle, cathedral, theatre, philharmonic, whitehouse, university, footbridge, petofi. Footprints, wall lines and the linden
+  alley rows from OpenStreetMap — © OpenStreetMap contributors, ODbL 1.0 (https://www.openstreetmap.org/copyright).
+landmarks/tex/ — ambientCG (https://ambientcg.com, CC0 1.0, https://docs.ambientcg.com/license/): Plaster001 (plaster),
+  Bricks085 (brick), Rock051 (stone), Rock035 (granite), RoofingTiles014A (roof), Metal032 (metal), Concrete031 (concrete),
+  PavingStones150 (paving), Wood049 (wood). Re-encoded as WebP; tintable sets turned into neutral detail maps.
+Reference photos (Wikimedia Commons; looked at for shapes / colours only, NOT shipped, not traced):
+  [castle] File:Ukraine-Uzhhorod-Castle-4.jpg — Alex Zelenko — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Ukraine-Uzhhorod-Castle-4.jpg
+  [castle] File:Uzhhorod Castle.JPG — Varga Attila — CC BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Uzhhorod_Castle.JPG
+  [castle] File:Uzhgorod castle bastions.jpg — ru:User:Водник — CC BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Uzhgorod_castle_bastions.jpg
+  [castle] File:Ruins of the church in Uzhgorod castle, 2014.jpg — Klymenkoy — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Ruins_of_the_church_in_Uzhgorod_castle,_2014.jpg
+  [castle] File:Uzhhorod castle 5.jpg — Ynesyn — Public domain — https://commons.wikimedia.org/wiki/File:Uzhhorod_castle_5.jpg
+  [castle] File:Ukraine-Uzhhorod-Castle-7.jpg — Alex Zelenko — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Ukraine-Uzhhorod-Castle-7.jpg
+  [castle] File:Ukraine-Uzhhorod-Castle-16.jpg — Alex Zelenko — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Ukraine-Uzhhorod-Castle-16.jpg
+  [castle] File:Uzhhorod-castle 3.jpg — Водник at Russian Wikipedia — CC BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Uzhhorod-castle_3.jpg
+  [cathedral] File:Uzhhorod Greek Catholic Cathedral.jpg — VargaA — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Uzhhorod_Greek_Catholic_Cathedral.jpg
+  [cathedral] File:Greek Catholic Cathedral, Uzhhorod 1.jpg — Швітланьо — CC BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Greek_Catholic_Cathedral,_Uzhhorod_1.jpg
+  [cathedral] File:Greek Catholic Cathedral, Uzhhorod 11.jpg — Швітланьо — CC BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Greek_Catholic_Cathedral,_Uzhhorod_11.jpg
+  [cathedral] File:Greek Catholic Cathedral, Uzhhorod 5.jpg — Швітланьо — CC BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Greek_Catholic_Cathedral,_Uzhhorod_5.jpg
+  [cathedral] File:Greek Catholic Cathedral, Uzhhorod 2.jpg — Швітланьо — CC BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Greek_Catholic_Cathedral,_Uzhhorod_2.jpg
+  [cathedral] File:Greek Catholic Cathedral, Uzhhorod 12.jpg — Швітланьо — CC BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Greek_Catholic_Cathedral,_Uzhhorod_12.jpg
+  [cathedral] File:Greek Catholic Cathedral, Uzhhorod 10.jpg — Швітланьо — CC BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Greek_Catholic_Cathedral,_Uzhhorod_10.jpg
+  [cathedral] File:Greek Catholic Cathedral, Uzhhorod 4.jpg — Швітланьо — CC BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Greek_Catholic_Cathedral,_Uzhhorod_4.jpg
+  [theatre] File:Будинок першого театру на Закарпатті Театральна, 8.JPG — ЯдвигаВереск — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:%D0%91%D1%83%D0%B4%D0%B8%D0%BD%D0%BE%D0%BA_%D0%BF%D0%B5%D1%80%D1%88%D0%BE%D0%B3%D0%BE_%D1%82%D0%B5%D0%B0%D1%82%D1%80%D1%83_%D0%BD%D0%B0_%D0%97%D0%B0%D0%BA%D0%B0%D1%80%D0%BF%D0%B0%D1%82%D1%82%D1%96_%D0%A2%D0%B5%D0%B0%D1%82%D1%80%D0%B0%D0%BB%D1%8C%D0%BD%D0%B0,_8.JPG
+  [theatre] File:ЗакарпатськаУкраїна72.jpg — Tern-Ost — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:%D0%97%D0%B0%D0%BA%D0%B0%D1%80%D0%BF%D0%B0%D1%82%D1%81%D1%8C%D0%BA%D0%B0%D0%A3%D0%BA%D1%80%D0%B0%D1%97%D0%BD%D0%B072.jpg
+  [theatre] File:Театральна площа 1.jpg — Kossstja — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:%D0%A2%D0%B5%D0%B0%D1%82%D1%80%D0%B0%D0%BB%D1%8C%D0%BD%D0%B0_%D0%BF%D0%BB%D0%BE%D1%89%D0%B0_1.jpg
+  [theatre] File:Будинок першого театру на Закарпатті в якому працював М.К. Садовський 3.JPG — Лавришин Микола Миколайович — CC BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:%D0%91%D1%83%D0%B4%D0%B8%D0%BD%D0%BE%D0%BA_%D0%BF%D0%B5%D1%80%D1%88%D0%BE%D0%B3%D0%BE_%D1%82%D0%B5%D0%B0%D1%82%D1%80%D1%83_%D0%BD%D0%B0_%D0%97%D0%B0%D0%BA%D0%B0%D1%80%D0%BF%D0%B0%D1%82%D1%82%D1%96_%D0%B2_%D1%8F%D0%BA%D0%BE%D0%BC%D1%83_%D0%BF%D1%80%D0%B0%D1%86%D1%8E%D0%B2%D0%B0%D0%B2_%D0%9C.%D0%9A._%D0%A1%D0%B0%D0%B4%D0%BE%D0%B2%D1%81%D1%8C%D0%BA%D0%B8%D0%B9_3.JPG
+  [theatre] File:Uzhhorod Puppet Theatre-7078.jpg — Raimond Spekking — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Uzhhorod_Puppet_Theatre-7078.jpg
+  [theatre] File:, пл. Театральна, 8.jpg — ЯдвигаВереск — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:,_%D0%BF%D0%BB._%D0%A2%D0%B5%D0%B0%D1%82%D1%80%D0%B0%D0%BB%D1%8C%D0%BD%D0%B0,_8.jpg
+  [theatre] File:P1370316 пл. Театральна, 8.jpg — Posterrr — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:P1370316_%D0%BF%D0%BB._%D0%A2%D0%B5%D0%B0%D1%82%D1%80%D0%B0%D0%BB%D1%8C%D0%BD%D0%B0,_8.jpg
+  [theatre] File:Будинок першого театру на Закарпатті!.JPG — Zarakhovskyi — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:%D0%91%D1%83%D0%B4%D0%B8%D0%BD%D0%BE%D0%BA_%D0%BF%D0%B5%D1%80%D1%88%D0%BE%D0%B3%D0%BE_%D1%82%D0%B5%D0%B0%D1%82%D1%80%D1%83_%D0%BD%D0%B0_%D0%97%D0%B0%D0%BA%D0%B0%D1%80%D0%BF%D0%B0%D1%82%D1%82%D1%96!.JPG
+  [philharmonic] File:Ukraine-Uzhhorod-Synagogue-5.jpg — Alex Zelenko — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Ukraine-Uzhhorod-Synagogue-5.jpg
+  [philharmonic] File:Ukraine-Uzhhorod-Synagogue-1.jpg — Alex Zelenko — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Ukraine-Uzhhorod-Synagogue-1.jpg
+  [philharmonic] File:Ukraine-Uzhhorod-Synagogue-6.jpg — Alex Zelenko — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Ukraine-Uzhhorod-Synagogue-6.jpg
+  [philharmonic] File:Ukraine-Uzhhorod-Synagogue-2.jpg — Alex Zelenko — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Ukraine-Uzhhorod-Synagogue-2.jpg
+  [philharmonic] File:Ukraine-Uzhhorod-Synagogue-3.jpg — Alex Zelenko — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Ukraine-Uzhhorod-Synagogue-3.jpg
+  [philharmonic] File:Ukraine-Uzhhorod-Synagogue-4.jpg — Alex Zelenko — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Ukraine-Uzhhorod-Synagogue-4.jpg
+  [philharmonic] File:Facade of Philharmonic Hall - Former Synagogue - Uzhhorod - Ukraine (36460620092) (2).jpg — Adam Jones from Kelowna, BC, Canada — CC BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:Facade_of_Philharmonic_Hall_-_Former_Synagogue_-_Uzhhorod_-_Ukraine_(36460620092)_(2).jpg
+  [philharmonic] File:Detail of Facade of Philharmonic Hall - Former Synagogue - Uzhhorod - Ukraine (36460616142) (2).jpg — Adam Jones from Kelowna, BC, Canada — CC BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:Detail_of_Facade_of_Philharmonic_Hall_-_Former_Synagogue_-_Uzhhorod_-_Ukraine_(36460616142)_(2).jpg
+  [whitehouse] File:Закарпатська ОДА вид ззаду-зліва nikon.jpg — Kossstja — CC0 — https://commons.wikimedia.org/wiki/File:%D0%97%D0%B0%D0%BA%D0%B0%D1%80%D0%BF%D0%B0%D1%82%D1%81%D1%8C%D0%BA%D0%B0_%D0%9E%D0%94%D0%90_%D0%B2%D0%B8%D0%B4_%D0%B7%D0%B7%D0%B0%D0%B4%D1%83-%D0%B7%D0%BB%D1%96%D0%B2%D0%B0_nikon.jpg
+  [whitehouse] File:Uzhhorod Administration Building 2.jpg — User:VargaA — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Uzhhorod_Administration_Building_2.jpg
+
+people (assets/v30/people, added in v0.16): k1, k2 (children), p1, p2 (police), c1 (courier), w1 (waiter), s1 (staff) *-hi/-lo/-mid.glb
+  and the *-mid.glb copies of m1–m6, f1–f5: built with MakeHuman / MPFB2 from MakeHuman CC0 1.0 assets (bodies, skins,
+  male_casualsuit02/04/06, female_casualsuit02, female_sportsuit01, hair, shoes); clothes recoloured here (plain, no logos);
+  the courier box is our own geometry. MPFB code (GPL-3) is only the build tool and is not shipped.
+Cars: the eight designs of car-models.js are our own procedural models (no brands); v0.16 only shows more of their detail tiers.

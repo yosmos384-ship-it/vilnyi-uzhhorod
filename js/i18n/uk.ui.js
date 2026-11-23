@@ -483,6 +483,8 @@ export default {
   "walk.game.policeStolen": "Ви викрали патрульне авто — поліція вже шукає вас!",
   "walk.car.limp": "Авто тяжко пошкоджене — їде на мінімальній потужності. Утримуйте R (або ↺), щоб отримати нове авто",
   "walk.car.quality": "Якість графіки",
+  "walk.car.g3dOff": "вимкнено",
+  "walk.car.g3dOn": "увімкнено",
   "walk.car.qUltra": "Ультра",
   "walk.car.qHigh": "Висока",
   "walk.car.qMedium": "Середня",

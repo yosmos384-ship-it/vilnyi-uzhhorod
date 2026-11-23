@@ -454,7 +454,7 @@ export function makePerson({ role = 'civil', seed = 1, pose = 'stand', gender, a
 }
 
 // ---- mid / far tiers: one template body, instanced; limbs swung in the vertex shader -------------------------------------------------
-const LIMB_OF = [0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4], LOW_OF = [0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1];
+export const LIMB_OF = [0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4], LOW_OF = [0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1];
 export const TEMPLATE_TRAITS = (() => { const T = makeTraits(7, { role: 'civil', gender: 'f', age: 30 }); T.height = 1.72; T.build = 0; T.headH = 0.228; T.kid = 0; T.stoop = 0; T.hairStyle = 'short'; T.fringe = false; T.acc = { bag: null };
   T.outfit = { top: 'shirt', bottom: 'trousers', sleeves: 'long', open: false, tucked: false, skirtLen: 0.5, heel: 0, legsBare: false, hat: null }; T.gender = 'x'; return T; })();
 /** Template geometry of tier `lod` (1 mid, 2 far). userData.piv = [shoulderY, elbowY, hipY, kneeY], userData.K. */
@@ -477,7 +477,7 @@ export function templateGeometry(lod = 1) {
 }
 // GLSL: the same gait as poseWalk() (swing / elbow / hip / knee only) and a few static poses. pose ids:
 export const POSE_ID = { walk: 0, stand: 0, sit: 1, phone: 2, film: 3, hands: 3, shout: 3, lie: 4, drive: 5, talk: 6, angry: 7, cower: 3, kneel: 1, stumble: 0, wave: 7, pull: 5, push: 5 };
-const VS_HEAD = `
+export const VS_HEAD = `
 attribute float aSlot; attribute vec4 aLimb; attribute vec2 aVar; attribute vec4 iA; attribute vec4 iV;
 uniform sampler2D uPal; uniform vec4 uPiv; uniform float uLegU;
 vec2 pRot(vec2 yz, float a) { float c = cos(a), s = sin(a); return vec2(yz.x * c - yz.y * s, yz.x * s + yz.y * c); }

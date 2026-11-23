@@ -217,6 +217,7 @@ const CSS = `
 `;
 const ICON = {
   cabin: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2.2"/><path d="M4.8 10.5h4.9M14.3 10.5h4.9M12 14.2v5.2"/></svg>',
+  globe: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.3 3.6 5.2 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.2-3.6-8.5s1.2-6.2 3.6-8.5z"/></svg>',   // V32: «Google 3D»
   more: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
   indL: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 12l8-7v4.5h10v5H11V19z"/></svg>',
   indR: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 12l-8-7v4.5H3v5h10V19z"/></svg>',
@@ -637,6 +638,7 @@ export const driveMixin = {
       this._doorSwing(car, 1, 0, 320).then(() => { const A = this._carA; if (A && this.drive) A.door(); });
       if (!this._driveHinted && this._isTouch) { this._driveHinted = true; this._toast(this.t('walk.car.hintTouch'), 6000); }   // desktop: the key list stands in the corner
       this._emitDrive('drive:enter', { car: rec });
+      this._g3dDrive(true);                                                 // V32: Google 3D (if wanted) only now, in the car
       if (this._gameStart) { this._gameHudInit(); this._gameStart(); }   // V9: people + police once the city data is there
     } finally { this.busy = false; await this._fade(false); }
   },
@@ -687,6 +689,7 @@ export const driveMixin = {
       this._lastPlace = null; this._updateHud(true);
       if (side === 0) this._doorSwing(car, 1, 0, 420);
       else car.setDoor && car.setDoor(0);
+      this._g3dDrive(false);                                                // V32: leaving the car stops Google's tiles
       this._emitDrive('drive:exit', { car: rec });
     } finally { this.busy = false; await this._fade(false); }
   },
@@ -1496,6 +1499,9 @@ export const driveMixin = {
     e.dreset = mk('reset', ICON.reset);
     { const hb = mk('heli', ICON_HELI); hb.setAttribute('aria-label', this.t('walk.heli')); hb.title = this.t('walk.heli'); hb.addEventListener('click', ev => { ev.stopPropagation(); window.dispatchEvent(new CustomEvent('vrc:heli', { detail: { from: 'gt' } })); }); hb.addEventListener('pointerdown', ev => ev.stopPropagation()); e.dheli = hb; }   // V26
     e.dcabin = mk('cabin', ICON.cabin);                                                                   // V25: cabin quality
+    { const env = this.env; if (env && typeof env.g3dDrive === 'function') {                              // V32: «Google 3D» on / off (only with a Map Tiles key)
+      const gb = mk('g3d', ICON.globe); gb.classList.add('vw-g3dbtn'); e.dg3d = gb;
+      gb.addEventListener('click', ev => { ev.stopPropagation(); this._g3dToggle(); }); gb.addEventListener('pointerdown', ev => ev.stopPropagation()); } }
     e.dwipers = mk('wipers', ICON.wipers); e.dhazard = mk('hazard', ICON.hazard);                       // V19: wipers, hazard lights
     if (this._isTouch && typeof window.DeviceOrientationEvent !== 'undefined') e.dtilt = mk('tilt', ICON.tilt);
     e.dindL = x.querySelector('[data-kd=indL]'); e.dindR = x.querySelector('[data-kd=indR]'); e.dhorn = x.querySelector('[data-kd=horn]'); e.dname = name; e.dhand = x.querySelector('[data-kd=hand]');
@@ -1511,6 +1517,23 @@ export const driveMixin = {
     e.dhorn.addEventListener('pointerdown', hOn); for (const n of ['pointerup', 'pointercancel', 'lostpointercapture']) e.dhorn.addEventListener(n, hOff);
     e.dhorn.addEventListener('contextmenu', ev => ev.preventDefault());
   },
+  // ---- V32: Google Photorealistic 3D Tiles in drive mode (environment.js + google3d.js). Requested only while driving, one
+  // setting for the page (vrc.g3d.on; default ON desktop, OFF phones), root sessions and tile requests capped per page load.
+  _g3dMod() { if (!this._g3dM) this._g3dM = import('./google3d.js').then(m => (this._g3dMs = m)).catch(() => null); return this._g3dM; },
+  _g3dBtn() {
+    const b = this.el && this.el.dg3d, m = this._g3dMs; if (!b) return;
+    const ok = !!(m && m.google3dConfigured()); b.hidden = !ok; if (!ok) { if (!m) this._g3dMod().then(() => this._g3dBtn()); return; }
+    const g = this.env && this.env.g3d, on = g ? g.mode === 'google' : m.g3dWanted();
+    b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    const k = on ? 'walk.car.g3dOn' : 'walk.car.g3dOff'; b.setAttribute('aria-label', 'Google 3D — ' + this.t(k)); b.title = 'Google 3D — ' + this.t(k);
+  },
+  async _g3dToggle() {
+    const m = await this._g3dMod(); if (!m || !m.google3dConfigured()) return;
+    const g = this.env && this.env.g3d, on = !(g ? g.mode === 'google' : m.g3dWanted());
+    m.g3dSetWanted(on); if (g) g.setMode(on ? 'google' : 'classic');
+    this._toast('Google 3D: ' + this.t(on ? 'walk.car.g3dOn' : 'walk.car.g3dOff'), 2000); this._g3dBtn();
+  },
+  _g3dDrive(on) { try { const env = this.env; if (env && typeof env.g3dDrive === 'function') env.g3dDrive(on); } catch (e) { console.warn('[drive] g3d', e); } },
   _driveMenu(open) {
     const e = this.el; if (!e || !e.dmore) return;
     this.root.classList.toggle('dmenu-open', !!open); e.dmore.setAttribute('aria-expanded', open ? 'true' : 'false'); e.dmore.classList.toggle('on', !!open);
@@ -1537,6 +1560,7 @@ export const driveMixin = {
       this._radioBar(null);
       if (e.dradio) { e.dradio.setAttribute('aria-label', this.t('walk.radio.title')); for (const [kr, key] of [['prev', 'walk.radio.prev'], ['next', 'walk.radio.next'], ['down', 'walk.radio.volDown'], ['up', 'walk.radio.volUp'], ['power', 'walk.radio.power']]) lab(e.dradio.querySelector(`[data-kr=${kr}]`), key); this._radioHud(); }
       if (e.dtilt) e.dtilt.classList.toggle('on', !!D.tiltOn);
+      this._g3dBtn();
       const sp = e.brake && e.brake.querySelector('span'); if (sp) sp.textContent = this.t('walk.car.brakeShort');
       const sg = e.gas && e.gas.querySelector('span'); if (sg) sg.textContent = this.t('walk.car.gasShort');
       this._ckLabels = null;

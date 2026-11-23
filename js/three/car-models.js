@@ -1592,6 +1592,58 @@ export function createCarInstances(list, { shadows = false, tier = 2 } = {}) {
     dispose() { for (const { p, r } of Object.values(meshes)) { p.dispose(); r.dispose(); } group.parent?.remove(group); },
   };
 }
+/** V32 (v0.16): moving cars with distance LODs — the far tier (instanced) for the mass, the mid tier (instanced, more detail)
+ *  within lod.mid metres of the camera, and up to lod.nearMax full models (createCar: body, glass, lamps, wheels, interior,
+ *  plates) within lod.near metres. Same interface as createCarInstances; update(camPos) picks the tiers (camPos optional). */
+export function createCarInstancesLOD(list, { shadows = false, lod = {} } = {}) {
+  const L = Object.assign({ near: 26, nearMax: 3, mid: 70 }, lod);
+  const group = new THREE.Group(); group.name = 'vrc-car-instances-lod';
+  const MS = shared(), byKind = {}, meshes = {}, hidden = new Set(), col = new THREE.Color(), zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  list.forEach((c, i) => (byKind[SPECS[c.kind] ? SPECS[c.kind].kind : 'sedan'] ||= []).push(i));
+  for (const [kind, idx] of Object.entries(byKind)) {
+    const G2 = buildCar(kind, 2), G1 = buildCar(kind, 1), n = idx.length;
+    const mk = (G, paintMat, tag) => { const p = new THREE.InstancedMesh(G.paint, paintMat, n), r = new THREE.InstancedMesh(G.rest, MS.rest, n); p.name = 'cars-' + kind + '-' + tag + '-paint'; r.name = 'cars-' + kind + '-' + tag + '-rest'; p.castShadow = r.castShadow = shadows; p.count = r.count = 0; group.add(p, r); return { p, r }; };
+    meshes[kind] = { idx, far: mk(G2, MS.farPaint, 'far'), mid: mk(G1, MS.midPaint, 'mid') };
+  }
+  const near = new Map();                                   // list index → createCar() model
+  const wheel = new Map();                                  // list index → wheel spin angle
+  let lastT = 0;
+  function update(camPos) {
+    const now = typeof performance !== 'undefined' ? performance.now() : 0, dt = lastT ? Math.min(0.1, (now - lastT) / 1000) : 0; lastT = now;
+    // the nearest cars get full models
+    const want = new Set();
+    if (camPos) {
+      const cand = [];
+      list.forEach((c, i) => { if (hidden.has(i) || c.taken) return; const d = Math.hypot(c.x - camPos.x, c.z - camPos.z); if (d < L.near) cand.push([d, i]); });
+      cand.sort((a, b) => a[0] - b[0]); for (const [, i] of cand.slice(0, L.nearMax)) want.add(i);
+    }
+    for (const [i, car] of near) if (!want.has(i)) { car.group.visible = false; }
+    for (const i of want) {
+      const c = list[i]; let car = near.get(i);
+      if (!car) { try { car = createCar(c.kind, c.colour, { interior: hashStr(String(c.id || i)) % INTERIORS.length, plate: hashStr(String(c.id || i) + '#') % PLATES.n }); car.setLights && car.setLights(false); group.add(car.group); near.set(i, car); } catch (e) { continue; } }
+      car.group.visible = true; car.group.position.set(c.x, c.y, c.z); car.group.rotation.set(-(c.pitch || 0), c.yaw, 0, 'YXZ'); car.group.updateMatrixWorld(true);
+      const S = SPECS[c.kind] || SPECS.sedan, a = (wheel.get(i) || 0) + (c.v || 0) * dt / (S.wheelR || 0.34); wheel.set(i, a); if (car.setWheels) car.setWheels(a, 0);
+    }
+    if (near.size > L.nearMax * 3) for (const [i, car] of near) if (!car.group.visible) { car.dispose && car.dispose(); near.delete(i); if (near.size <= L.nearMax * 2) break; }
+    for (const M of Object.values(meshes)) {
+      let nf = 0, nm = 0;
+      for (const ci of M.idx) {
+        const c = list[ci]; if (hidden.has(ci) || want.has(ci)) continue;
+        const m = _m.compose(_v.set(c.x, c.y, c.z), _q.setFromEuler(_e.set(-(c.pitch || 0), c.yaw, 0, 'YXZ')), _s1);
+        const d = camPos ? Math.hypot(c.x - camPos.x, c.z - camPos.z) : 1e9, T = d < L.mid ? M.mid : M.far, k = d < L.mid ? nm++ : nf++;
+        T.p.setMatrixAt(k, m); T.r.setMatrixAt(k, m); T.p.setColorAt(k, col.set(CAR_COLOURS[c.colour] || c.colour || '#222'));
+      }
+      for (const [T, n] of [[M.far, nf], [M.mid, nm]]) { T.p.count = T.r.count = n; T.p.visible = T.r.visible = n > 0; if (n) { T.p.instanceMatrix.needsUpdate = T.r.instanceMatrix.needsUpdate = true; if (T.p.instanceColor) T.p.instanceColor.needsUpdate = true; T.p.computeBoundingSphere(); T.r.computeBoundingSphere(); } }
+    }
+  }
+  update();
+  return {
+    group, list, setHidden(i, v) { if (v) hidden.add(i); else hidden.delete(i); }, update,
+    setLights(on) { for (const car of near.values()) car.setLights && car.setLights(on); },
+    stats() { return { near: [...near.values()].filter(c => c.group.visible).length, mid: Object.values(meshes).reduce((s, M) => s + M.mid.p.count, 0), far: Object.values(meshes).reduce((s, M) => s + M.far.p.count, 0) }; },
+    dispose() { for (const M of Object.values(meshes)) for (const T of [M.far, M.mid]) { T.p.dispose(); T.r.dispose(); } for (const car of near.values()) car.dispose && car.dispose(); group.parent?.remove(group); },
+  };
+}
 /** Geometry + materials of a merged tier, for hosts that manage their own instanced meshes (the fleet). */
 export function carTier(kind, tier) { const G = buildCar(kind, tier), MS = shared(); return { paint: G.paint, rest: G.rest, paintMat: tier === 1 ? MS.midPaint : MS.farPaint, restMat: MS.rest, spec: G.spec }; }
 /** A single-material, x-forward geometry (vertex colours) for foreign instanced car meshes (environment traffic). */

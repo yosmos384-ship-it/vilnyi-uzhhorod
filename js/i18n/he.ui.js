@@ -483,6 +483,8 @@ export default {
   "walk.game.policeStolen": "גנבתם ניידת — המשטרה כבר מחפשת אתכם!",
   "walk.car.limp": "הרכב ניזוק קשה — הוא ממשיך בכוח מועט. החזיקו R (או ↺) לקבלת רכב חדש",
   "walk.car.quality": "איכות גרפיקה",
+  "walk.car.g3dOff": "כבוי",
+  "walk.car.g3dOn": "מופעל",
   "walk.car.qUltra": "אולטרה",
   "walk.car.qHigh": "גבוהה",
   "walk.car.qMedium": "בינונית",

@@ -482,6 +482,8 @@ export default {
   "walk.game.policeStolen": "Ați furat o mașină de poliție — poliția vă caută!",
   "walk.car.limp": "Mașina este grav avariată — merge cu putere redusă. Țineți apăsat R (sau ↺) pentru o mașină nouă",
   "walk.car.quality": "Calitatea graficii",
+  "walk.car.g3dOff": "dezactivat",
+  "walk.car.g3dOn": "activat",
   "walk.car.qUltra": "Ultra",
   "walk.car.qHigh": "Ridicată",
   "walk.car.qMedium": "Medie",

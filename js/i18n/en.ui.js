@@ -481,6 +481,8 @@ export default {
   "walk.game.policeStolen": "You stole a patrol car — the police are after you!",
   "walk.car.limp": "The car is badly damaged — it limps on with little power. Hold R (or ↺) for a fresh car",
   "walk.car.quality": "Graphics quality",
+  "walk.car.g3dOff": "off",
+  "walk.car.g3dOn": "on",
   "walk.car.qUltra": "Ultra",
   "walk.car.qHigh": "High",
   "walk.car.qMedium": "Medium",

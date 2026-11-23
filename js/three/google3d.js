@@ -42,31 +42,61 @@ function isPhone() { try { return typeof matchMedia === 'function' && matchMedia
 
 export function google3dConfigured() { return !!key(); }
 
+/* ------------------------------------------------------------------------------------------- V32 cost safety (per page load)
+ * Billing (Map Tiles API, Photorealistic 3D Tiles, Enterprise SKU): one billable event per ROOT tileset request; a root session
+ * then serves up to 3 h of renderer tile requests (developers.google.com/maps/documentation/tile/usage_limits). So:
+ *  • a hard cap of root sessions per page load, shared by every world on the page (drive + helicopter): desktop 3, phone 2;
+ *    the library's automatic token refresh goes through the same count (it re-requests the root on ANY 4xx — not here);
+ *  • a cap of tile requests per minute (desktop 1500, phone 600: far below Google's 12 000 QPM project limit) — further
+ *    requests wait for a free slot;
+ *  • 403 / 429 on the root OR on any tile → Google stops at once for this attempt and the world shows our own city again;
+ *  • the one "Google 3D" setting (⋯ menu): vrc.g3d.on = '1' | '0'; default ON on desktop, OFF on phones. */
+const PAGE = { roots: 0, tileT: [], stops: 0 };
+export const G3D_SETTING = 'vrc.g3d.on';
+export function g3dCaps(phone) { return { roots: phone ? 2 : 3, perMin: phone ? 600 : 1500 }; }
+export function g3dPage() { const now = performance.now(); while (PAGE.tileT.length && now - PAGE.tileT[0] > 60000) PAGE.tileT.shift(); return { roots: PAGE.roots, tilesLastMin: PAGE.tileT.length, stops: PAGE.stops }; }
+/** The visitor's Google 3D choice: true / false; default ON on desktop, OFF on phones (pointer coarse + small screen). */
+export function g3dWanted(id = 'walk') {
+  const get = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+  const v = get(G3D_SETTING); if (v === '1') return true; if (v === '0') return false;
+  if (get(LS + id) === 'classic') return false;      // a visitor who chose «Classic» in v0.15 or earlier keeps it
+  return !isPhone();
+}
+export function g3dSetWanted(on) { try { localStorage.setItem(G3D_SETTING, on ? '1' : '0'); } catch (_) { /* private mode */ } }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function tileSlot(perMin) {
+  for (;;) {
+    const now = performance.now(); while (PAGE.tileT.length && now - PAGE.tileT[0] > 60000) PAGE.tileT.shift();
+    if (PAGE.tileT.length < perMin) { PAGE.tileT.push(now); return; }
+    await sleep(Math.max(50, 60000 - (now - PAGE.tileT[0]) + 5));
+  }
+}
+
 /* ------------------------------------------------------------------------------------------- strings (8 site languages) */
 const STR = {
   en: { on: 'Google 3D', off: 'Classic', aria: 'City view: Google 3D or the classic map', loading: 'Loading Google 3D…', onMsg: 'Google 3D city', offMsg: 'Classic map',
-    fail: 'Google 3D isn’t available right now — showing the classic map', noCov: 'No Google 3D coverage here — showing the classic map', data: 'Data sources',
+    fail: 'Google 3D isn’t available right now — showing the classic map', noCov: 'No Google 3D coverage here — showing the classic map', cap: 'Google 3D limit for this visit reached — showing our own city', data: 'Data sources',
     hybrid: '3D city: Google Maps · project, car, people and labels: VILNYI', own: 'City: Google · project & car: VILNYI', osm: 'Street network for driving (not shown): © OpenStreetMap contributors' },
   he: { on: 'Google 3D', off: 'קלאסי', aria: 'תצוגת העיר: Google 3D או המפה הקלאסית', loading: 'טוען Google 3D…', onMsg: 'העיר ב‑Google 3D', offMsg: 'מפה קלאסית',
-    fail: 'Google 3D אינו זמין כרגע — מוצגת המפה הקלאסית', noCov: 'אין כיסוי Google 3D באזור — מוצגת המפה הקלאסית', data: 'מקורות הנתונים',
+    fail: 'Google 3D אינו זמין כרגע — מוצגת המפה הקלאסית', noCov: 'אין כיסוי Google 3D באזור — מוצגת המפה הקלאסית', cap: 'הגעת למגבלת Google 3D לביקור זה — מוצגת העיר שלנו', data: 'מקורות הנתונים',
     hybrid: 'העיר בתלת‑ממד: Google Maps · הפרויקט, הרכב, האנשים והתוויות: VILNYI', own: 'העיר: Google · הפרויקט והרכב: VILNYI', osm: 'רשת הרחובות לנהיגה (לא מוצגת): © OpenStreetMap contributors' },
   ro: { on: 'Google 3D', off: 'Clasic', aria: 'Vederea orașului: Google 3D sau harta clasică', loading: 'Se încarcă Google 3D…', onMsg: 'Orașul Google 3D', offMsg: 'Harta clasică',
-    fail: 'Google 3D nu este disponibil acum — se afișează harta clasică', noCov: 'Nu există acoperire Google 3D aici — se afișează harta clasică', data: 'Surse de date',
+    fail: 'Google 3D nu este disponibil acum — se afișează harta clasică', noCov: 'Nu există acoperire Google 3D aici — se afișează harta clasică', cap: 'Limita Google 3D pentru această vizită a fost atinsă — se afișează orașul nostru', data: 'Surse de date',
     hybrid: 'Orașul 3D: Google Maps · proiectul, mașina, oamenii și etichetele: VILNYI', own: 'Oraș: Google · proiect și mașină: VILNYI', osm: 'Rețeaua de străzi pentru condus (neafișată): © OpenStreetMap contributors' },
   ru: { on: 'Google 3D', off: 'Классика', aria: 'Вид города: Google 3D или классическая карта', loading: 'Загружается Google 3D…', onMsg: 'Город Google 3D', offMsg: 'Классическая карта',
-    fail: 'Google 3D сейчас недоступен — показана классическая карта', noCov: 'Здесь нет покрытия Google 3D — показана классическая карта', data: 'Источники данных',
+    fail: 'Google 3D сейчас недоступен — показана классическая карта', noCov: 'Здесь нет покрытия Google 3D — показана классическая карта', cap: 'Лимит Google 3D для этого визита исчерпан — показан наш город', data: 'Источники данных',
     hybrid: '3D‑город: Google Maps · проект, машина, люди и подписи: VILNYI', own: 'Город: Google · проект и машина: VILNYI', osm: 'Сеть улиц для вождения (не показана): © OpenStreetMap contributors' },
   uk: { on: 'Google 3D', off: 'Класика', aria: 'Вигляд міста: Google 3D або класична мапа', loading: 'Завантажується Google 3D…', onMsg: 'Місто Google 3D', offMsg: 'Класична мапа',
-    fail: 'Google 3D зараз недоступний — показано класичну мапу', noCov: 'Тут немає покриття Google 3D — показано класичну мапу', data: 'Джерела даних',
+    fail: 'Google 3D зараз недоступний — показано класичну мапу', noCov: 'Тут немає покриття Google 3D — показано класичну мапу', cap: 'Ліміт Google 3D на цей візит вичерпано — показано наше місто', data: 'Джерела даних',
     hybrid: '3D‑місто: Google Maps · проєкт, авто, люди й підписи: VILNYI', own: 'Місто: Google · проєкт і авто: VILNYI', osm: 'Мережа вулиць для їзди (не показана): © OpenStreetMap contributors' },
   fr: { on: 'Google 3D', off: 'Classique', aria: 'Vue de la ville : Google 3D ou carte classique', loading: 'Chargement de Google 3D…', onMsg: 'Ville Google 3D', offMsg: 'Carte classique',
-    fail: 'Google 3D n’est pas disponible pour le moment — carte classique affichée', noCov: 'Pas de couverture Google 3D ici — carte classique affichée', data: 'Sources des données',
+    fail: 'Google 3D n’est pas disponible pour le moment — carte classique affichée', noCov: 'Pas de couverture Google 3D ici — carte classique affichée', cap: 'Limite Google 3D atteinte pour cette visite — notre ville est affichée', data: 'Sources des données',
     hybrid: 'Ville 3D : Google Maps · projet, voiture, personnes et étiquettes : VILNYI', own: 'Ville : Google · projet et voiture : VILNYI', osm: 'Réseau de rues pour la conduite (non affiché) : © OpenStreetMap contributors' },
   it: { on: 'Google 3D', off: 'Classica', aria: 'Vista della città: Google 3D o mappa classica', loading: 'Caricamento di Google 3D…', onMsg: 'Città Google 3D', offMsg: 'Mappa classica',
-    fail: 'Google 3D non è disponibile ora — mostrata la mappa classica', noCov: 'Nessuna copertura Google 3D qui — mostrata la mappa classica', data: 'Fonti dei dati',
+    fail: 'Google 3D non è disponibile ora — mostrata la mappa classica', noCov: 'Nessuna copertura Google 3D qui — mostrata la mappa classica', cap: 'Limite Google 3D raggiunto per questa visita — mostrata la nostra città', data: 'Fonti dei dati',
     hybrid: 'Città 3D: Google Maps · progetto, auto, persone ed etichette: VILNYI', own: 'Città: Google · progetto e auto: VILNYI', osm: 'Rete stradale per la guida (non mostrata): © OpenStreetMap contributors' },
   de: { on: 'Google 3D', off: 'Klassisch', aria: 'Stadtansicht: Google 3D oder klassische Karte', loading: 'Google 3D wird geladen…', onMsg: 'Google‑3D‑Stadt', offMsg: 'Klassische Karte',
-    fail: 'Google 3D ist gerade nicht verfügbar — klassische Karte', noCov: 'Hier gibt es keine Google‑3D‑Abdeckung — klassische Karte', data: 'Datenquellen',
+    fail: 'Google 3D ist gerade nicht verfügbar — klassische Karte', noCov: 'Hier gibt es keine Google‑3D‑Abdeckung — klassische Karte', cap: 'Google‑3D‑Limit für diesen Besuch erreicht — unsere eigene Stadt wird gezeigt', data: 'Datenquellen',
     hybrid: '3D‑Stadt: Google Maps · Projekt, Auto, Personen und Beschriftungen: VILNYI', own: 'Stadt: Google · Projekt & Auto: VILNYI', osm: 'Straßennetz zum Fahren (nicht angezeigt): © OpenStreetMap contributors' },
 };
 export function g3dStrings(lang) { const l = String(lang || (typeof document !== 'undefined' && document.documentElement.lang) || 'en').slice(0, 2).toLowerCase(); return STR[l] || STR.en; }
@@ -116,9 +146,11 @@ export function attachGoogle3D(THREE, o = {}) {
   }
   if (o.parent) o.parent.add(wrap);
 
-  const saved = lsGet(id);
+  // V32: one shared setting (⋯ menu «Google 3D»; default ON desktop / OFF phones) instead of the old per-world choice
+  const CAPS = Object.assign(g3dCaps(phone), o.caps || {});
+  let hardStop = '';                                   // '403' | '429' | 'cap' — set by a response, acted on in update()
   const ctl = {
-    mode: google3dConfigured() && saved !== 'classic' ? 'google' : 'classic',
+    mode: google3dConfigured() && g3dWanted(id) ? 'google' : 'classic',
     active: false, status: google3dConfigured() ? 'idle' : 'off', reason: '', entered: false, disposed: false,
   };
   let rootFailed = false, rootFailedAt = 0, lib = null, libP = null, tiles = null, auth = null, draco = null, t0 = 0, models = 0, lastOk = 0, failedSeen = 0, firstAt = 0, covChecked = false;
@@ -242,16 +274,33 @@ export function attachGoogle3D(THREE, o = {}) {
     tiles.registerPlugin({
       name: 'VRC_G3D_WATCH', priority: -2,
       async fetchData(uri, opts) {
+        if (hardStop) throw quiet('stopped: ' + hardStop);
         if (auth._tokenRefreshPromise === null && /\/3dtiles\/root\.json/.test(String(uri))) {
+          // V32: the root request is the billable event → counted against the per-page cap first
+          if (PAGE.roots >= CAPS.roots) { hardStop = 'cap'; rootFailed = true; ctl.reason = 'session cap (' + CAPS.roots + ' per page load)'; throw quiet('root: cap'); }
+          PAGE.roots++;
           let res; try { res = await fetch(uri, opts); } catch (e) { failedSeen++; rootFailed = true; if (!ctl.reason) ctl.reason = 'network: ' + (e && e.message ? e.message : e); throw quiet('root: ' + ctl.reason); }
-          if (!res.ok) { failedSeen++; noteError(res); rootFailed = true; throw quiet('root: HTTP ' + res.status); }
+          if (!res.ok) { failedSeen++; noteError(res); rootFailed = true; if (res.status === 403 || res.status === 429) hardStop = String(res.status); throw quiet('root: HTTP ' + res.status); }
           lastOk = performance.now(); return res;
         }
-        return auth.fetchData(uri, opts).then((res) => {
-          if (res && !res.ok && String(uri).indexOf(ROOT_HOST) >= 0 && res.status !== 404) { failedSeen++; noteError(res); }
+        // V32: own copy of the auth plugin's fetch (the plugin would re-request the billable root on ANY 4xx, 404 included)
+        const google = String(uri).indexOf(ROOT_HOST) >= 0;
+        if (google) await tileSlot(CAPS.perMin);
+        if (hardStop) throw quiet('stopped: ' + hardStop);
+        try {
+          if (auth._tokenRefreshPromise !== null) { await auth._tokenRefreshPromise; uri = auth.preprocessURL(uri); }
+          let res = await fetch(uri, opts);
+          if (google && (res.status === 403 || res.status === 429)) { failedSeen++; noteError(res); hardStop = String(res.status); PAGE.stops++; throw quiet('tile: HTTP ' + res.status); }
+          if (google && (res.status === 400 || res.status === 401)) {        // session expired (3 h): one refresh, within the cap
+            if (PAGE.roots >= CAPS.roots) { hardStop = 'cap'; ctl.reason = 'session cap (' + CAPS.roots + ' per page load)'; throw quiet('tile: cap'); }
+            if (auth._tokenRefreshPromise === null) PAGE.roots++;
+            await auth._refreshToken(opts); res = await fetch(auth.preprocessURL(uri), opts);
+            if (res.status === 403 || res.status === 429) { noteError(res); hardStop = String(res.status); PAGE.stops++; throw quiet('tile: HTTP ' + res.status); }
+          }
+          if (res && !res.ok && google && res.status !== 404) { failedSeen++; noteError(res); }
           else if (res && res.ok) lastOk = performance.now();
           return res;
-        }, (e) => { failedSeen++; if (!ctl.reason) ctl.reason = 'network: ' + (e && e.message ? e.message : e); throw e; });
+        } catch (e) { if (!e || !e.quiet) { failedSeen++; if (!ctl.reason) ctl.reason = 'network: ' + (e && e.message ? e.message : e); } throw e; }
       },
     });
     try {
@@ -394,6 +443,7 @@ export function attachGoogle3D(THREE, o = {}) {
     try { tiles.update(); } catch (e) { if (!ctl._uErr) { ctl._uErr = 1; console.warn('[g3d] update', e); } }
     frames++; if (jobs.length) { const run = jobs.splice(0); for (const f of run) { try { f(); } catch (e) { console.warn('[g3d] queue', e); } } }
     if (!tiles) return;
+    if (hardStop) { const why = hardStop; fail(why === 'cap' ? (ctl.reason || 'session cap') : ctl.reason || ('HTTP ' + why), why === 'cap' ? S.cap : S.fail); return; }
     if (ctl.status === 'loading') {
       if (tiles.rootLoadingState === lib.FAILED) fail('root tileset');
       else if (rootFailed) { if (!rootFailedAt) rootFailedAt = now; else if (ctl.reason || now - rootFailedAt > 1500) fail(ctl.reason || 'root tileset'); }
@@ -421,17 +471,22 @@ export function attachGoogle3D(THREE, o = {}) {
   ctl.enter = () => {
     if (ctl.disposed) return false;
     ctl.entered = true; mountDom(); ensureButton();
-    if (ctl.mode === 'google' && google3dConfigured() && ctl.status !== 'failed') { say(S.loading, 1800); startGoogle(); return true; }
+    if (ctl.mode === 'google' && google3dConfigured() && ctl.status !== 'failed') {
+      if (PAGE.roots >= CAPS.roots) { ctl.status = 'failed'; ctl.reason = 'session cap (' + CAPS.roots + ' per page load)'; showClassic(); ensureButton(); return false; }
+      hardStop = ''; say(S.loading, 1800); startGoogle(); return true;
+    }
     showClassic(); return false;
   };
   ctl.exit = () => { ctl.entered = false; stopTiles(); showClassic(); if (ctl.status !== 'off' && ctl.status !== 'failed') ctl.status = 'idle'; unmountDom(); };
   ctl.setMode = (m) => {
     if (m !== 'google' && m !== 'classic') return;
-    ctl.mode = m; lsSet(id, m);
+    ctl.mode = m; if (o.persist !== false) g3dSetWanted(m === 'google');
     if (!ctl.entered) return;
     if (m === 'google') {
       if (!google3dConfigured()) return;
+      if (PAGE.roots >= CAPS.roots && !tiles) { ctl.status = 'failed'; ctl.reason = 'session cap (' + CAPS.roots + ' per page load)'; say(S.cap, 4200); ensureButton(); return; }
       if (ctl.status === 'failed') { ctl.status = 'idle'; ctl.reason = ''; }
+      hardStop = '';
       say(S.loading, 2400); startGoogle();
     } else { stopTiles(); if (ctl.status !== 'off') ctl.status = 'idle'; showClassic(); say(S.offMsg, 2200); }
     ensureButton();
@@ -444,7 +499,7 @@ export function attachGoogle3D(THREE, o = {}) {
     lib = null; libP = null;
   };
   ctl.stats = () => {
-    const out = { mode: ctl.mode, active: ctl.active, status: ctl.status, reason: ctl.reason, models, dy: +dy.toFixed(2), dyTarget: dyTarget == null ? null : +dyTarget.toFixed(2), locked, finestError: ctl.finestError ?? null, anchor: anchor ? { x: Math.round(anchor.x), z: Math.round(anchor.z), rot: +anchor.rot.toFixed(4), k: +anchor.k.toFixed(5) } : null, attributions: attrText, clip: clipBoxes.length, clipBoxes: clipBoxes.map((c) => [c.x, c.z, c.ux, c.uz, c.hw, c.hd].map((v) => +(+v).toFixed(3))) };
+    const out = { page: g3dPage(), caps: CAPS, hardStop, mode: ctl.mode, active: ctl.active, status: ctl.status, reason: ctl.reason, models, dy: +dy.toFixed(2), dyTarget: dyTarget == null ? null : +dyTarget.toFixed(2), locked, finestError: ctl.finestError ?? null, anchor: anchor ? { x: Math.round(anchor.x), z: Math.round(anchor.z), rot: +anchor.rot.toFixed(4), k: +anchor.k.toFixed(5) } : null, attributions: attrText, clip: clipBoxes.length, clipBoxes: clipBoxes.map((c) => [c.x, c.z, c.ux, c.uz, c.hw, c.hd].map((v) => +(+v).toFixed(3))) };
     if (tiles) { out.tiles = Object.assign({}, tiles.stats); out.cacheMB = Math.round((tiles.lruCache.cachedBytes || 0) / 1048576); out.visible = tiles.visibleTiles ? tiles.visibleTiles.size : null; out.errorTarget = tiles.errorTarget; }
     return out;
   };

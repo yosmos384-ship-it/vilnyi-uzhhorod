@@ -481,6 +481,8 @@ export default {
   "walk.game.policeStolen": "Sie haben einen Streifenwagen gestohlen — die Polizei sucht Sie!",
   "walk.car.limp": "Der Wagen ist schwer beschädigt — er fährt mit wenig Leistung weiter. R halten (oder ↺) für einen neuen Wagen",
   "walk.car.quality": "Grafikqualität",
+  "walk.car.g3dOff": "aus",
+  "walk.car.g3dOn": "an",
   "walk.car.qUltra": "Ultra",
   "walk.car.qHigh": "Hoch",
   "walk.car.qMedium": "Mittel",

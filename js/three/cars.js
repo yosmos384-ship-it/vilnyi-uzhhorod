@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BUILDINGS, B_IDS, CONTEXT_BLOCKS, PODIUM, RAMPS, PLOT, SITE_CENTER, STREETS, COURTYARD, SITE_EXTRAS, footprintOf, coresOf, localToWorld } from '../data.js';
-import { CAR_KINDS, CAR_NAMES, CAR_COLOURS, COLOUR_NAMES, INTERIORS, PLATES, PANEL_NAMES, carSpec, pickCar, rng, hashStr, createCar, createCockpit, carPanels, plateText, createCarInstances, carTier, carGeometryXForward, carStats, carMaterials } from './car-models.js';
+import { CAR_KINDS, CAR_NAMES, CAR_COLOURS, COLOUR_NAMES, INTERIORS, PLATES, PANEL_NAMES, carSpec, pickCar, rng, hashStr, createCar, createCockpit, carPanels, plateText, createCarInstances, createCarInstancesLOD, carTier, carGeometryXForward, carStats, carMaterials } from './car-models.js';
 export { CAR_KINDS, CAR_NAMES, CAR_COLOURS, COLOUR_NAMES, PANEL_NAMES, carSpec, pickCar, createCar, createCockpit, carPanels, plateText, createCarInstances, carGeometryXForward, carStats, carMaterials, rng as carRng };
 void BUILDINGS;
 
@@ -625,7 +625,7 @@ export function trafficPaths({ roads = STREETS, radius = 330, center = SITE_CENT
 // cars of the later street in the list give way (a simulation rule, not a statement about the real junction).
 // They are scenery: far models (2 draw calls per model), no colliders, head / tail light points after dusk.
 // → { group, cars: [{x, y, z, yaw, kind, colour, path, s, v}], paths, update(dt), setMode(mode), dispose() }
-export function createTraffic({ paths = trafficPaths(), density = 1 / 90, count = null, seed = 911, shadows = false, speed = [8.5, 12.5] } = {}) {
+export function createTraffic({ paths = trafficPaths(), density = 1 / 90, count = null, seed = 911, shadows = false, speed = [8.5, 12.5], lod = null } = {}) {
   const group = new THREE.Group(); group.name = 'vrc-traffic';
   const r = rng(seed), cars = [], total = paths.reduce((m, p) => m + p.L, 0) || 1;
   paths.forEach((p, pi) => {
@@ -658,8 +658,10 @@ export function createTraffic({ paths = trafficPaths(), density = 1 / 90, count 
     c.yaw = Math.atan2(hx, hz); c.vx = Math.sin(c.yaw) * c.v; c.vz = Math.cos(c.yaw) * c.v;
   };
   cars.forEach(place);
-  const inst = cars.length ? createCarInstances(cars, { shadows }) : null;
+  // V32: with lod (context.js), the nearest traffic cars are full models and the near ones the mid tier (more detail than the far mass)
+  const inst = cars.length ? (lod ? createCarInstancesLOD(cars, { shadows, lod }) : createCarInstances(cars, { shadows })) : null;
   if (inst) { inst.group.name = 'vrc-traffic-cars'; group.add(inst.group); }
+  let camP = null;
   // head (warm white) and tail (red) lights
   let lights = null, lp = null, tex = null;
   if (cars.length && typeof document !== 'undefined') {
@@ -674,7 +676,7 @@ export function createTraffic({ paths = trafficPaths(), density = 1 / 90, count 
     lights.name = 'vrc-traffic-lights'; lights.frustumCulled = false; lights.visible = false; group.add(lights);
   }
   const sync = () => {
-    if (inst) inst.update();
+    if (inst) inst.update(camP);
     if (lights) {
       cars.forEach((c, i) => {
         const S = carSpec(c.kind), fx = Math.sin(c.yaw), fz = Math.cos(c.yaw), rx = -fz, rz = fx, hw = S.W / 2 - 0.28;
@@ -711,7 +713,8 @@ export function createTraffic({ paths = trafficPaths(), density = 1 / 90, count 
     for (const c of cars) { if (c.taken || Math.abs(c.x - cx) > 6 || Math.abs(c.z - cz) > 6) continue; if (quadsOverlap(quad, carCorners(c.kind, c.x, c.z, c.yaw, 0.05))) return c; }
     return null;
   }
-  function update(dt) {
+  function update(dt, cam = null) {
+    if (cam) camP = cam;
     if (!(dt > 0)) return;
     dt = Math.min(dt, 0.1);
     for (let pi = 0; pi < paths.length; pi++) {

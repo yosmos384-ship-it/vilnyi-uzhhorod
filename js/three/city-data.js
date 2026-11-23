@@ -264,6 +264,7 @@ export function tileProps(ix, iz) {
   const inSeam = (x, z) => x > seam.x0 - 2 && x < seam.x1 + 2 && z > seam.z0 - 2 && z < seam.z1 + 2;
   const free = (x, z, m) => { if (inSeam(x, z) || !insideCity(x, z) || inWater(x, z)) return false; const r = roadAt0(x, z, 12, false); if (r && r.dist < r.road.w / 2 + m) return false; for (const b of buildingsNear(x, z, m + 1)) { if (inPoly(b.poly, x, z)) return false; for (let k = 0; k < b.poly.length; k++) { const a = b.poly[k], c = b.poly[(k + 1) % b.poly.length], dx = c[0] - a[0], dz = c[1] - a[1], l2 = dx * dx + dz * dz || 1; let t = ((x - a[0]) * dx + (z - a[1]) * dz) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t; if (hyp(x - a[0] - dx * t, z - a[1] - dz * t) < m) return false; } } return true; };
   for (const i of T.trees) trees.push([CITY.trees[i], CITY.trees[i + 1], CITY.trees[i + 2], 0]);
+  if (T.xtrees) for (const t of T.xtrees) trees.push(t);                             // V32: planted rows (the linden alley, landmarks.js)
   for (const i of T.lamps) lamps.push([CITY.lamps[i], CITY.lamps[i + 1], CITY.lamps[i + 2], 8]);
   for (const id of T.roads) {
     const r = roads[id]; if (r.near || r.tunnel) continue;
@@ -302,6 +303,12 @@ export function tileProps(ix, iz) {
 function buildingAtRaw(x, z) { for (const b of buildingsNear(x, z, 0.3)) if (inPoly(b.poly, x, z)) return b; return null; }
 function propsNear(key, x, z, r) { const out = []; for (let i = Math.floor((x - r) / TILE); i <= Math.floor((x + r) / TILE); i++) for (let j = Math.floor((z - r) / TILE); j <= Math.floor((z + r) / TILE); j++) for (const p of tileProps(i, j)[key]) if (hyp(p[0] - x, p[1] - z) <= r) out.push(p); return out; }
 /** Tree trunks ([x, z, height, kind]) / lamp posts ([x, z, heading, height]) within r — obstacles for cars and people. */
+/** V32: extra planted trees [[x, z, height, kind]] (kind 3 = linden) — added once per page (the city data is shared). */
+export function addCityTrees(list) {
+  if (!CITY.ready || !Array.isArray(list) || !list.length || CITY.xtrees) return false; CITY.xtrees = list.length;
+  for (const t of list) { const T = tileRec(...tileOf(t[0], t[1])); (T.xtrees || (T.xtrees = [])).push(t); T.props = null; }
+  return true;
+}
 export function treesNear(x, z, r) { return CITY.ready ? propsNear('trees', x, z, r) : []; }
 export function lampsNear(x, z, r) { return CITY.ready ? propsNear('lamps', x, z, r) : []; }
 

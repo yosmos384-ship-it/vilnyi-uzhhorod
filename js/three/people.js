@@ -59,6 +59,15 @@ export function createPeople(scene, opts = {}) {
     return { mesh, geo, mat, iA, iV, cap, n: 0, tris: geo.userData.tris, h: geo.userData.height };
   }
   const CAP = B.max + B.occupants * 2 + 24, mid = makeTier(1, CAP), far = makeTier(2, CAP);
+  // V32: realistic mid tier — one InstancedMesh per character model (people-real.js midFor), made on first use
+  const realMids = new Map();
+  function realMid(md) {
+    let R = realMids.get(md.id); if (R) return R;
+    const cap = B.mid, mesh = new THREE.InstancedMesh(md.geo, md.mat, cap), iA = new THREE.InstancedBufferAttribute(new Float32Array(cap * 4), 4), iV = new THREE.InstancedBufferAttribute(new Float32Array(cap * 4), 4);
+    iA.setUsage(THREE.DynamicDrawUsage); mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); md.geo.setAttribute('iA', iA); md.geo.setAttribute('iV', iV);
+    mesh.frustumCulled = false; mesh.count = 0; mesh.name = 'vrc-people-realmid-' + md.id; mesh.castShadow = false; root.add(mesh);
+    realMids.set(md.id, R = { mesh, iA, cap, n: 0, tris: md.tris }); return R;
+  }
   // blob shadows
   const shTex = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d'), gr = g.createRadialGradient(32, 32, 2, 32, 32, 32); gr.addColorStop(0, 'rgba(0,0,0,0.42)'); gr.addColorStop(0.6, 'rgba(0,0,0,0.18)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(cv); })();
   const shGeo = new THREE.PlaneGeometry(1, 1); shGeo.rotateX(-Math.PI / 2);
@@ -494,13 +503,14 @@ export function createPeople(scene, opts = {}) {
     order.length = 0; let nearN = 0;
     for (const p of people) { if (p.gone) continue; const dx = p.x - cam.x, dz = p.z - cam.z, dy = cam.y - 1; p.d2 = dx * dx + dz * dz + dy * dy; p.vis = p.d2 < 3 || inView(p.x, p.z, 1.4); order.push(p); }
     order.sort((a, b) => a.d2 - b.d2);
-    let mi = 0, fi = 0, si = 0, built = 0; const nr2 = B.nearR * B.nearR, mr2 = B.midR * B.midR, dayShadow = light !== 'night';
+    let mi = 0, mr = 0, fi = 0, si = 0, built = 0; const nr2 = B.nearR * B.nearR, mr2 = B.midR * B.midR, dayShadow = light !== 'night';
+    for (const R of realMids.values()) R.n = 0;
     for (const p of order) {
       const lying = p.state === 'rag' || p.state === 'down' || p.state === 'dead' || p.state === 'getup';
-      let tier = 2; if (p.vis) { if (p.d2 < (p.fig ? nr2 * 1.25 : nr2) * (lying ? 4 : 1) && nearN < B.near) tier = 0; else if (p.d2 < mr2 && mi < B.mid) tier = 1; }
+      let tier = 2; if (p.vis) { if (p.d2 < (p.fig ? nr2 * 1.25 : nr2) * (lying ? 4 : 1) && nearN < B.near) tier = 0; else if (p.d2 < mr2 && mi + mr < B.mid) tier = 1; }
       if (tier === 0 && !p.fig) { if (built < 1 || warmFigs) { p.fig = (realKit && realKit.figure(p.T)) || makeFigure(p.T, { faceSize: B.faceSize }); p.fig.mesh.matrixAutoUpdate = false; root.add(p.fig.mesh); built++; stat.built++; p.P.set(nearPoseInit(p)); } else tier = 1; }
       if (tier !== 0 && p.fig && (p.d2 > nr2 * 2.2 || !p.vis && p.d2 > nr2 * 0.6 || figCount() > B.near + 8)) { p.fig.dispose(); p.fig = null; }
-      if (tier === 0 && p.fig && realKit && !p.fig.real && !p.fig.noReal) { const rf = realKit.figure(p.T); if (rf) { p.fig.dispose(); p.fig = rf; rf.mesh.matrixAutoUpdate = false; root.add(rf.mesh); } else p.fig.noReal = true; }
+      if (tier === 0 && p.fig && realKit && !p.fig.real && !p.fig.noReal) { const rf = realKit.figure(p.T); if (rf) { p.fig.dispose(); p.fig = rf; rf.mesh.matrixAutoUpdate = false; root.add(rf.mesh); } else if (!(realKit.pending && realKit.pending(p.T))) p.fig.noReal = true; }
       p.tier = tier;
       const moving = p.speed > 0.12;
       if (moving) { const stride = 4 * p.K.legLen * Math.sin(0.46 * Math.min(1.25, p.amp || 1)); p.amp = clamp(p.speed / (p.limp ? 0.9 : 1.32) * (1.75 / p.T.height) ** 0.5, 0.35, 1.75); p.phase = (p.phase + TAU * p.speed * dt / Math.max(0.5, stride * (p.amp > 1.1 ? 1.5 : 1))) % TAU; } else p.amp = 0;
@@ -512,16 +522,27 @@ export function createPeople(scene, opts = {}) {
         f.mesh.matrix.compose(V3, Q, SC.setScalar(f.scale || 1)); f.mesh.matrixWorldNeedsUpdate = true;
       } else {
         if (p.fig) p.fig.mesh.visible = false;
-        const Tn = tier === 1 ? mid : far, i = tier === 1 ? mi++ : fi++; if (i >= Tn.cap) continue;
+        // V32: realistic characters in the mid tier too (one InstancedMesh per character, ~1 k triangles, limbs in the shader)
+        const rmd = tier === 1 && realKit && realKit.midFor ? realKit.midFor(p.T) : null, RM = rmd ? realMid(rmd) : null;
+        const useRM = !!(RM && RM.n < RM.cap), Tn = tier === 1 ? mid : far, i = useRM ? (mr++, -1) : tier === 1 ? mi++ : fi++; if (!useRM && i >= Tn.cap) continue;
         let pid = lying ? POSE_ID.lie : moving && !p.ride ? 0 : (POSE_ID[p.pose] ?? 0), y = p.y;
+        if (useRM) {
+          const sc = realKit.midScale(rmd, p.T);
+          if (lying) { EU.set(p.rd ? (p.state === 'rag' ? p.pitch : p.restPitch ?? p.pitch) : -Math.PI / 2, p.yaw, p.rd ? p.roll : 0); Q.setFromEuler(EU); const hy = p.state === 'rag' && p.rd ? p.rd.y : 0.14; V3.set(0, -p.K.J[0][1], 0).applyQuaternion(Q); V3.x += p.x; V3.y += hy; V3.z += p.z; }
+          else { EU.set(0, p.yaw, 0); Q.setFromEuler(EU); V3.set(p.x, y, p.z); }
+          M4.compose(V3, Q, SC.setScalar(sc)); RM.mesh.setMatrixAt(RM.n, M4);
+          const o = RM.n * 4; RM.iA.array[o] = pid >= 6 ? time * 2 + p.id : p.phase; RM.iA.array[o + 1] = p.amp; RM.iA.array[o + 2] = pid; RM.iA.array[o + 3] = 0; RM.n++;
+        } else {
         if (lying) { EU.set(p.rd ? (p.state === 'rag' ? p.pitch : p.restPitch ?? p.pitch) : -Math.PI / 2, p.yaw, p.rd ? p.roll : 0); Q.setFromEuler(EU); const hy = p.state === 'rag' && p.rd ? p.rd.y : 0.14; V3.set(0, -p.K.J[0][1], 0).applyQuaternion(Q); V3.x += p.x; V3.y += hy; V3.z += p.z; }
         else { EU.set(0, p.yaw, 0); Q.setFromEuler(EU); V3.set(p.x, y, p.z); }
         M4.compose(V3, Q, SC.set(p.sxz, p.sy, p.sxz)); Tn.mesh.setMatrixAt(i, M4);
         const o = i * 4; Tn.iA.array[o] = pid >= 6 ? time * 2 + p.id : p.phase; Tn.iA.array[o + 1] = p.amp; Tn.iA.array[o + 2] = pid; Tn.iA.array[o + 3] = p.row; Tn.iV.array[o] = p.vr[0]; Tn.iV.array[o + 1] = p.vr[1]; Tn.iV.array[o + 2] = p.vr[2]; Tn.iV.array[o + 3] = p.vr[3];
+        }
       }
       if (dayShadow && p.state !== 'seat' && p.d2 < 70 * 70 && si < CAP) { const w = lying ? 1.4 : 0.62; M4.makeScale(w * p.sxz, 1, w * p.sxz); M4.setPosition(p.x, 0.015, p.z); shadows.setMatrixAt(si++, M4); }
     }
     mid.mesh.count = mi; far.mesh.count = fi; shadows.count = si;
+    for (const R of realMids.values()) { R.mesh.count = R.n; R.mesh.visible = R.n > 0; if (R.n) { R.mesh.instanceMatrix.needsUpdate = true; R.iA.needsUpdate = true; } }
     // things carried / ridden
     props.begin();
     for (const p of order) { const k = p.prop; if (!k || p.d2 > 85 * 85 || !p.vis || p.state === 'seat') continue; const fx = Math.sin(p.yaw), fz = Math.cos(p.yaw), lx = Math.cos(p.yaw), lz = -Math.sin(p.yaw), sc = p.T.height / 1.75;
@@ -540,8 +561,9 @@ export function createPeople(scene, opts = {}) {
     for (const d of decList) { const age = time - d.born, a = clamp(age / 0.25) * clamp((d.life - age) / 14); EU.set(0, d.rot, 0); Q.setFromEuler(EU); M4.compose(V3.set(d.x, d.y, d.z), Q, SC.set(d.size, 1, d.size)); decals.setMatrixAt(di, M4); decD.array[di * 4] = a; decD.array[di * 4 + 1] = d.v; di++; }
     decals.count = di; decals.instanceMatrix.needsUpdate = true; decD.needsUpdate = true; decMat.uniforms.uLight.value = light === 'night' ? 0.3 : light === 'dusk' ? 0.6 : 1;
     for (let k = carDecals.length - 1; k >= 0; k--) { const d = carDecals[k], age = time - d.born; d.m.material.opacity = clamp((d.life - age) / 12); if (age > d.life || !gore) { d.m.parent?.remove(d.m); d.m.geometry.dispose(); d.m.material.dispose(); d.t.dispose(); carDecals.splice(k, 1); } }
-    stat.real = realKit ? order.filter(p => p.tier === 0 && p.fig && p.fig.real).length : 0; stat.near = nearN; stat.mid = mi; stat.far = fi; stat.calls = nearN + (mi ? 1 : 0) + (fi ? 1 : 0) + (si ? 1 : 0) + (di ? 1 : 0) + pst.calls; stat.props = pst.tris;
-    let tr = mi * mid.tris + fi * far.tris + si * 2 + di * 2 + pst.tris; for (const p of order) if (p.tier === 0 && p.fig) tr += p.fig.tris; stat.tris = tr;
+    let rmCalls = 0, rmTris = 0; for (const R of realMids.values()) if (R.n) { rmCalls++; rmTris += R.n * R.tris; }
+    stat.real = realKit ? order.filter(p => p.tier === 0 && p.fig && p.fig.real).length : 0; stat.near = nearN; stat.mid = mi + mr; stat.midReal = mr; stat.far = fi; stat.calls = nearN + (mi ? 1 : 0) + rmCalls + (fi ? 1 : 0) + (si ? 1 : 0) + (di ? 1 : 0) + pst.calls; stat.props = pst.tris;
+    let tr = mi * mid.tris + rmTris + fi * far.tris + si * 2 + di * 2 + pst.tris; for (const p of order) if (p.tier === 0 && p.fig) tr += p.fig.tris; stat.tris = tr;
   }
   let warmFigs = false;
   const figCount = () => { let n = 0; for (const p of people) if (p.fig) n++; return n; };
@@ -596,7 +618,7 @@ export function createPeople(scene, opts = {}) {
     add({ seed = null, x = 0, z = 0, yaw = 0, state = 'idle', pose = 'stand', role, age, gender } = {}) { const p = addPerson(makeTraits(seed ?? newSeed(), { role, age, gender }), x, z, yaw, state); p.pose = pose; p.until = 1e9; p.keep = true; return p; },
     remove: removePerson, prewarm(on = true) { warmFigs = on; }, refill() { warm = true; },
     nearestPavement(x, z) { const ne = city && city.nearestEdge(x, z, 120); return ne ? { x: ne.x, z: ne.z } : { x, z }; },
-    dispose() { disposed = true; for (const p of people) if (p.fig) p.fig.dispose(); people.length = 0; for (const T of [mid, far]) { T.geo.dispose(); T.mat.dispose(); } props.dispose(); shGeo.dispose(); shadows.material.dispose(); shTex.dispose(); decGeo.dispose(); decMat.dispose(); decTex.dispose(); palTex.dispose(); for (const d of carDecals) d.m.parent?.remove(d.m); drive.off?.(); audio.stopSirens?.(); if (!opts.audio) audio.dispose(); root.parent?.remove(root); },
+    dispose() { disposed = true; for (const p of people) if (p.fig) p.fig.dispose(); people.length = 0; for (const R of realMids.values()) { R.mesh.parent?.remove(R.mesh); R.mesh.dispose(); } for (const T of [mid, far]) { T.geo.dispose(); T.mat.dispose(); } props.dispose(); shGeo.dispose(); shadows.material.dispose(); shTex.dispose(); decGeo.dispose(); decMat.dispose(); decTex.dispose(); palTex.dispose(); for (const d of carDecals) d.m.parent?.remove(d.m); drive.off?.(); audio.stopSirens?.(); if (!opts.audio) audio.dispose(); root.parent?.remove(root); },
   };
   // horn from the driving code
   drive.on('drive:collision', d => { if (d && (d.hard || (d.speed || 0) > 4)) api.onImpact({ car: d.car, pos: d.point ? { x: d.point[0], z: d.point[2] } : null, speed: d.speed }); });

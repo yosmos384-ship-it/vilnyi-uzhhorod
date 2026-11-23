@@ -77,7 +77,7 @@ export async function loadTreeKit(opts = {}) {
   const ready = Object.keys(sp).length > 0;
   const R = low ? { hi: 0, lo: 70, imp: 300 } : { hi: 55, lo: 150, imp: 460 };
   const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), S = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
-  const speciesOf = (x, z, kind) => kind === 1 ? 'spruce' : kind === 2 ? 'ornamental' : (h => h < 0.45 ? 'linden' : h < 0.7 ? 'maple' : 'hornbeam')(hash(x * 3, z * 7));
+  const speciesOf = (x, z, kind) => kind === 1 ? 'spruce' : kind === 2 ? 'ornamental' : kind === 3 ? 'linden' : (h => h < 0.45 ? 'linden' : h < 0.7 ? 'maple' : 'hornbeam')(hash(x * 3, z * 7));
   let stats = { hi: 0, lo: 0, imp: 0 };
   function rebuild(trees, fx, fz) {
     const n = {}; for (const k in sp) n[k] = { hi: 0, lo: 0, imp: 0 };

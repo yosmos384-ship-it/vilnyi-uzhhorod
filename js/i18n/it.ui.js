@@ -482,6 +482,8 @@ export default {
   "walk.game.policeStolen": "Hai rubato un’auto della polizia — la polizia ti cerca!",
   "walk.car.limp": "L’auto è gravemente danneggiata — procede con poca potenza. Tieni premuto R (o ↺) per un’auto nuova",
   "walk.car.quality": "Qualità grafica",
+  "walk.car.g3dOff": "disattivo",
+  "walk.car.g3dOn": "attivo",
   "walk.car.qUltra": "Ultra",
   "walk.car.qHigh": "Alta",
   "walk.car.qMedium": "Media",

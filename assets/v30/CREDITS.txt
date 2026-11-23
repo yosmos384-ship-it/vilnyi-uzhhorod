@@ -18,3 +18,5 @@ facade/ — ambientCG (CC0 1.0): Plaster003, Concrete034, PaintedPlaster015, Bri
   albedo detail, colour, normals); Facade018A, Facade019A, Facade020A, Facade006 (fac-c colour atlas; fac-m = glass mask
   from their roughness maps + their emission maps).
 Code: three.js r187 (MIT, vendor/). Everything else in the drive world is made for this site.
+v0.16 (V32) additions in people/: k1, k2, p1, p2, c1, w1, s1 (*-hi, *-lo, *-mid) and *-mid of m1–m6, f1–f5 — MakeHuman CC0 1.0
+  assets via MPFB2, recoloured clothes (no logos), see ../v31/CREDITS.txt.

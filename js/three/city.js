@@ -6,7 +6,7 @@
 // night pools), per L1 tile 1. All tile geometry is merged per tile and material; nothing is instanced per object.
 import * as THREE from 'three';
 import { SHARED } from './environment.js';
-import { CITY, TILE, RIVER_Y, loadCity, cityTile, tileProps, offsetLine, pointAt, isOpen, setCityClock, cityHash as hash2, signalPosts, parkSpotsNear, SIGNAL_CYCLE, SIGNAL_GREEN, SIGNAL_AMBER, SIGNAL_REDAMBER } from './city-data.js';
+import { CITY, TILE, RIVER_Y, loadCity, cityTile, tileProps, addCityTrees, offsetLine, pointAt, isOpen, setCityClock, cityHash as hash2, signalPosts, parkSpotsNear, SIGNAL_CYCLE, SIGNAL_GREEN, SIGNAL_AMBER, SIGNAL_REDAMBER } from './city-data.js';
 
 const hyp = Math.hypot;
 const _col = new Map();
@@ -379,6 +379,21 @@ export async function createCity(scene, opts = {}) {
   if (opts.trees !== false && opts.detail !== 'far') import('./tree-kit.js').then(m => m.loadTreeKit({ low: LOW, uTime: SHARED.uTime })).then(k => { if (!k || !k.ready) return; if (disposed) { k.dispose(); return; } trees = k; group.add(k.group); k.setMode(mode); treesDirty = true;
       for (const T of tilesLive.values()) if (T.done0 && !T.treesK) { dropDetail(T); T.steps0 = null; T.want = 0; if (!queue.includes(T)) queue.push(T); } })
     .catch(e => console.info('[city] trees not used', e && e.message));
+  // V32: hand-built landmark models (landmarks.js): they replace the procedural buildings at their footprints (lmHide), the
+  // generated railings / piers of the pedestrian bridge (lmRoads) and plant the linden alley; tiles built before they arrive
+  // are rebuilt once. Off with opts.landmarks === false.
+  let lm = null, lmHide = null, lmRoads = null;
+  if (opts.landmarks !== false) import('./landmarks.js').then(m => m.loadLandmarks({ low: LOW })).then(k => {
+      if (!k) return; if (disposed) { k.dispose(); return; }
+      lm = k; lmHide = k.hide; lmRoads = k.roads; group.add(k.group); k.setMode(mode); k.update(fx, fz);
+      addCityTrees(k.trees);
+      const redo = new Set();
+      for (const id of k.hide) { const b = CITY.buildings[id]; if (b) redo.add(Math.floor(b.c[0] / TILE) + ':' + Math.floor(b.c[1] / TILE)); }
+      for (const id of k.roads) { const r = CITY.roads[id]; if (r) redo.add(Math.floor(r.mid[0] / TILE) + ':' + Math.floor(r.mid[1] / TILE)); }
+      for (const t of k.trees) redo.add('t' + Math.floor(t[0] / TILE) + ':' + Math.floor(t[1] / TILE));
+      for (const T of [...tilesLive.values()]) { const key = T.ix + ':' + T.iz; if (redo.has(key)) dropTile(T); else if (redo.has('t' + key) && T.done0) { dropDetail(T); T.steps0 = null; T.want = 0; if (!queue.includes(T)) queue.push(T); } }
+      treesDirty = true; lastFx = 1e9;
+    }).catch(e => console.info('[city] landmarks not used', e && e.message));
   if (SHARED.envMap) { M.water.envMap = SHARED.envMap; } SHARED.mats.add(M.water);
   let mode = opts.mode || SHARED.mode || 'day', disposed = false;
   const tilesLive = new Map(), readyCbs = [], waiters = [];
@@ -471,7 +486,7 @@ export async function createCity(scene, opts = {}) {
         const k = offsetLine(ax, hw * side), o = offsetLine(ax, (hw + sw) * side); strip(sb, k, o, py, pave); wallStrip(sb, k, y, py, kerbC, side > 0); }
       for (const q of tr.corners) sb.quad(P(q[0], py), P(q[1], py), P(q[2], py), P(q[3], py), UP, pave);
       // bridges: parapets, deck fascia, piers
-      if (r.bridge) { const off = hw + Math.max(r.swL, r.swR, 0), over = r.pts.some(p => CITY.areas.some(a => a.kind === 'water' && p[0] > a.bb[0] && p[0] < a.bb[2] && p[1] > a.bb[1] && p[1] < a.bb[3]));
+      if (r.bridge && !(lmRoads && lmRoads.has(r.id))) { const off = hw + Math.max(r.swL, r.swR, 0), over = r.pts.some(p => CITY.areas.some(a => a.kind === 'water' && p[0] > a.bb[0] && p[0] < a.bb[2] && p[1] > a.bb[1] && p[1] < a.bb[3]));
         for (const side of [1, -1]) { const o = offsetLine(r.pts, off * side), o2 = offsetLine(r.pts, (off + 0.25) * side); wallStrip(sb, o, py, py + 1.05, railC, side < 0); wallStrip(sb, o2, -1.0, py + 1.05, deckC, side > 0); strip(sb, o, o2, py + 1.05, railC);
           if (!(side > 0 ? r.swR : r.swL)) strip(sb, offsetLine(r.pts, hw * side), o, py, deckC); }
         if (over && r.len > 30) for (let s = 14; s < r.len - 10; s += 26) { const q = pointAt(r, s); box(sb, q.x - ox, RIVER_Y - 0.6, q.z - oz, 1.4, -RIVER_Y + 0.4, off * 2 - 0.6, Math.atan2(q.dx, q.dz) + Math.PI / 2, pierC); } }
@@ -565,7 +580,7 @@ export async function createCity(scene, opts = {}) {
   }
   function buildBuildings(T, from, to) {
     const D = T.data, buf = T.bbuf || (T.bbuf = new Buf(2));
-    for (let i = from; i < Math.min(to, D.bld.length); i++) { const b = CITY.buildings[D.bld[i]]; if (b.near) continue; try { addBuilding(buf, b, T.x0, T.z0); } catch (e) { /* one bad footprint must not stop the tile */ } }
+    for (let i = from; i < Math.min(to, D.bld.length); i++) { const b = CITY.buildings[D.bld[i]]; if (b.near || (lmHide && lmHide.has(b.id))) continue; try { addBuilding(buf, b, T.x0, T.z0); } catch (e) { /* one bad footprint must not stop the tile */ } }
     if (to >= D.bld.length) { const g = buf.geometry(); T.bbuf = null; if (g) { const m = new THREE.Mesh(g, M.bld); m.name = 'tile-buildings'; T.group.add(m); T.own.push(g); T.tris += g.attributes.position.count / 3; } }
   }
 
@@ -740,6 +755,7 @@ export async function createCity(scene, opts = {}) {
       if (disposed) return; const p = focus && focus.position ? focus.position : focus; if (!p) return;
       const la = velocity ? 1.6 : 0; fx = p.x + (velocity ? velocity.x * la : 0); fz = p.z + (velocity ? velocity.z * la : 0);
       plan(fx, fz, false); if (queue.length) work(FRAME_MS);
+      if (lm) lm.update(fx, fz);
       // street kit: only the furniture within KIT_R of the focus is drawn (rebuilt when the focus moved 40 m or tiles changed)
       if (trees && (treesDirty || hyp(fx - treesFx, fz - treesFz) > 12)) { treesDirty = false; treesFx = fx; treesFz = fz; const all = [], RR = trees.R.imp + TILE;
         for (const T of tilesLive.values()) { if (!T.done1 || hyp(T.x0 + TILE / 2 - fx, T.z0 + TILE / 2 - fz) > RR) continue; for (const t of tileProps(T.ix, T.iz).trees) all.push(t); }
@@ -748,7 +764,7 @@ export async function createCity(scene, opts = {}) {
         for (const T of tilesLive.values()) if (T.kit) for (const it of T.kit) { const dx = it.x - fx, dz = it.z - fz; if (dx * dx + dz * dz < R2 * (it.k === 'manhole' ? 0.35 : 1)) all.push(it); }
         kit.rebuild(all); }
     },
-    setMode(m) { mode = m; setCityClock({ mode: m }); if (trees) trees.setMode(m); if (kit) kit.setNight(m === 'day' ? 0 : m === 'dusk' ? 0.8 : 1); st.U.uLitK.value = m === 'day' ? 0 : m === 'dusk' ? 1.25 : 0.55; st.U.uShop.value = m === 'night' ? 0.15 : 1; st.U.uTerrace.value = m === 'night' ? 0 : 1;
+    setMode(m) { mode = m; setCityClock({ mode: m }); if (trees) trees.setMode(m); if (lm) lm.setMode(m); if (kit) kit.setNight(m === 'day' ? 0 : m === 'dusk' ? 0.8 : 1); st.U.uLitK.value = m === 'day' ? 0 : m === 'dusk' ? 1.25 : 0.55; st.U.uShop.value = m === 'night' ? 0.15 : 1; st.U.uTerrace.value = m === 'night' ? 0 : 1;
       M.pool.opacity = m === 'night' ? 0.62 : m === 'dusk' ? 0.4 : 0; for (const T of tilesLive.values()) { applyOpen(T); if (T.pools) T.pools.visible = m !== 'day'; } },
     /** Builds every tile touching the circle to full detail; resolves when done (work continues in update(); pass sync = true to finish now). */
     ensureTiles(x, z, r = 250, sync = false) {
@@ -761,8 +777,8 @@ export async function createCity(scene, opts = {}) {
     onTileReady(cb) { readyCbs.push(cb); return () => { const i = readyCbs.indexOf(cb); if (i >= 0) readyCbs.splice(i, 1); }; },
     tileReady(x, z) { const T = tilesLive.get(Math.floor(x / TILE) + ':' + Math.floor(z / TILE)); return !!(T && T.done0); },
     stats() { let l0 = 0, l1 = 0, tris = 0, calls = 3; for (const T of tilesLive.values()) { if (T.done0) l0++; else if (T.done1) l1++; tris += T.tris; calls += T.group.children.length - 1 + T.detail.children.length; } return { tiles: tilesLive.size, l0, l1, calls, buildingTris: tris, queue: queue.length, ...counters, r0: R0, r1: R1 }; },
-    get kit() { return kit; }, get trees() { return trees; },
-    dispose() { disposed = true; if (trees) { trees.dispose(); trees = null; } if (kit) { kit.dispose(); kit = null; } for (const T of [...tilesLive.values()]) dropTile(T); far.tex.dispose(); far.mesh.geometry.dispose(); far.mesh.material.dispose(); far.sm.geometry.dispose(); far.sm.material.dispose(); group.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    get kit() { return kit; }, get trees() { return trees; }, get landmarks() { return lm; },
+    dispose() { disposed = true; if (lm) { lm.dispose(); lm = null; } if (trees) { trees.dispose(); trees = null; } if (kit) { kit.dispose(); kit = null; } for (const T of [...tilesLive.values()]) dropTile(T); far.tex.dispose(); far.mesh.geometry.dispose(); far.mesh.material.dispose(); far.sm.geometry.dispose(); far.sm.material.dispose(); group.traverse(o => { if (o.geometry) o.geometry.dispose(); });
       for (const k of Object.keys(M)) M[k].dispose(); SHARED.mats.delete(M.water); st.radial.dispose(); if (group.parent) group.parent.remove(group); },
   };
   api.setMode(mode);

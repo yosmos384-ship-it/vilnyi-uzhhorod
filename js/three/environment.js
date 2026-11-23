@@ -1168,7 +1168,14 @@ export function createEnvironment(scene, renderer, opts = {}) {
   // neighbourhood, the neighbours of CONTEXT_BLOCKS, the far hills and the OSM credit are hidden (Google's terms: no other
   // map data mixed in). The plot and our towers, the people, the cars, the sky and the lights stay; Google's mesh is cut
   // away over the plot. The OSM data keeps working unseen: the car's colliders (buildings, bridges), traffic, routes.
-  let g3d = null, g3dP = null;
+  let g3d = null, g3dP = null, g3dDriving = false;
+  // V32: Google 3D only in drive mode. drive.js calls g3dDrive(true) when the visitor is in a car, g3dDrive(false) on leaving it
+  // (the tiles stop; a new drive starts a new root session — at most google3d.js g3dCaps() per page load).
+  function g3dDrive(on) {
+    on = !!on; if (on === g3dDriving) return; g3dDriving = on;
+    if (!g3d) return;
+    if (on) g3d.enter(); else g3d.exit();
+  }
   function startGoogle3D(api) {
     if (g3dP || disposed || !renderer) return;
     g3dP = Promise.all([import('./google3d.js'), import('./city-data.js'), import('../data.js')]).then(([M, CD, D]) => {
@@ -1205,6 +1212,7 @@ export function createEnvironment(scene, renderer, opts = {}) {
           return out.map(q => [q[0], q[1], Math.hypot(q[0] - x, q[1] - z)]).filter(q => q[2] < 60).sort((a, b) => a[2] - b[2]).slice(0, 14);
         },
         tint: () => (mode === 'night' ? 0.3 : mode === 'dusk' ? 0.62 : 1),
+        mountButton: () => true,                         // V32: the switch is the ⋯ menu item «Google 3D» of the drive HUD (drive.js)
         cls: 'g3d-env',
         css: '.g3d-wrap.g3d-env{left:50%;transform:translateX(-50%);top:calc(12px + env(safe-area-inset-top,0px))}'
           + '.vw:not(.driving) .g3d-wrap.g3d-env{top:calc(98px + env(safe-area-inset-top,0px))}'   // on foot: below the day / dusk / night switch
@@ -1224,7 +1232,8 @@ export function createEnvironment(scene, renderer, opts = {}) {
       // tiles streamed in by the OSM city while Google is shown are hidden as they come
       let t = 0; const up = g3d.update;
       g3d.update = (cam, dt) => { if (g3d.active && (t += dt) > 0.3) { t = 0; hideNow(); } up(cam, dt); };
-      g3d.enter();
+      // V32 (cost safety): nothing is requested from Google until the visitor is driving (drive.js → env.g3dDrive(true))
+      if (g3dDriving) g3d.enter();
       return g3d;
     }).catch(e => { console.warn('[env] google3d unavailable', e); return null; });
   }
@@ -1240,7 +1249,7 @@ export function createEnvironment(scene, renderer, opts = {}) {
 
   // ready: resolves once context.js has been tried (stills wait for it); modules: the live instances;
   // layout: 'site-layout' | 'inline' (which layout data the environment was built from)
-  return { group, sun, hemi, setMode, setPhysical, update, dispose, ready, modules: ext, layout: LAYOUT_SRC, get mode() { return mode; }, city: cityCtl };
+  return { group, sun, hemi, setMode, setPhysical, update, dispose, ready, modules: ext, layout: LAYOUT_SRC, get mode() { return mode; }, city: cityCtl, g3dDrive, get g3d() { return g3d; } };
 
   // ================================================================ painting helpers (world units on a canvas)
   function polyPath(g, pts, close = true) { g.beginPath(); pts.forEach(([x, z], i) => i ? g.lineTo(x, z) : g.moveTo(x, z)); if (close) g.closePath(); }

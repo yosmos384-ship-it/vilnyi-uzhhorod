@@ -519,13 +519,14 @@ export function createContext({ shadows = false, lowDetail = false, blocks = CON
     trafficTried = true;
     try {
       if (traffic !== true) { let top = group; while (top.parent) top = top.parent; if (top !== group && top.getObjectByName('traffic')) return; }
-      moving = createTraffic({ shadows, density: low ? 1 / 150 : 1 / 90 });
+      moving = createTraffic({ shadows, density: low ? 1 / 150 : 1 / 90, lod: low ? { near: 0, nearMax: 0, mid: 45 } : { near: 26, nearMax: 3, mid: 70 } });   // V32: detailed near / mid models
       moving.setMode(mode); group.add(moving.group);
     } catch (e) { console.warn('[context] traffic', e); moving = null; }
   }
-  function update(dt /* , camera */) {
+  const _cp = new THREE.Vector3();
+  function update(dt, camera) {
     if (!trafficTried) startTraffic();
-    if (moving && dt > 0) moving.update(dt);
+    if (moving && dt > 0) moving.update(dt, camera && camera.getWorldPosition ? camera.getWorldPosition(_cp) : null);
   }
 
   function dispose() {

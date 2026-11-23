@@ -482,6 +482,8 @@ export default {
   "walk.game.policeStolen": "Vous avez volé une voiture de police — la police vous recherche !",
   "walk.car.limp": "La voiture est très abîmée — elle avance avec peu de puissance. Maintenez R (ou ↺) pour une voiture neuve",
   "walk.car.quality": "Qualité graphique",
+  "walk.car.g3dOff": "désactivé",
+  "walk.car.g3dOn": "activé",
   "walk.car.qUltra": "Ultra",
   "walk.car.qHigh": "Élevée",
   "walk.car.qMedium": "Moyenne",
